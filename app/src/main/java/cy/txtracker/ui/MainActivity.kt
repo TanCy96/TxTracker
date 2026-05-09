@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import cy.txtracker.ui.home.HomeRoute
 import cy.txtracker.ui.theme.TxTrackerTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -15,7 +14,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TxTrackerTheme {
-                HomeRoute()
+                AppRoute()
             }
         }
     }
