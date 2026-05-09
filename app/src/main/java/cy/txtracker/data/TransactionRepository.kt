@@ -53,6 +53,11 @@ class TransactionRepository @Inject constructor(
 
     suspend fun getCategory(id: Long): Category? = categoryDao.getById(id)
 
+    /** All transactions sorted by occurredAt ASC. Used by CSV export. */
+    suspend fun getAllTransactionsOnce(): List<Transaction> = transactionDao.getAllOnce()
+
+    suspend fun getAllCategoriesOnce(): List<Category> = categoryDao.getAll()
+
     // Writes --------------------------------------------------------------
 
     /** Insert a transaction. Returns the new row ID, or null if dedupe collision dropped it. */

@@ -21,6 +21,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY occurredAt DESC")
     fun observeAll(): Flow<List<Transaction>>
 
+    @Query("SELECT * FROM transactions ORDER BY occurredAt ASC")
+    suspend fun getAllOnce(): List<Transaction>
+
     @Query(
         """
         SELECT * FROM transactions

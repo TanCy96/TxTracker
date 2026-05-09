@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -55,7 +56,10 @@ import cy.txtracker.ui.format.formatYearMonth
 import cy.txtracker.ui.manual.AddManualSheet
 
 @Composable
-fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
+fun HomeRoute(
+    onSettingsClick: () -> Unit = {},
+    viewModel: HomeViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     var editingTxId by remember { mutableStateOf<Long?>(null) }
     var showAddSheet by remember { mutableStateOf(false) }
@@ -67,6 +71,7 @@ fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
         onFilterChange = viewModel::setFilter,
         onTransactionClick = { tx -> editingTxId = tx.id },
         onAddClick = { showAddSheet = true },
+        onSettingsClick = onSettingsClick,
     )
 
     editingTxId?.let { id ->
@@ -89,6 +94,7 @@ fun HomeScreen(
     onFilterChange: (HomeFilter) -> Unit,
     onTransactionClick: (Transaction) -> Unit,
     onAddClick: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
     Scaffold(
         floatingActionButton = {
@@ -110,6 +116,11 @@ fun HomeScreen(
                         IconButton(onClick = onNextMonth) {
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
                         }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
                 },
             )
