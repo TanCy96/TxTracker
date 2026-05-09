@@ -127,7 +127,7 @@ fun HomeScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            MonthTotalHeader(totalMinor = state.totalMinor)
+            MonthTotalHeader(totalMinor = state.totalMinor, transactionCount = state.transactionCount)
             CategoryBreakdownRow(breakdown = state.breakdown)
             HorizontalDivider()
             FilterRow(
@@ -152,7 +152,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun MonthTotalHeader(totalMinor: Long) {
+private fun MonthTotalHeader(totalMinor: Long, transactionCount: Int) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
@@ -162,6 +162,13 @@ private fun MonthTotalHeader(totalMinor: Long) {
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold,
         )
+        if (transactionCount > 0) {
+            Text(
+                text = if (transactionCount == 1) "1 transaction" else "$transactionCount transactions",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -363,21 +370,50 @@ private fun CategoryChip(category: Category?) {
 private fun EmptyState(state: HomeUiState) {
     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val (title, subtitle) = emptyStateCopy(state)
             Text(
-                text = if (state.isLoading) "Loading…"
-                else "No spending captured for ${formatYearMonth(state.yearMonth)} yet.",
+                text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (!state.isLoading) {
+            if (subtitle != null) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Make a payment in Google Wallet, or add a manual entry.",
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
+    }
+}
+
+/**
+ * The copy adapts to which dimension is "empty":
+ *   - Loading: a placeholder.
+ *   - True empty month (totalMinor == 0 with All filter): the onboarding-style hint.
+ *   - Filter excludes everything in a non-empty month: a filter-specific message so the user
+ *     understands the rows aren't gone, just filtered out.
+ */
+private fun emptyStateCopy(state: HomeUiState): Pair<String, String?> {
+    if (state.isLoading) return "Loading…" to null
+
+    val monthLabel = formatYearMonth(state.yearMonth)
+    if (state.totalMinor == 0L && state.filter is HomeFilter.All) {
+        return "No spending captured for $monthLabel yet." to
+            "Make a payment in a connected app, or tap + to add a manual entry."
+    }
+
+    val filterLabel = when (val f = state.filter) {
+        HomeFilter.All -> null
+        HomeFilter.Unverified -> "Unverified"
+        HomeFilter.Pending -> "Pending"
+        is HomeFilter.Category -> state.categories.firstOrNull { it.id == f.id }?.name
+    }
+    return if (filterLabel != null) {
+        "Nothing in \"$filterLabel\" for $monthLabel." to "Switch the filter or pick a different month."
+    } else {
+        "No transactions to show." to null
     }
 }
 

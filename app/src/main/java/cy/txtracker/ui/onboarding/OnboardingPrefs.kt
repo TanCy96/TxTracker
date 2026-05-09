@@ -19,4 +19,10 @@ internal object OnboardingPrefs {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DISMISSED, true).apply()
     }
+
+    /** Clears the dismissed flag so the onboarding screen reappears on next launch. */
+    fun clearDismissed(context: Context) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().remove(KEY_DISMISSED).apply()
+    }
 }

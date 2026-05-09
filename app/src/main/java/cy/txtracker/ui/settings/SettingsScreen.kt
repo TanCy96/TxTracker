@@ -32,8 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.BuildConfig
+import cy.txtracker.ui.onboarding.OnboardingPrefs
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +50,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val exportStatus by viewModel.exportStatus.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(exportStatus) {
         when (val s = exportStatus) {
@@ -133,6 +137,18 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            ListItem(
+                headlineContent = { Text("Reset onboarding") },
+                supportingContent = {
+                    Text("The onboarding screen will reappear on the next app launch.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    onClick = {
+                        OnboardingPrefs.clearDismissed(context)
+                        scope.launch { snackbar.showSnackbar("Onboarding will show on next launch.") }
+                    },
+                ),
+            )
         }
     }
 }

@@ -35,6 +35,7 @@ data class HomeUiState(
     val yearMonth: YearMonth,
     val filter: HomeFilter,
     val totalMinor: Long,
+    val transactionCount: Int,
     val breakdown: List<CategoryBreakdownEntry>,
     val categories: List<Category>,
     val days: List<DayGroup>,
