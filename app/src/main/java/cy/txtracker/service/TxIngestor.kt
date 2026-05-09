@@ -31,8 +31,14 @@ class TxIngestor @Inject constructor(
     private val categorizationEngine: CategorizationEngine,
     private val descriptionEngine: DescriptionEngine,
 ) {
-    /** Inserts the parsed transaction. Returns the new row ID, or null if dropped on dedupe. */
-    suspend fun ingest(parsed: ParsedTransaction): Long? {
+    /**
+     * Inserts the parsed transaction. Returns the new row ID, or null if dropped on dedupe.
+     *
+     * @param needsVerification true when the source was the [HeuristicExtractor] rather than
+     *   a strict per-source parser. Surfaces the row in the home screen "Pending" filter so
+     *   the user can confirm or delete before it counts as real spend.
+     */
+    suspend fun ingest(parsed: ParsedTransaction, needsVerification: Boolean = false): Long? {
         val merchantNormalized = normalizeMerchant(parsed.merchantRaw)
         val bucket = bucketOf(parsed.occurredAt)
         val categoryId = categorizationEngine.categorize(merchantNormalized)
@@ -56,6 +62,7 @@ class TxIngestor @Inject constructor(
             direction = parsed.direction,
             createdAt = Clock.System.now(),
             notificationDedupeKey = dedupeKey,
+            needsVerification = needsVerification,
         )
         return repository.insert(row)
     }

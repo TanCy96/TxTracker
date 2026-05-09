@@ -51,6 +51,13 @@ data class Transaction(
     val createdAt: Instant,
     /** Stable hash used to dedupe duplicate notifications (pending + posted, etc.). */
     val notificationDedupeKey: String,
+    /**
+     * True when this row was captured by the generic heuristic extractor rather than a
+     * strict per-source parser. Surfaces in the home screen "Pending" filter and the edit
+     * sheet so the user can confirm or delete it. Strict-parser captures and manual entries
+     * default to false.
+     */
+    val needsVerification: Boolean = false,
 )
 
 @Entity(

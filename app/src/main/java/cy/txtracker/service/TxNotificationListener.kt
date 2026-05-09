@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.NotificationParser
 import cy.txtracker.parsing.extractText
 import dagger.hilt.android.AndroidEntryPoint
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
 
 /**
  * Captures notifications from registered payment apps, dispatches each to the
@@ -33,6 +35,7 @@ import kotlinx.coroutines.launch
 class TxNotificationListener : NotificationListenerService() {
 
     @Inject lateinit var parsers: Set<@JvmSuppressWildcards NotificationParser>
+    @Inject lateinit var heuristicExtractor: HeuristicExtractor
     @Inject lateinit var ingestor: TxIngestor
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -64,34 +67,58 @@ class TxNotificationListener : NotificationListenerService() {
             return
         }
 
+        val text = sbn.extractText()
+        val postedAt = Instant.fromEpochMilliseconds(sbn.postTime)
+
         scope.launch {
             try {
-                val parsed = parser.parse(sbn)
-                if (parsed == null) {
-                    val preview = sbn.extractText()?.take(220)?.replace('\n', ' ')
-                    Log.i(
-                        TAG,
-                        "Parser returned null for ${sbn.packageName}. text='${preview ?: "<empty>"}'",
-                    )
+                // 1. Strict per-source parser. High-confidence path.
+                val strict = parser.parse(sbn)
+                if (strict != null) {
+                    insert(strict, sbn.packageName, needsVerification = false)
                     return@launch
                 }
-                val rowId = ingestor.ingest(parsed)
-                if (rowId != null) {
-                    Log.i(
-                        TAG,
-                        "Inserted row $rowId from ${sbn.packageName}: " +
-                            "merchant='${parsed.merchantRaw}' amountMinor=${parsed.amountMinor}",
-                    )
-                } else {
-                    Log.i(
-                        TAG,
-                        "Dropped on dedupe from ${sbn.packageName}: " +
-                            "merchant='${parsed.merchantRaw}' amountMinor=${parsed.amountMinor}",
-                    )
+
+                // 2. Heuristic fallback. Lower confidence — flagged for user verification.
+                val heuristic = text?.let {
+                    heuristicExtractor.extract(it, sbn.packageName, postedAt)
                 }
+                if (heuristic != null) {
+                    insert(heuristic, sbn.packageName, needsVerification = true)
+                    return@launch
+                }
+
+                // 3. Neither matched. Log what we saw so we can grow the rules over time.
+                val preview = text?.take(220)?.replace('\n', ' ')
+                Log.i(
+                    TAG,
+                    "No match for ${sbn.packageName}. text='${preview ?: "<empty>"}'",
+                )
             } catch (t: Throwable) {
                 Log.w(TAG, "Failed to handle notification from ${sbn.packageName}", t)
             }
+        }
+    }
+
+    private suspend fun insert(
+        parsed: cy.txtracker.parsing.ParsedTransaction,
+        packageName: String,
+        needsVerification: Boolean,
+    ) {
+        val rowId = ingestor.ingest(parsed, needsVerification = needsVerification)
+        val tag = if (needsVerification) "Inserted (PENDING)" else "Inserted"
+        if (rowId != null) {
+            Log.i(
+                TAG,
+                "$tag row $rowId from $packageName: " +
+                    "merchant='${parsed.merchantRaw}' amountMinor=${parsed.amountMinor}",
+            )
+        } else {
+            Log.i(
+                TAG,
+                "Dropped on dedupe from $packageName: " +
+                    "merchant='${parsed.merchantRaw}' amountMinor=${parsed.amountMinor}",
+            )
         }
     }
 

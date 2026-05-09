@@ -30,6 +30,10 @@ object DatabaseModule {
                     }
                 },
             )
+            // Acceptable while the app is in early development with no users to migrate.
+            // Once we ship to friends and care about preserving their captured rows, replace
+            // this with proper Migration objects per schema bump.
+            .fallbackToDestructiveMigration()
             .build()
 
     @Provides
