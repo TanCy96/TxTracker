@@ -160,16 +160,22 @@ class TransactionRepository @Inject constructor(
         descriptionMappingDao.deleteCategoryBucket(categoryId, bucket)
 }
 
-/** Stable hash used as `notificationDedupeKey`. Must match what the listener computes. */
+/**
+ * Stable hash used as `notificationDedupeKey`. The listener computes this for every parsed
+ * notification; identical hashes drop on insert via `OnConflictStrategy.IGNORE`.
+ *
+ * `sourceApp` is intentionally NOT part of the key: the user's bank app and Google Wallet
+ * frequently emit separate notifications for the same payment, and they should collapse to
+ * one row. The 5-minute window also handles the typical pending → posted notification pair
+ * a single source emits for one transaction.
+ */
 fun computeDedupeKey(
-    sourceApp: String,
     amountMinor: Long,
     merchantNormalized: String,
     occurredAt: Instant,
 ): String {
-    // Round to a 5-minute window so pending+posted notifications collide.
     val bucketMs = occurredAt.toEpochMilliseconds() / FIVE_MINUTES_MS
-    val payload = "$sourceApp|$amountMinor|$merchantNormalized|$bucketMs"
+    val payload = "$amountMinor|$merchantNormalized|$bucketMs"
     return sha1Hex(payload)
 }
 

@@ -117,24 +117,38 @@ class TransactionRepositoryTest {
     @Test
     fun computeDedupeKey_is_deterministic_and_5min_window_collides() {
         val a = computeDedupeKey(
-            sourceApp = "com.gpay",
             amountMinor = 1250,
             merchantNormalized = "MCDONALDS",
             occurredAt = Instant.parse("2026-05-09T12:30:00Z"),
         )
         val sameWindow = computeDedupeKey(
-            sourceApp = "com.gpay",
             amountMinor = 1250,
             merchantNormalized = "MCDONALDS",
             occurredAt = Instant.parse("2026-05-09T12:33:59Z"),
         )
         val nextWindow = computeDedupeKey(
-            sourceApp = "com.gpay",
             amountMinor = 1250,
             merchantNormalized = "MCDONALDS",
             occurredAt = Instant.parse("2026-05-09T12:36:00Z"),
         )
         assertThat(a).isEqualTo(sameWindow)
         assertThat(a).isNotEqualTo(nextWindow)
+    }
+
+    @Test
+    fun computeDedupeKey_collapses_across_source_apps() {
+        // Same payment seen by GWallet and by the bank app must produce the same dedupe key,
+        // so the second insertion is dropped.
+        val gwallet = computeDedupeKey(
+            amountMinor = 53000,
+            merchantNormalized = "CHONG TYRE AUTO",
+            occurredAt = Instant.parse("2026-05-09T12:30:00Z"),
+        )
+        val bank = computeDedupeKey(
+            amountMinor = 53000,
+            merchantNormalized = "CHONG TYRE AUTO",
+            occurredAt = Instant.parse("2026-05-09T12:31:30Z"),
+        )
+        assertThat(gwallet).isEqualTo(bank)
     }
 }
