@@ -67,6 +67,7 @@ class HomeViewModel @Inject constructor(
         breakdown = emptyList(),
         categories = emptyList(),
         days = emptyList(),
+        pendingCount = 0,
         isLoading = true,
     )
 
@@ -83,6 +84,7 @@ class HomeViewModel @Inject constructor(
         val filtered = when (filter) {
             HomeFilter.All -> joined
             HomeFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
+            HomeFilter.Pending -> joined.filter { it.transaction.needsVerification }
             is HomeFilter.Category -> joined.filter { it.transaction.categoryId == filter.id }
         }
         val days = filtered
@@ -104,6 +106,7 @@ class HomeViewModel @Inject constructor(
             breakdown = breakdown,
             categories = categories,
             days = days,
+            pendingCount = transactions.count { it.needsVerification },
             isLoading = false,
         )
     }

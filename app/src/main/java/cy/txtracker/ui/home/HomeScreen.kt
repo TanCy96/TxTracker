@@ -109,6 +109,7 @@ fun HomeScreen(
                 filter = state.filter,
                 categories = state.categories,
                 hasUnverified = state.breakdown.any { it.category == null && it.totalMinor > 0 },
+                pendingCount = state.pendingCount,
                 onFilterChange = onFilterChange,
             )
             HorizontalDivider()
@@ -169,6 +170,7 @@ private fun FilterRow(
     filter: HomeFilter,
     categories: List<Category>,
     hasUnverified: Boolean,
+    pendingCount: Int,
     onFilterChange: (HomeFilter) -> Unit,
 ) {
     LazyRow(
@@ -181,6 +183,15 @@ private fun FilterRow(
                 onClick = { onFilterChange(HomeFilter.All) },
                 label = { Text("All") },
             )
+        }
+        if (pendingCount > 0) {
+            item {
+                FilterChip(
+                    selected = filter is HomeFilter.Pending,
+                    onClick = { onFilterChange(HomeFilter.Pending) },
+                    label = { Text("Pending ($pendingCount)") },
+                )
+            }
         }
         if (hasUnverified) {
             item {
@@ -270,7 +281,13 @@ private fun TransactionRow(row: TransactionWithCategory, onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(6.dp))
-            CategoryChip(category = row.category)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CategoryChip(category = row.category)
+                if (row.transaction.needsVerification) {
+                    Spacer(Modifier.size(8.dp))
+                    PendingPill()
+                }
+            }
             row.transaction.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -280,6 +297,23 @@ private fun TransactionRow(row: TransactionWithCategory, onClick: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PendingPill() {
+    val bg = MaterialTheme.colorScheme.tertiaryContainer
+    val fg = MaterialTheme.colorScheme.onTertiaryContainer
+    Box(
+        modifier = Modifier
+            .background(bg, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = "Pending",
+            style = MaterialTheme.typography.labelSmall,
+            color = fg,
+        )
     }
 }
 

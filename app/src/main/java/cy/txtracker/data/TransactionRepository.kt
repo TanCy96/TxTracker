@@ -152,6 +152,9 @@ class TransactionRepository @Inject constructor(
         )
     }
 
+    suspend fun setNeedsVerification(txId: Long, needsVerification: Boolean) =
+        transactionDao.updateNeedsVerification(txId, needsVerification)
+
     suspend fun delete(txId: Long) = transactionDao.delete(txId)
 
     // Category management ------------------------------------------------

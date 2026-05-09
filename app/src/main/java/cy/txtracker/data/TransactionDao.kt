@@ -60,6 +60,9 @@ interface TransactionDao {
     @Query("UPDATE transactions SET description = :description WHERE id = :id")
     suspend fun updateDescription(id: Long, description: String?)
 
+    @Query("UPDATE transactions SET needsVerification = :needsVerification WHERE id = :id")
+    suspend fun updateNeedsVerification(id: Long, needsVerification: Boolean)
+
     @Query(
         """
         UPDATE transactions

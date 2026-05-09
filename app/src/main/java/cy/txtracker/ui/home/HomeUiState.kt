@@ -8,6 +8,8 @@ import kotlinx.datetime.LocalDate
 sealed interface HomeFilter {
     data object All : HomeFilter
     data object Unverified : HomeFilter
+    /** Heuristic-captured transactions awaiting user confirm/delete. */
+    data object Pending : HomeFilter
     data class Category(val id: Long) : HomeFilter
 }
 
@@ -36,5 +38,6 @@ data class HomeUiState(
     val breakdown: List<CategoryBreakdownEntry>,
     val categories: List<Category>,
     val days: List<DayGroup>,
+    val pendingCount: Int,
     val isLoading: Boolean,
 )

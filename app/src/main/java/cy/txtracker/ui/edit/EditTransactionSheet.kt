@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -73,6 +75,9 @@ fun EditTransactionSheet(
                 onDescriptionChange = { description ->
                     viewModel.setDescription(transactionId, description, learn = true)
                 },
+                onConfirmVerification = {
+                    viewModel.confirmVerification(transactionId, onDone = onDismiss)
+                },
                 onDelete = {
                     viewModel.delete(transactionId, onDone = onDismiss)
                 },
@@ -104,6 +109,7 @@ private fun EditingContent(
     state: EditUiState.Editing,
     onCategoryChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
+    onConfirmVerification: () -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -126,6 +132,11 @@ private fun EditingContent(
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
+        if (tx.needsVerification) {
+            VerificationBanner()
+            Spacer(Modifier.height(12.dp))
+        }
+
         // Header: merchant + amount.
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -177,16 +188,54 @@ private fun EditingContent(
         )
 
         Spacer(Modifier.height(20.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            TextButton(onClick = onDelete) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
+        if (tx.needsVerification) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onDelete) {
+                    Text("Not a transaction", color = MaterialTheme.colorScheme.error)
+                }
+                Button(onClick = onConfirmVerification) { Text("Confirm") }
             }
-            TextButton(onClick = onClose) { Text("Done") }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = onDelete) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = onClose) { Text("Done") }
+            }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun VerificationBanner() {
+    val bg = MaterialTheme.colorScheme.tertiaryContainer
+    val fg = MaterialTheme.colorScheme.onTertiaryContainer
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg, shape = RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = "Pending verification",
+            style = MaterialTheme.typography.labelLarge,
+            color = fg,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "Captured from a notification that didn't match a known format. " +
+                "Confirm if this was a real transaction, or mark it as not.",
+            style = MaterialTheme.typography.bodySmall,
+            color = fg,
+        )
     }
 }
 

@@ -88,6 +88,14 @@ class EditTransactionViewModel @Inject constructor(
         }
     }
 
+    /** Clears the `needsVerification` flag — user confirmed the heuristic-captured row is real. */
+    fun confirmVerification(transactionId: Long, onDone: () -> Unit) {
+        viewModelScope.launch {
+            repository.setNeedsVerification(transactionId, false)
+            onDone()
+        }
+    }
+
     fun delete(transactionId: Long, onDone: () -> Unit) {
         viewModelScope.launch {
             repository.delete(transactionId)
