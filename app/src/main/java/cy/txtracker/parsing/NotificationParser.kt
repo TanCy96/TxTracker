@@ -41,3 +41,10 @@ internal fun StatusBarNotification.extractText(): String? {
         else -> null
     }
 }
+
+/**
+ * "16.00" → 1600, "1,234.56" → 123456. Caller's regex must guarantee exactly two decimal places
+ * and at least one digit before the dot.
+ */
+internal fun parseRinggitAmountMinor(raw: String): Long =
+    raw.replace(",", "").replace(".", "").toLong()

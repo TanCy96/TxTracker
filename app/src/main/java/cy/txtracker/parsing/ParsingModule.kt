@@ -14,7 +14,15 @@ import dagger.multibindings.IntoSet
 @InstallIn(SingletonComponent::class)
 abstract class ParsingModule {
 
-    @Binds
-    @IntoSet
+    @Binds @IntoSet
     abstract fun bindGoogleWalletParser(parser: GoogleWalletParser): NotificationParser
+
+    @Binds @IntoSet
+    abstract fun bindTouchNGoParser(parser: TouchNGoParser): NotificationParser
+
+    @Binds @IntoSet
+    abstract fun bindGrabParser(parser: GrabParser): NotificationParser
+
+    @Binds @IntoSet
+    abstract fun bindCIMBParser(parser: CIMBParser): NotificationParser
 }
