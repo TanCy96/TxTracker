@@ -1,0 +1,37 @@
+package cy.txtracker.data
+
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import org.junit.rules.ExternalResource
+
+/**
+ * JUnit rule that builds a fresh in-memory [TxDatabase] for each test, with the seed
+ * callback wired up so default categories exist exactly as they will in production.
+ */
+class DbRule : ExternalResource() {
+    lateinit var db: TxDatabase
+        private set
+
+    override fun before() {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        db = Room.inMemoryDatabaseBuilder(ctx, TxDatabase::class.java)
+            .addCallback(
+                object : androidx.room.RoomDatabase.Callback() {
+                    override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                        TxDatabase.seedCategories(db)
+                    }
+                },
+            )
+            .allowMainThreadQueries()
+            .build()
+    }
+
+    override fun after() {
+        db.close()
+    }
+
+    val transactionDao: TransactionDao get() = db.transactionDao()
+    val categoryDao: CategoryDao get() = db.categoryDao()
+    val merchantMappingDao: MerchantMappingDao get() = db.merchantMappingDao()
+    val descriptionMappingDao: DescriptionMappingDao get() = db.descriptionMappingDao()
+}
