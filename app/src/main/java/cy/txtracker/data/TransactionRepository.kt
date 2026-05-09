@@ -80,6 +80,20 @@ class TransactionRepository @Inject constructor(
                     learnedAt = now,
                 ),
             )
+            // If the transaction already has a description, propagate it to the
+            // category-level mapping so future txs in the same (category, bucket)
+            // get the suggestion. Without this, the order in which the user labels
+            // category and description would change what gets learned.
+            tx.description?.takeIf { it.isNotBlank() }?.let { description ->
+                descriptionMappingDao.upsertCategory(
+                    CategoryDescriptionMapping(
+                        categoryId = categoryId,
+                        timeBucket = tx.timeBucket,
+                        description = description,
+                        learnedAt = now,
+                    ),
+                )
+            }
         }
     }
 

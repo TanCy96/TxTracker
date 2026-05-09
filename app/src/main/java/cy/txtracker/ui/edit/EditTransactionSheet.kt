@@ -19,15 +19,22 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,6 +70,9 @@ fun EditTransactionSheet(
                 onCategoryChange = { categoryId ->
                     viewModel.setCategory(transactionId, categoryId, learn = true)
                 },
+                onDescriptionChange = { description ->
+                    viewModel.setDescription(transactionId, description, learn = true)
+                },
                 onDelete = {
                     viewModel.delete(transactionId, onDone = onDismiss)
                 },
@@ -93,10 +103,26 @@ private fun MissingContent(onClose: () -> Unit) {
 private fun EditingContent(
     state: EditUiState.Editing,
     onCategoryChange: (Long?) -> Unit,
+    onDescriptionChange: (String?) -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
 ) {
     val tx = state.transaction
+
+    // Local description state so the user can edit freely without thrashing the DB on every
+    // keystroke. We flush a single save when the sheet leaves composition (swipe-dismiss or
+    // Done button), comparing against the persisted value to avoid no-op writes.
+    var description by remember(tx.id) { mutableStateOf(tx.description.orEmpty()) }
+    val initialDescription = tx.description.orEmpty()
+    DisposableEffect(tx.id) {
+        onDispose {
+            val cleaned = description.trim()
+            if (cleaned != initialDescription.trim()) {
+                onDescriptionChange(cleaned.ifEmpty { null })
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
@@ -136,6 +162,18 @@ private fun EditingContent(
             categories = state.categories,
             selectedCategoryId = tx.categoryId,
             onCategoryChange = onCategoryChange,
+        )
+
+        Spacer(Modifier.height(16.dp))
+        Text(text = "Description", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = description,
+            onValueChange = { description = it },
+            placeholder = { Text("e.g. lunch, petrol, coffee") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
         )
 
         Spacer(Modifier.height(20.dp))

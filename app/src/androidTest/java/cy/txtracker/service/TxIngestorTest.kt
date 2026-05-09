@@ -2,11 +2,14 @@ package cy.txtracker.service
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import cy.txtracker.data.CategoryDescriptionMapping
 import cy.txtracker.data.DbRule
 import cy.txtracker.data.Direction
+import cy.txtracker.data.MerchantDescriptionMapping
 import cy.txtracker.data.MerchantMapping
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.CategorizationEngine
+import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
 import cy.txtracker.parsing.ParsedTransaction
 import kotlinx.coroutines.test.runTest
@@ -30,6 +33,9 @@ class TxIngestorTest {
         categorizationEngine = CategorizationEngine(
             merchantMappingDao = dbRule.merchantMappingDao,
             categoryDao = dbRule.categoryDao,
+        ),
+        descriptionEngine = DescriptionEngine(
+            descriptionMappingDao = dbRule.descriptionMappingDao,
         ),
     )
 
@@ -98,6 +104,43 @@ class TxIngestorTest {
         val row = dbRule.transactionDao.getById(id)!!
         assertThat(row.categoryId).isEqualTo(transport)
         assertThat(row.categoryId).isNotEqualTo(food)
+    }
+
+    @Test
+    fun ingest_applies_merchant_bucket_description_suggestion() = runTest {
+        val past = Instant.parse("2026-04-15T00:00:00Z")
+        // User had previously labeled STARBUCKS at MIDDAY as "lunch coffee".
+        dbRule.descriptionMappingDao.upsertMerchant(
+            MerchantDescriptionMapping("STARBUCKS", TimeBucket.MIDDAY, "lunch coffee", past),
+        )
+
+        val id = ingestor().ingest(parsed(merchantRaw = "STARBUCKS"))!!  // MIDDAY bucket
+        val row = dbRule.transactionDao.getById(id)!!
+        assertThat(row.description).isEqualTo("lunch coffee")
+    }
+
+    @Test
+    fun ingest_falls_back_to_category_bucket_description_for_a_new_merchant() = runTest {
+        // The user has previously labeled some Food+MIDDAY transaction as "lunch".
+        // A NEW merchant (BURGER KING) at MIDDAY should pick up that suggestion via the
+        // category-level mapping, even though no merchant-level entry exists for it.
+        val past = Instant.parse("2026-04-15T00:00:00Z")
+        val food = categoryId("Food")
+        dbRule.descriptionMappingDao.upsertCategory(
+            CategoryDescriptionMapping(food, TimeBucket.MIDDAY, "lunch", past),
+        )
+
+        val id = ingestor().ingest(parsed(merchantRaw = "BURGER KING"))!!
+        val row = dbRule.transactionDao.getById(id)!!
+        assertThat(row.categoryId).isEqualTo(food)  // keyword rule
+        assertThat(row.description).isEqualTo("lunch")  // category-bucket fallback
+    }
+
+    @Test
+    fun ingest_leaves_description_null_when_nothing_matches() = runTest {
+        val id = ingestor().ingest(parsed(merchantRaw = "BRAND NEW MERCHANT"))!!
+        val row = dbRule.transactionDao.getById(id)!!
+        assertThat(row.description).isNull()
     }
 
     @Test

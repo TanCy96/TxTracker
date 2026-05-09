@@ -51,6 +51,23 @@ class TransactionRepositoryTest {
     }
 
     @Test
+    fun setCategory_propagates_existing_description_to_category_bucket_mapping() = runTest {
+        // If the user labels description first then category, adopting a category should still
+        // populate the (category, bucket) mapping so cross-merchant generalization works.
+        val repo = repo()
+        val food = dbRule.categoryDao.getAll().first { it.name == "Food" }
+        val txId = repo.insert(txAt(now, description = "lunch", dedupeKey = "k"))!!
+
+        // No category yet → category-bucket mapping not yet written (by setDescription's flow,
+        // because the tx had no categoryId at description-save time).
+        // Now the user assigns a category.
+        repo.setCategory(txId = txId, categoryId = food.id, learnMapping = true, now = now)
+
+        val mapping = dbRule.descriptionMappingDao.getCategoryBucket(food.id, TimeBucket.MIDDAY)
+        assertThat(mapping?.description).isEqualTo("lunch")
+    }
+
+    @Test
     fun setCategory_without_learning_skips_mapping_write() = runTest {
         val repo = repo()
         val food = dbRule.categoryDao.getAll().first { it.name == "Food" }

@@ -66,6 +66,28 @@ class EditTransactionViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Sets the description and (when [learn] is true) upserts both
+     * `MerchantDescriptionMapping(merchant, bucket)` and, if the transaction has a category,
+     * `CategoryDescriptionMapping(category, bucket)` so future similar transactions get a
+     * suggestion. Blank input clears the description without writing any mapping.
+     */
+    fun setDescription(transactionId: Long, description: String?, learn: Boolean = true) {
+        viewModelScope.launch {
+            repository.setDescription(
+                txId = transactionId,
+                description = description,
+                learnMappings = learn,
+                now = Clock.System.now(),
+            )
+            val refreshed = repository.getTransaction(transactionId) ?: return@launch
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                _state.value = current.copy(transaction = refreshed)
+            }
+        }
+    }
+
     fun delete(transactionId: Long, onDone: () -> Unit) {
         viewModelScope.launch {
             repository.delete(transactionId)
