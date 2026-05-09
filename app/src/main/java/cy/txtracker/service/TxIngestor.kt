@@ -4,6 +4,7 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.data.computeDedupeKey
 import cy.txtracker.data.normalizeMerchant
+import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.bucketOf
 import cy.txtracker.parsing.ParsedTransaction
 import javax.inject.Inject
@@ -26,11 +27,13 @@ import kotlinx.datetime.Clock
 @Singleton
 class TxIngestor @Inject constructor(
     private val repository: TransactionRepository,
+    private val categorizationEngine: CategorizationEngine,
 ) {
     /** Inserts the parsed transaction. Returns the new row ID, or null if dropped on dedupe. */
     suspend fun ingest(parsed: ParsedTransaction): Long? {
         val merchantNormalized = normalizeMerchant(parsed.merchantRaw)
         val bucket = bucketOf(parsed.occurredAt)
+        val categoryId = categorizationEngine.categorize(merchantNormalized)
         val dedupeKey = computeDedupeKey(
             amountMinor = parsed.amountMinor,
             merchantNormalized = merchantNormalized,
@@ -41,7 +44,7 @@ class TxIngestor @Inject constructor(
             currency = parsed.currency,
             merchantRaw = parsed.merchantRaw,
             merchantNormalized = merchantNormalized,
-            categoryId = null,
+            categoryId = categoryId,
             description = null,
             occurredAt = parsed.occurredAt,
             timeBucket = bucket,

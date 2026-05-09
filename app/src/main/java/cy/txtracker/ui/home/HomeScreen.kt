@@ -34,6 +34,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.data.Transaction
+import cy.txtracker.ui.edit.EditTransactionSheet
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
@@ -50,13 +54,22 @@ import cy.txtracker.ui.format.formatYearMonth
 @Composable
 fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
+    var editingTxId by remember { mutableStateOf<Long?>(null) }
+
     HomeScreen(
         state = state,
         onPrevMonth = viewModel::previousMonth,
         onNextMonth = viewModel::nextMonth,
         onFilterChange = viewModel::setFilter,
-        onTransactionClick = { /* edit sheet arrives in tasks 7 & 8 */ },
+        onTransactionClick = { tx -> editingTxId = tx.id },
     )
+
+    editingTxId?.let { id ->
+        EditTransactionSheet(
+            transactionId = id,
+            onDismiss = { editingTxId = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

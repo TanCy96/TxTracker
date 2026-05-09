@@ -4,7 +4,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import cy.txtracker.data.DbRule
 import cy.txtracker.data.Direction
+import cy.txtracker.data.MerchantMapping
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.TimeBucket
 import cy.txtracker.parsing.ParsedTransaction
 import kotlinx.coroutines.test.runTest
@@ -25,7 +27,14 @@ class TxIngestorTest {
             merchantMappingDao = dbRule.merchantMappingDao,
             descriptionMappingDao = dbRule.descriptionMappingDao,
         ),
+        categorizationEngine = CategorizationEngine(
+            merchantMappingDao = dbRule.merchantMappingDao,
+            categoryDao = dbRule.categoryDao,
+        ),
     )
+
+    private suspend fun categoryId(name: String): Long =
+        dbRule.categoryDao.getAll().first { it.name == name }.id
 
     private fun parsed(
         merchantRaw: String = "CHONG TYRE AUTO SVC",
@@ -58,13 +67,37 @@ class TxIngestorTest {
     }
 
     @Test
-    fun ingest_leaves_categoryId_and_description_null_for_user_to_assign() = runTest {
+    fun ingest_leaves_categoryId_null_when_no_mapping_or_keyword_matches() = runTest {
+        // "CHONG TYRE AUTO" doesn't match any built-in keyword rule and there's no learned
+        // mapping yet, so it stays uncategorized for the user to label via the edit sheet.
         val id = ingestor().ingest(parsed())!!
         val row = dbRule.transactionDao.getById(id)!!
-        // Auto-categorization and description suggestions arrive in tasks 7 & 8.
-        // Until then, ingested transactions land in the "Unverified" filter.
         assertThat(row.categoryId).isNull()
         assertThat(row.description).isNull()
+    }
+
+    @Test
+    fun ingest_auto_categorizes_via_keyword_rule_when_no_mapping_exists() = runTest {
+        // MCDONALDS hits the Food keyword rule.
+        val food = categoryId("Food")
+        val id = ingestor().ingest(parsed(merchantRaw = "MCDONALDS PETALING JAYA"))!!
+        val row = dbRule.transactionDao.getById(id)!!
+        assertThat(row.categoryId).isEqualTo(food)
+    }
+
+    @Test
+    fun ingest_uses_existing_merchant_mapping_over_keyword_rule() = runTest {
+        val food = categoryId("Food")
+        val transport = categoryId("Transport")
+        // The user previously labeled STARBUCKS as Transport (overriding the Food keyword rule).
+        dbRule.merchantMappingDao.upsert(
+            MerchantMapping("STARBUCKS", transport, Instant.parse("2026-04-01T00:00:00Z")),
+        )
+
+        val id = ingestor().ingest(parsed(merchantRaw = "STARBUCKS"))!!
+        val row = dbRule.transactionDao.getById(id)!!
+        assertThat(row.categoryId).isEqualTo(transport)
+        assertThat(row.categoryId).isNotEqualTo(food)
     }
 
     @Test
