@@ -1,9 +1,12 @@
 package cy.txtracker.data
 
 import cy.txtracker.domain.TimeBucket
+import cy.txtracker.domain.bucketOf
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 /**
@@ -56,6 +59,40 @@ class TransactionRepository @Inject constructor(
     suspend fun insert(tx: Transaction): Long? {
         val id = transactionDao.insert(tx)
         return id.takeIf { it >= 0 }
+    }
+
+    /**
+     * Convenience for the manual-entry sheet. Builds a [Transaction] with `sourceApp = "manual"`,
+     * a UUID-based dedupe key (so two manual entries never collide with each other or with a
+     * captured notification), `direction = OUT`, and the user-supplied fields. The merchant
+     * string is normalized via [normalizeMerchant], and the time bucket is computed from
+     * [occurredAt] in the supplied [Instant]. Returns the new row id.
+     */
+    suspend fun addManualTransaction(
+        amountMinor: Long,
+        merchantRaw: String,
+        categoryId: Long?,
+        description: String?,
+        occurredAt: Instant,
+        now: Instant = Clock.System.now(),
+    ): Long? {
+        val tx = Transaction(
+            amountMinor = amountMinor,
+            currency = "MYR",
+            merchantRaw = merchantRaw,
+            merchantNormalized = normalizeMerchant(merchantRaw),
+            categoryId = categoryId,
+            description = description?.trim()?.takeIf { it.isNotEmpty() },
+            occurredAt = occurredAt,
+            timeBucket = bucketOf(occurredAt),
+            sourceApp = MANUAL_SOURCE_APP,
+            rawText = null,
+            direction = Direction.OUT,
+            createdAt = now,
+            notificationDedupeKey = "manual:${UUID.randomUUID()}",
+            needsVerification = false,
+        )
+        return insert(tx)
     }
 
     /**

@@ -19,11 +19,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,11 +52,13 @@ import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
 import cy.txtracker.ui.format.formatYearMonth
+import cy.txtracker.ui.manual.AddManualSheet
 
 @Composable
 fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     var editingTxId by remember { mutableStateOf<Long?>(null) }
+    var showAddSheet by remember { mutableStateOf(false) }
 
     HomeScreen(
         state = state,
@@ -62,6 +66,7 @@ fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
         onNextMonth = viewModel::nextMonth,
         onFilterChange = viewModel::setFilter,
         onTransactionClick = { tx -> editingTxId = tx.id },
+        onAddClick = { showAddSheet = true },
     )
 
     editingTxId?.let { id ->
@@ -69,6 +74,9 @@ fun HomeRoute(viewModel: HomeViewModel = hiltViewModel()) {
             transactionId = id,
             onDismiss = { editingTxId = null },
         )
+    }
+    if (showAddSheet) {
+        AddManualSheet(onDismiss = { showAddSheet = false })
     }
 }
 
@@ -80,8 +88,14 @@ fun HomeScreen(
     onNextMonth: () -> Unit,
     onFilterChange: (HomeFilter) -> Unit,
     onTransactionClick: (Transaction) -> Unit,
+    onAddClick: () -> Unit,
 ) {
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddClick) {
+                Icon(Icons.Filled.Add, contentDescription = "Add manual transaction")
+            }
+        },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
