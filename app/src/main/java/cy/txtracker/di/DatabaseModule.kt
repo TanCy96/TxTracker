@@ -28,6 +28,20 @@ object DatabaseModule {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         TxDatabase.seedCategories(db)
                     }
+
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        // Self-healing safety net. Room's `onCreate` only fires on the very
+                        // first DB creation; after a destructive migration the schema is
+                        // recreated but onCreate does NOT re-fire, so the seed wouldn't run
+                        // and the user would land in an app with zero categories. Re-running
+                        // the seed here is cheap (one SELECT COUNT) and idempotent (bails when
+                        // rows already exist). Also covers any future accidental wipe.
+                        val cursor = db.query("SELECT COUNT(*) FROM categories")
+                        val count = cursor.use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                        if (count == 0) {
+                            TxDatabase.seedCategories(db)
+                        }
+                    }
                 },
             )
             // Acceptable while the app is in early development with no users to migrate.
