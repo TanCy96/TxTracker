@@ -1,28 +1,47 @@
 package cy.txtracker.ui.onboarding
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Tiny SharedPreferences wrapper for the one bit of state we need: whether the user has
- * already dismissed the onboarding screen and chosen to use the app without notification
- * access. Once dismissed, the onboarding screen is skipped on subsequent launches even if
- * notification access is never granted.
+ * Persisted "onboarding dismissed" flag, exposed as a [StateFlow] so the rest of the UI
+ * recomposes immediately when the value changes (e.g. when the user taps "Reset onboarding"
+ * in Settings, the home AppRoute swaps back to the onboarding screen the same frame).
+ *
+ * The flag means "the user has completed or dismissed onboarding". It's set when:
+ *   - The user taps "Continue without notifications" on the onboarding screen.
+ *   - The user grants notification access (auto-dismissed in AppRoute via a LaunchedEffect),
+ *     so they don't see the onboarding screen again on every launch.
+ *
+ * Cleared by the "Reset onboarding" action in Settings, which should immediately bring the
+ * onboarding screen back regardless of whether access is currently granted.
  */
-internal object OnboardingPrefs {
-    private const val FILE = "onboarding"
-    private const val KEY_DISMISSED = "dismissed"
+@Singleton
+class OnboardingPrefs @Inject constructor(
+    @ApplicationContext context: Context,
+) {
+    private val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    fun isDismissed(context: Context): Boolean =
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_DISMISSED, false)
+    private val _dismissed = MutableStateFlow(prefs.getBoolean(KEY_DISMISSED, false))
+    val dismissed: StateFlow<Boolean> = _dismissed.asStateFlow()
 
-    fun setDismissed(context: Context) {
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_DISMISSED, true).apply()
+    fun setDismissed() {
+        prefs.edit().putBoolean(KEY_DISMISSED, true).apply()
+        _dismissed.value = true
     }
 
-    /** Clears the dismissed flag so the onboarding screen reappears on next launch. */
-    fun clearDismissed(context: Context) {
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .edit().remove(KEY_DISMISSED).apply()
+    fun clearDismissed() {
+        prefs.edit().remove(KEY_DISMISSED).apply()
+        _dismissed.value = false
+    }
+
+    private companion object {
+        const val FILE = "onboarding"
+        const val KEY_DISMISSED = "dismissed"
     }
 }

@@ -7,6 +7,7 @@ import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
 import cy.txtracker.export.ImportResult
+import cy.txtracker.ui.onboarding.OnboardingPrefs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +20,10 @@ class SettingsViewModel @Inject constructor(
     private val csvExporter: CsvExporter,
     private val backupExporter: BackupExporter,
     private val backupImporter: BackupImporter,
+    private val onboardingPrefs: OnboardingPrefs,
 ) : ViewModel() {
+
+    fun resetOnboarding() = onboardingPrefs.clearDismissed()
 
     private val _exportStatus = MutableStateFlow<ExportStatus>(ExportStatus.Idle)
     val exportStatus: StateFlow<ExportStatus> = _exportStatus.asStateFlow()

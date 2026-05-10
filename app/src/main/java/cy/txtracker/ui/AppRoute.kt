@@ -3,16 +3,15 @@ package cy.txtracker.ui
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import cy.txtracker.ui.home.HomeRoute
-import cy.txtracker.ui.onboarding.OnboardingPrefs
 import cy.txtracker.ui.onboarding.OnboardingScreen
 import cy.txtracker.ui.onboarding.openListenerSettings
 import cy.txtracker.ui.onboarding.rememberListenerGrantState
@@ -33,22 +32,31 @@ private object Routes {
 }
 
 /**
- * Top-level routing. Shows onboarding on first launch when notification access hasn't been
- * granted and the user hasn't dismissed it; otherwise hands off to a NavHost rooted at home.
+ * Top-level routing.
+ *
+ * Onboarding is shown whenever the dismissed flag is false. The flag is auto-set to true
+ * the moment the user grants notification access, so first-time users see onboarding, grant
+ * access, and never see it again. The "Reset onboarding" action in Settings clears the flag,
+ * which makes the screen reappear immediately (the StateFlow drives recomposition); the
+ * auto-dismiss only fires on a `granted` transition, not on every recomposition, so a Reset
+ * with access already granted does NOT immediately re-dismiss itself.
  */
 @Composable
-fun AppRoute() {
+fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val granted by rememberListenerGrantState()
-    var dismissed by remember { mutableStateOf(OnboardingPrefs.isDismissed(context)) }
+    val dismissed by viewModel.onboardingDismissed.collectAsStateWithLifecycle()
 
-    if (!granted && !dismissed) {
+    LaunchedEffect(granted) {
+        if (granted && !dismissed) {
+            viewModel.markOnboardingDismissed()
+        }
+    }
+
+    if (!dismissed) {
         OnboardingScreen(
             onGrantAccess = { context.openListenerSettings() },
-            onSkip = {
-                OnboardingPrefs.setDismissed(context)
-                dismissed = true
-            },
+            onSkip = { viewModel.markOnboardingDismissed() },
         )
         return
     }
