@@ -7,6 +7,7 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.NotificationParser
+import cy.txtracker.parsing.PermissiveExtractor
 import cy.txtracker.parsing.extractText
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -36,6 +37,7 @@ class TxNotificationListener : NotificationListenerService() {
 
     @Inject lateinit var parsers: Set<@JvmSuppressWildcards NotificationParser>
     @Inject lateinit var heuristicExtractor: HeuristicExtractor
+    @Inject lateinit var permissiveExtractor: PermissiveExtractor
     @Inject lateinit var ingestor: TxIngestor
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -44,9 +46,19 @@ class TxNotificationListener : NotificationListenerService() {
         parsers.flatMap { p -> p.packageNames.map { it to p } }.toMap()
     }
 
+    /**
+     * Union of every package the listener cares about: those with a strict parser plus
+     * the permissive allowlist. Notifications outside this set bail at the top of
+     * [onNotificationPosted] without doing any work.
+     */
+    private val watchedPackages: Set<String> by lazy {
+        parserByPackage.keys + PermissiveExtractor.PERMISSIVE_PACKAGES
+    }
+
     override fun onListenerConnected() {
         super.onListenerConnected()
-        Log.i(TAG, "Connected. Watching packages: ${parserByPackage.keys}")
+        Log.i(TAG, "Connected. Strict parsers cover: ${parserByPackage.keys}")
+        Log.i(TAG, "Permissive coverage extends to ${watchedPackages.size} total packages.")
     }
 
     override fun onListenerDisconnected() {
@@ -58,9 +70,9 @@ class TxNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        // Cheap filter: ignore packages we don't have a parser for. Most notifications on
-        // the device fall here, so we exit before doing any extra work.
-        val parser = parserByPackage[sbn.packageName] ?: return
+        // Cheap filter: bail unless we either have a strict parser for this package OR it's
+        // on the permissive finance-app allowlist. Random app notifications never get here.
+        if (sbn.packageName !in watchedPackages) return
 
         if ((sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
             Log.d(TAG, "Skipping group summary from ${sbn.packageName}")
@@ -72,14 +84,13 @@ class TxNotificationListener : NotificationListenerService() {
 
         scope.launch {
             try {
-                // 1. Strict per-source parser. High-confidence path.
-                val strict = parser.parse(sbn)
-                if (strict != null) {
+                // 1. Strict per-source parser, when one claims this package. High-confidence.
+                parserByPackage[sbn.packageName]?.parse(sbn)?.let { strict ->
                     insert(strict, sbn.packageName, needsVerification = false)
                     return@launch
                 }
 
-                // 2. Heuristic fallback. Lower confidence — flagged for user verification.
+                // 2. Heuristic fallback for any watched package. Lower confidence.
                 val heuristic = text?.let {
                     heuristicExtractor.extract(it, sbn.packageName, postedAt)
                 }
@@ -88,11 +99,23 @@ class TxNotificationListener : NotificationListenerService() {
                     return@launch
                 }
 
-                // 3. Neither matched. Log what we saw so we can grow the rules over time.
+                // 3. Permissive last-resort capture for finance-app packages: anything with
+                //    an RM/MYR amount, even without a verb or recipient. Lands as Pending so
+                //    the user reviews and confirms or deletes.
+                val permissive = text?.let {
+                    permissiveExtractor.extract(it, sbn.packageName, postedAt)
+                }
+                if (permissive != null) {
+                    insert(permissive, sbn.packageName, needsVerification = true)
+                    return@launch
+                }
+
+                // 4. Nothing matched even at the permissive layer (no amount in the text).
+                //    Log a preview for diagnostics if anyone hooks up logcat later.
                 val preview = text?.take(220)?.replace('\n', ' ')
                 Log.i(
                     TAG,
-                    "No match for ${sbn.packageName}. text='${preview ?: "<empty>"}'",
+                    "No amount detected for ${sbn.packageName}. text='${preview ?: "<empty>"}'",
                 )
             } catch (t: Throwable) {
                 Log.w(TAG, "Failed to handle notification from ${sbn.packageName}", t)

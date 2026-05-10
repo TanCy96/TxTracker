@@ -320,10 +320,21 @@ private fun TransactionRow(row: TransactionWithCategory, onClick: () -> Unit) {
                     PendingPill()
                 }
             }
-            row.transaction.description?.takeIf { it.isNotBlank() }?.let { desc ->
+            // Prefer the user's description when set. Otherwise, for Pending rows that came
+            // through the permissive layer (merchant is just "(review)"), show a snippet of
+            // the raw notification so the user can identify the payment without opening the
+            // edit sheet.
+            val hint = row.transaction.description?.takeIf { it.isNotBlank() }
+                ?: if (row.transaction.needsVerification) {
+                    row.transaction.rawText
+                        ?.take(100)
+                        ?.replace('\n', ' ')
+                        ?.takeIf { it.isNotBlank() }
+                } else null
+            hint?.let { text ->
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = desc,
+                    text = text,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
