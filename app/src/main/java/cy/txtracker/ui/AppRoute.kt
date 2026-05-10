@@ -1,5 +1,7 @@
 package cy.txtracker.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +20,9 @@ import cy.txtracker.ui.settings.SettingsScreen
 import cy.txtracker.ui.settings.categories.CategoriesScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
+
+/** Navigation animation duration. 300ms matches the Android platform default. */
+private const val NAV_ANIMATION_MS = 300
 
 private object Routes {
     const val HOME = "home"
@@ -49,7 +54,25 @@ fun AppRoute() {
     }
 
     val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = Routes.HOME) {
+    NavHost(
+        navController = nav,
+        startDestination = Routes.HOME,
+        // Native-style horizontal slide: forward push moves both screens to the left
+        // (incoming from the right, outgoing off the left), back pop reverses both.
+        // Applied at NavHost level so every destination inherits without per-route boilerplate.
+        enterTransition = {
+            slideIntoContainer(SlideDirection.Left, animationSpec = tween(NAV_ANIMATION_MS))
+        },
+        exitTransition = {
+            slideOutOfContainer(SlideDirection.Left, animationSpec = tween(NAV_ANIMATION_MS))
+        },
+        popEnterTransition = {
+            slideIntoContainer(SlideDirection.Right, animationSpec = tween(NAV_ANIMATION_MS))
+        },
+        popExitTransition = {
+            slideOutOfContainer(SlideDirection.Right, animationSpec = tween(NAV_ANIMATION_MS))
+        },
+    ) {
         composable(Routes.HOME) {
             HomeRoute(onSettingsClick = { nav.navigate(Routes.SETTINGS) })
         }
