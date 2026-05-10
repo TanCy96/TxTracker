@@ -39,7 +39,8 @@ class HomeViewModel @Inject constructor(
                 repository.observeTransactionsBetween(start, end),
                 repository.observeCategoryTotalsBetween(start, end),
                 repository.observeTotalBetween(start, end),
-            ) { txs, totals, total ->
+                repository.observeMerchantNotes(),
+            ) { txs, totals, total, notes ->
                 buildState(
                     yearMonth = ym,
                     filter = filter,
@@ -47,6 +48,7 @@ class HomeViewModel @Inject constructor(
                     transactions = txs,
                     totals = totals,
                     monthTotal = total,
+                    notes = notes,
                 )
             }
         }.stateIn(
@@ -68,6 +70,7 @@ class HomeViewModel @Inject constructor(
         breakdown = emptyList(),
         categories = emptyList(),
         days = emptyList(),
+        notesByMerchant = emptyMap(),
         pendingCount = 0,
         isLoading = true,
     )
@@ -79,6 +82,7 @@ class HomeViewModel @Inject constructor(
         transactions: List<Transaction>,
         totals: List<CategoryTotal>,
         monthTotal: Long,
+        notes: List<cy.txtracker.data.MerchantNote>,
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
@@ -108,6 +112,7 @@ class HomeViewModel @Inject constructor(
             breakdown = breakdown,
             categories = categories,
             days = days,
+            notesByMerchant = notes.associate { it.merchantNormalized to it.note },
             pendingCount = transactions.count { it.needsVerification },
             isLoading = false,
         )

@@ -34,4 +34,5 @@ class DbRule : ExternalResource() {
     val categoryDao: CategoryDao get() = db.categoryDao()
     val merchantMappingDao: MerchantMappingDao get() = db.merchantMappingDao()
     val descriptionMappingDao: DescriptionMappingDao get() = db.descriptionMappingDao()
+    val merchantNoteDao: MerchantNoteDao get() = db.merchantNoteDao()
 }

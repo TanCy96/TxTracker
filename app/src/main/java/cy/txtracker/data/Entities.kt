@@ -105,6 +105,16 @@ data class MerchantDescriptionMapping(
 )
 
 @Entity(
+    tableName = "merchant_notes",
+)
+data class MerchantNote(
+    @PrimaryKey val merchantNormalized: String,
+    /** Free-text user note about this merchant. e.g., "TnG P2P, SS15 warung uncle". */
+    val note: String,
+    val updatedAt: Instant,
+)
+
+@Entity(
     tableName = "category_description_mappings",
     primaryKeys = ["categoryId", "timeBucket"],
     foreignKeys = [

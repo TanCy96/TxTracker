@@ -143,6 +143,7 @@ fun HomeScreen(
             } else {
                 TransactionList(
                     days = state.days,
+                    notesByMerchant = state.notesByMerchant,
                     contentPadding = PaddingValues(vertical = 8.dp),
                     onTransactionClick = onTransactionClick,
                 )
@@ -247,6 +248,7 @@ private fun FilterRow(
 @Composable
 private fun TransactionList(
     days: List<DayGroup>,
+    notesByMerchant: Map<String, String>,
     contentPadding: PaddingValues,
     onTransactionClick: (Transaction) -> Unit,
 ) {
@@ -256,7 +258,11 @@ private fun TransactionList(
                 DayHeader(group)
             }
             items(group.transactions, key = { it.transaction.id }) { row ->
-                TransactionRow(row = row, onClick = { onTransactionClick(row.transaction) })
+                TransactionRow(
+                    row = row,
+                    note = notesByMerchant[row.transaction.merchantNormalized],
+                    onClick = { onTransactionClick(row.transaction) },
+                )
             }
         }
     }
@@ -285,7 +291,11 @@ private fun DayHeader(group: DayGroup) {
 }
 
 @Composable
-private fun TransactionRow(row: TransactionWithCategory, onClick: () -> Unit) {
+private fun TransactionRow(
+    row: TransactionWithCategory,
+    note: String?,
+    onClick: () -> Unit,
+) {
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(
@@ -305,6 +315,15 @@ private fun TransactionRow(row: TransactionWithCategory, onClick: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (!note.isNullOrBlank()) {
+                        Text(
+                            text = note,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 Text(
                     text = formatMyr(row.transaction.amountMinor),

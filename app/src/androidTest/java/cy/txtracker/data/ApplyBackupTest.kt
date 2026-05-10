@@ -25,6 +25,7 @@ class ApplyBackupTest {
         categoryDao = dbRule.categoryDao,
         merchantMappingDao = dbRule.merchantMappingDao,
         descriptionMappingDao = dbRule.descriptionMappingDao,
+        merchantNoteDao = dbRule.merchantNoteDao,
     )
 
     private val now = Instant.parse("2026-05-09T12:30:00Z")

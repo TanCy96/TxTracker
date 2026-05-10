@@ -2,10 +2,12 @@ package cy.txtracker.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import cy.txtracker.data.CategoryDao
 import cy.txtracker.data.DescriptionMappingDao
 import cy.txtracker.data.MerchantMappingDao
+import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import dagger.Module
@@ -44,9 +46,11 @@ object DatabaseModule {
                     }
                 },
             )
-            // Acceptable while the app is in early development with no users to migrate.
-            // Once we ship to friends and care about preserving their captured rows, replace
-            // this with proper Migration objects per schema bump.
+            // Real migration from v2 (which existed in the wild during testing) to v3
+            // (adds the merchant_notes table). Preserves all captured transactions and
+            // learned mappings rather than wiping them. fallbackToDestructiveMigration
+            // stays as a safety net for any unforeseen mismatch.
+            .addMigrations(MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -62,4 +66,27 @@ object DatabaseModule {
     @Provides
     fun provideDescriptionMappingDao(db: TxDatabase): DescriptionMappingDao =
         db.descriptionMappingDao()
+
+    @Provides
+    fun provideMerchantNoteDao(db: TxDatabase): MerchantNoteDao = db.merchantNoteDao()
+}
+
+/**
+ * Adds the `merchant_notes` table introduced in v3. Schema mirrors what Room would
+ * generate for [cy.txtracker.data.MerchantNote] so the resulting DB matches a fresh
+ * install on v3.
+ */
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `merchant_notes` (
+                `merchantNormalized` TEXT NOT NULL,
+                `note` TEXT NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`merchantNormalized`)
+            )
+            """.trimIndent(),
+        )
+    }
 }

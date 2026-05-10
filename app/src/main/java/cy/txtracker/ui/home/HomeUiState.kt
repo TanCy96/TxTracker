@@ -39,6 +39,8 @@ data class HomeUiState(
     val breakdown: List<CategoryBreakdownEntry>,
     val categories: List<Category>,
     val days: List<DayGroup>,
+    /** merchantNormalized -> user note. Used by the home row to show context inline. */
+    val notesByMerchant: Map<String, String>,
     val pendingCount: Int,
     val isLoading: Boolean,
 )

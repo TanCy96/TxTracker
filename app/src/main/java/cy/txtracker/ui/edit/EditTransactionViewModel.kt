@@ -20,6 +20,8 @@ sealed interface EditUiState {
     data class Editing(
         val transaction: Transaction,
         val categories: List<Category>,
+        /** Existing note for this transaction's merchant, or null when none. */
+        val merchantNote: String?,
     ) : EditUiState
 }
 
@@ -40,7 +42,26 @@ class EditTransactionViewModel @Inject constructor(
                 EditUiState.Editing(
                     transaction = tx,
                     categories = repository.observeAllCategories().first(),
+                    merchantNote = repository.getMerchantNote(tx.merchantNormalized)?.note,
                 )
+            }
+        }
+    }
+
+    /**
+     * Sets (or clears, when [note] is blank) the free-text note for the current
+     * transaction's merchant. Note is keyed by merchantNormalized so it applies to
+     * every transaction from that same merchant going forward.
+     */
+    fun setMerchantNote(transactionId: Long, note: String?) {
+        viewModelScope.launch {
+            val tx = repository.getTransaction(transactionId) ?: return@launch
+            repository.setMerchantNote(tx.merchantNormalized, note)
+            // Refresh local state so the sheet's note field reflects the saved value.
+            val refreshed = repository.getMerchantNote(tx.merchantNormalized)?.note
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                _state.value = current.copy(merchantNote = refreshed)
             }
         }
     }

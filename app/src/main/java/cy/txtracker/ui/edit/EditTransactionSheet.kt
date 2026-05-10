@@ -75,6 +75,9 @@ fun EditTransactionSheet(
                 onDescriptionChange = { description ->
                     viewModel.setDescription(transactionId, description, learn = true)
                 },
+                onMerchantNoteChange = { note ->
+                    viewModel.setMerchantNote(transactionId, note)
+                },
                 onConfirmVerification = {
                     viewModel.confirmVerification(transactionId, onDone = onDismiss)
                 },
@@ -109,6 +112,7 @@ private fun EditingContent(
     state: EditUiState.Editing,
     onCategoryChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
+    onMerchantNoteChange: (String?) -> Unit,
     onConfirmVerification: () -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
@@ -120,11 +124,22 @@ private fun EditingContent(
     // Done button), comparing against the persisted value to avoid no-op writes.
     var description by remember(tx.id) { mutableStateOf(tx.description.orEmpty()) }
     val initialDescription = tx.description.orEmpty()
+
+    // Same pattern for the merchant note — local edits, single save on dispose.
+    var merchantNote by remember(tx.merchantNormalized) {
+        mutableStateOf(state.merchantNote.orEmpty())
+    }
+    val initialMerchantNote = state.merchantNote.orEmpty()
+
     DisposableEffect(tx.id) {
         onDispose {
-            val cleaned = description.trim()
-            if (cleaned != initialDescription.trim()) {
-                onDescriptionChange(cleaned.ifEmpty { null })
+            val cleanedDescription = description.trim()
+            if (cleanedDescription != initialDescription.trim()) {
+                onDescriptionChange(cleanedDescription.ifEmpty { null })
+            }
+            val cleanedNote = merchantNote.trim()
+            if (cleanedNote != initialMerchantNote.trim()) {
+                onMerchantNoteChange(cleanedNote.ifEmpty { null })
             }
         }
     }
@@ -182,6 +197,18 @@ private fun EditingContent(
             value = description,
             onValueChange = { description = it },
             placeholder = { Text("e.g. lunch, petrol, coffee") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(16.dp))
+        Text(text = "Note about this merchant", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = merchantNote,
+            onValueChange = { merchantNote = it },
+            placeholder = { Text("e.g. SS15 warung uncle, friend's TnG, …") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),

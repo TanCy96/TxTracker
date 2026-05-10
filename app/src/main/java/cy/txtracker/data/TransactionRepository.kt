@@ -24,6 +24,7 @@ class TransactionRepository @Inject constructor(
     private val categoryDao: CategoryDao,
     private val merchantMappingDao: MerchantMappingDao,
     private val descriptionMappingDao: DescriptionMappingDao,
+    private val merchantNoteDao: MerchantNoteDao,
 ) {
     // Reads ---------------------------------------------------------------
 
@@ -52,6 +53,28 @@ class TransactionRepository @Inject constructor(
 
     fun observeCategoryDescriptionMappings(): Flow<List<CategoryDescriptionMapping>> =
         descriptionMappingDao.observeAllCategory()
+
+    fun observeMerchantNotes(): Flow<List<MerchantNote>> = merchantNoteDao.observeAll()
+
+    suspend fun getMerchantNote(merchantNormalized: String): MerchantNote? =
+        merchantNoteDao.get(merchantNormalized)
+
+    /**
+     * Sets a free-text note for a merchant. Blank input clears the note (deletes the row)
+     * so an empty note doesn't accumulate as a phantom mapping.
+     */
+    suspend fun setMerchantNote(
+        merchantNormalized: String,
+        note: String?,
+        now: Instant = Clock.System.now(),
+    ) {
+        val cleaned = note?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleaned == null) {
+            merchantNoteDao.delete(merchantNormalized)
+        } else {
+            merchantNoteDao.upsert(MerchantNote(merchantNormalized, cleaned, now))
+        }
+    }
 
     suspend fun getTransaction(id: Long): Transaction? = transactionDao.getById(id)
 
