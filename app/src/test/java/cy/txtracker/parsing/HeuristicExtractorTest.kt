@@ -54,6 +54,40 @@ class HeuristicExtractorTest {
     }
 
     @Test
+    fun handles_purchased_verb() {
+        // Common bank push form for card swipes.
+        val text = "Purchased RM 5.00 at COFFEE BEAN"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("COFFEE BEAN")
+        assertThat(r.amountMinor).isEqualTo(500L)
+    }
+
+    @Test
+    fun handles_bare_transfer_verb() {
+        // Wise / digital-bank notifications often use "transfer" rather than "transferred".
+        val text = "RM 50.00 transfer to JANE"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("JANE")
+        assertThat(r.amountMinor).isEqualTo(5000L)
+    }
+
+    @Test
+    fun handles_withdrew_verb() {
+        val text = "Withdrew RM 100.00 at ATM SS15"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("ATM SS15")
+        assertThat(r.amountMinor).isEqualTo(10000L)
+    }
+
+    @Test
+    fun handles_billed_verb() {
+        val text = "Your card was billed RM 30.00 at MERCHANT"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("MERCHANT")
+        assertThat(r.amountMinor).isEqualTo(3000L)
+    }
+
+    @Test
     fun rejects_text_without_outgoing_verb() {
         // Has amount + "to" but no out-verb. Could be a balance update or info text.
         assertThat(

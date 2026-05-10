@@ -41,6 +41,10 @@ class PermissiveExtractorTest {
             "com.hongleong.hlb" to "Hong Leong",
             "com.ambank.amonline" to "AmBank",
             "com.bsn.cms" to "BSN",
+            "my.com.gxsbank" to "GX Bank",
+            "com.gxsbank.my" to "GX Bank",
+            "com.transferwise.android" to "Wise",
+            "com.wise.android" to "Wise",
         )
         for ((pkg, label) in cases) {
             val r = extractor.extract("RM 5.00 charged today", pkg, now)

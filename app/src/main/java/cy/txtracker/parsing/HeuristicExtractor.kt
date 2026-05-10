@@ -65,10 +65,12 @@ class HeuristicExtractor @Inject constructor() {
             """\b(?:RM|MYR)\s*(?<amount>[\d,]+\.\d{2})\b""",
         )
 
-        // Verbs that imply outgoing money. Refunds/credits/cashback all use different verbs
-        // and are intentionally NOT in this list.
+        // Verbs that imply outgoing money. Refunds / credits / cashback all use different
+        // verbs (received, refunded, earned, credited) and are intentionally NOT in this
+        // list. Includes both past-tense and bare forms — bank apps differ in phrasing
+        // ("transferred" vs "transfer", "withdrawn" vs "withdrew").
         private val OUT_VERB = Regex(
-            """\b(?:paid|transferred|charged|debited|spent|withdrawn|sent|deducted)\b""",
+            """\b(?:paid|transferred|transfer|charged|debited|debit|spent|withdrawn|withdrew|withdraw|sent|deducted|purchased|purchase|billed)\b""",
             RegexOption.IGNORE_CASE,
         )
 

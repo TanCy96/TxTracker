@@ -55,6 +55,8 @@ class PermissiveExtractor @Inject constructor() {
         sourceApp.contains("hlb") || sourceApp.contains("hongleong") -> "Hong Leong"
         sourceApp.contains("ambank") -> "AmBank"
         sourceApp.contains("bsn") -> "BSN"
+        sourceApp.contains("gxs") || sourceApp.contains("gxbank") -> "GX Bank"
+        sourceApp.contains("wise") || sourceApp.contains("transferwise") -> "Wise"
         sourceApp == TouchNGoParser.TNG_PACKAGE -> "TnG"
         sourceApp == GrabParser.GRAB_PACKAGE -> "Grab"
         else -> sourceApp.substringAfterLast('.').replaceFirstChar { it.uppercase() }
@@ -111,6 +113,14 @@ class PermissiveExtractor @Inject constructor() {
             // BSN
             "com.bsn.bsnsignaturemobile",
             "com.bsn.cms",
+            // GX Bank — the Grab-affiliated digital bank in Malaysia. Both candidate IDs
+            // listed; whichever doesn't match is harmless.
+            "my.com.gxsbank",
+            "com.gxsbank.my",
+            // Wise — international payments. Original "transferwise" ID and current "wise"
+            // ID, again both harmless if absent.
+            "com.transferwise.android",
+            "com.wise.android",
             // Boost / ShopeePay
             "my.com.myboost",
             "com.shopee.my",
