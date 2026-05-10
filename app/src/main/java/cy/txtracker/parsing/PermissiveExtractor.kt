@@ -91,9 +91,11 @@ class PermissiveExtractor @Inject constructor() {
             "com.cimbmalaysia",
             "com.cimb.cimbclicks.my",
             "com.cimb.bizchannel",
-            // Maybank
+            // Maybank — main banking app and the separately-installed MAE companion app.
             "com.maybank2u.life",
             "my.com.maybank2u.life",
+            "com.maybank2u.mae",
+            "my.com.maybank2u.mae",
             // Public Bank
             "com.publicbank.pbe",
             "com.publicbank.publicbankebanking",
