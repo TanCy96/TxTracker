@@ -205,6 +205,17 @@ class TransactionRepository @Inject constructor(
 
     suspend fun updateCategory(category: Category) = categoryDao.update(category)
 
+    /**
+     * Persists a new category ordering. Caller is expected to pass the categories in the
+     * desired order — the repository assigns dense `sortOrder` values 0..N-1, so the values
+     * never accumulate gaps and the next reorder is a clean renumber regardless of how many
+     * times the user has shuffled.
+     */
+    suspend fun reorderCategories(orderedCategories: List<Category>) {
+        val renumbered = orderedCategories.mapIndexed { index, c -> c.copy(sortOrder = index) }
+        categoryDao.updateAll(renumbered)
+    }
+
     suspend fun deleteCategory(category: Category) = categoryDao.delete(category)
 
     // Mapping management -------------------------------------------------

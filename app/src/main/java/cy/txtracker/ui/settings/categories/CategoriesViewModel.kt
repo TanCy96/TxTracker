@@ -56,6 +56,15 @@ class CategoriesViewModel @Inject constructor(
         viewModelScope.launch { repository.deleteCategory(category) }
     }
 
+    /**
+     * Persists a user-specified ordering. Called from the categories screen on drag-end with
+     * the visible list already in the new order; the repository assigns dense `sortOrder`
+     * values so subsequent reorders stay clean.
+     */
+    fun reorder(orderedCategories: List<Category>) {
+        viewModelScope.launch { repository.reorderCategories(orderedCategories) }
+    }
+
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
     }

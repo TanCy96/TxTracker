@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +47,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +60,15 @@ fun CategoriesScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Category?>(null) }
     var deleteTarget by remember { mutableStateOf<Category?>(null) }
+
+    // Local list for live drag preview. Re-keyed off the DB-derived `categories` so any
+    // external change (add/rename/delete from elsewhere) replaces it cleanly.
+    var localOrder by remember(categories) { mutableStateOf(categories) }
+
+    val lazyListState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        localOrder = localOrder.toMutableList().apply { add(to.index, removeAt(from.index)) }
+    }
 
     Scaffold(
         topBar = {
@@ -74,14 +87,34 @@ fun CategoriesScreen(
             }
         },
     ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            items(categories, key = { it.id }) { category ->
-                CategoryRow(
-                    category = category,
-                    onRename = { renameTarget = category },
-                    onDelete = { deleteTarget = category },
-                )
-                HorizontalDivider()
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            items(localOrder, key = { it.id }) { category ->
+                ReorderableItem(reorderState, key = category.id) {
+                    CategoryRow(
+                        category = category,
+                        onRename = { renameTarget = category },
+                        onDelete = { deleteTarget = category },
+                        dragHandle = {
+                            IconButton(
+                                modifier = Modifier.draggableHandle(
+                                    onDragStopped = {
+                                        // Persist whatever ordering the user landed on.
+                                        // The DB write triggers a categories flow emit which
+                                        // re-keys `localOrder` back to the DB state.
+                                        viewModel.reorder(localOrder)
+                                    },
+                                ),
+                                onClick = {},
+                            ) {
+                                Icon(Icons.Filled.DragHandle, contentDescription = "Reorder")
+                            }
+                        },
+                    )
+                    HorizontalDivider()
+                }
             }
         }
     }
@@ -126,15 +159,13 @@ private fun CategoryRow(
     category: Category,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    dragHandle: @Composable () -> Unit,
 ) {
     ListItem(
         leadingContent = {
             Box(modifier = Modifier.size(20.dp).background(Color(category.color), CircleShape))
         },
         headlineContent = { Text(category.name) },
-        supportingContent = {
-            Text(if (category.isCustom) "Custom" else "Default")
-        },
         trailingContent = {
             Row {
                 IconButton(onClick = onRename) {
@@ -147,6 +178,7 @@ private fun CategoryRow(
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
+                dragHandle()
             }
         },
         modifier = Modifier.fillMaxWidth(),

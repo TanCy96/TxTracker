@@ -20,6 +20,13 @@ interface CategoryDao {
     @Update
     suspend fun update(category: Category)
 
+    /**
+     * Bulk update — used by the categories reorder action to renumber every row's sortOrder
+     * in a single Room transaction.
+     */
+    @Update
+    suspend fun updateAll(categories: List<Category>)
+
     @Delete
     suspend fun delete(category: Category)
 
