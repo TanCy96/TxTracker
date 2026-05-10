@@ -24,22 +24,28 @@ fun formatMyr(amountMinor: Long): String {
 fun formatYearMonth(ym: YearMonth): String = "${MONTH_NAMES[ym.month - 1]} ${ym.year}"
 
 /**
- * "Today", "Yesterday", or "Mon, 9 May" for older days within the same year, "Mon, 9 May 2025"
- * if the year differs from the current one.
+ * Day header used in transaction lists. Always includes the date so the user can place a
+ * row without mental math; prefixes "Today" / "Yesterday" for the two most-recent days as a
+ * quick visual marker.
+ *
+ *   today           -> "Today, 9 May"
+ *   yesterday       -> "Yesterday, 8 May"
+ *   older same year -> "Mon, 4 May"
+ *   different year  -> "Thu, 25 December 2025"
  */
 fun formatDayHeader(
     date: LocalDate,
     today: LocalDate = Clock.System.now().toLocalDateTime(MalaysiaTimeZone).date,
 ): String {
-    val delta = today.daysUntil(date)
-    return when (delta) {
-        0 -> "Today"
-        -1 -> "Yesterday"
+    val month = MONTH_NAMES[date.monthNumber - 1]
+    val day = date.dayOfMonth
+    return when (today.daysUntil(date)) {
+        0 -> "Today, $day $month"
+        -1 -> "Yesterday, $day $month"
         else -> {
             val dow = DAY_NAMES[date.dayOfWeek.ordinal]
-            val month = MONTH_NAMES[date.monthNumber - 1]
-            if (date.year == today.year) "$dow, ${date.dayOfMonth} $month"
-            else "$dow, ${date.dayOfMonth} $month ${date.year}"
+            if (date.year == today.year) "$dow, $day $month"
+            else "$dow, $day $month ${date.year}"
         }
     }
 }

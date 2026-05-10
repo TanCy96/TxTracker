@@ -25,15 +25,15 @@ class FormattersTest {
     }
 
     @Test
-    fun formatDayHeader_today() {
+    fun formatDayHeader_today_includes_date() {
         val today = LocalDate(2026, 5, 9)
-        assertThat(formatDayHeader(today, today)).isEqualTo("Today")
+        assertThat(formatDayHeader(today, today)).isEqualTo("Today, 9 May")
     }
 
     @Test
-    fun formatDayHeader_yesterday() {
+    fun formatDayHeader_yesterday_includes_date() {
         val today = LocalDate(2026, 5, 9)
-        assertThat(formatDayHeader(LocalDate(2026, 5, 8), today)).isEqualTo("Yesterday")
+        assertThat(formatDayHeader(LocalDate(2026, 5, 8), today)).isEqualTo("Yesterday, 8 May")
     }
 
     @Test
