@@ -25,6 +25,7 @@ class TxIngestorTest {
 
     private fun ingestor() = TxIngestor(
         repository = TransactionRepository(
+            database = dbRule.db,
             transactionDao = dbRule.transactionDao,
             categoryDao = dbRule.categoryDao,
             merchantMappingDao = dbRule.merchantMappingDao,

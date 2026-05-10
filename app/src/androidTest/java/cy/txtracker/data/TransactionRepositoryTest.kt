@@ -18,6 +18,7 @@ class TransactionRepositoryTest {
     private val now = Instant.parse("2026-05-09T12:30:00Z")
 
     private fun repo() = TransactionRepository(
+        database = dbRule.db,
         transactionDao = dbRule.transactionDao,
         categoryDao = dbRule.categoryDao,
         merchantMappingDao = dbRule.merchantMappingDao,

@@ -1,7 +1,10 @@
 package cy.txtracker.data
 
+import androidx.room.withTransaction
 import cy.txtracker.domain.TimeBucket
 import cy.txtracker.domain.bucketOf
+import cy.txtracker.export.Backup
+import cy.txtracker.export.ImportResult
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,6 +19,7 @@ import kotlinx.datetime.Instant
  */
 @Singleton
 class TransactionRepository @Inject constructor(
+    private val database: TxDatabase,
     private val transactionDao: TransactionDao,
     private val categoryDao: CategoryDao,
     private val merchantMappingDao: MerchantMappingDao,
@@ -228,6 +232,109 @@ class TransactionRepository @Inject constructor(
 
     suspend fun unlinkCategoryDescription(categoryId: Long, bucket: TimeBucket) =
         descriptionMappingDao.deleteCategoryBucket(categoryId, bucket)
+
+    /**
+     * Merges a [Backup] into the local database in a single Room transaction.
+     *
+     * Merge rules:
+     *   - **Categories**: any backup category whose name doesn't already exist locally is
+     *     created with the saved color and `isCustom`, appended to the end of the local
+     *     `sortOrder` sequence. Existing categories are left untouched — the user's
+     *     current color/order choices win.
+     *   - **All mappings**: keyed by their natural key (merchant for merchant→category,
+     *     (merchant, bucket) and (categoryName, bucket) for descriptions). When the same
+     *     key exists locally, whichever side has the later `learnedAt` wins — so importing
+     *     an older backup never clobbers more recent local learning, and importing a
+     *     newer backup does refresh stale mappings.
+     *   - **Mappings whose category name doesn't exist after the category-create pass**
+     *     are skipped (counted in `skippedDueToMissingCategory`). Should be empty in
+     *     normal use because the category-create pass creates everything referenced.
+     */
+    suspend fun applyBackup(backup: Backup): ImportResult = database.withTransaction {
+        // 1. Insert any backup categories whose names aren't already present locally.
+        val existingCategories = categoryDao.getAll()
+        val existingByName = existingCategories.associateBy { it.name }
+        var nextSortOrder = (existingCategories.maxOfOrNull { it.sortOrder } ?: -1) + 1
+
+        var categoriesCreated = 0
+        for (bc in backup.categories) {
+            if (bc.name in existingByName) continue
+            categoryDao.insert(
+                Category(
+                    name = bc.name,
+                    color = bc.color,
+                    isCustom = bc.isCustom,
+                    sortOrder = nextSortOrder++,
+                ),
+            )
+            categoriesCreated++
+        }
+
+        // 2. Refresh the name → category map so newly inserted ones are referenceable.
+        val categoriesByName = categoryDao.getAll().associateBy { it.name }
+
+        // 3. Merchant mappings.
+        var mAdded = 0; var mUpdated = 0; var skipped = 0
+        for (bm in backup.merchantMappings) {
+            val target = categoriesByName[bm.categoryName]
+            if (target == null) { skipped++; continue }
+            val existing = merchantMappingDao.get(bm.merchant)
+            if (existing != null && existing.learnedAt >= bm.learnedAt) continue
+            merchantMappingDao.upsert(
+                MerchantMapping(
+                    merchantNormalized = bm.merchant,
+                    categoryId = target.id,
+                    learnedAt = bm.learnedAt,
+                ),
+            )
+            if (existing == null) mAdded++ else mUpdated++
+        }
+
+        // 4. Merchant + bucket description mappings.
+        var mdAdded = 0; var mdUpdated = 0
+        for (bmd in backup.merchantDescriptionMappings) {
+            val existing = descriptionMappingDao.getMerchantBucket(bmd.merchant, bmd.bucket)
+            if (existing != null && existing.learnedAt >= bmd.learnedAt) continue
+            descriptionMappingDao.upsertMerchant(
+                MerchantDescriptionMapping(
+                    merchantNormalized = bmd.merchant,
+                    timeBucket = bmd.bucket,
+                    description = bmd.description,
+                    learnedAt = bmd.learnedAt,
+                ),
+            )
+            if (existing == null) mdAdded++ else mdUpdated++
+        }
+
+        // 5. Category + bucket description mappings.
+        var cdAdded = 0; var cdUpdated = 0
+        for (bcd in backup.categoryDescriptionMappings) {
+            val target = categoriesByName[bcd.categoryName]
+            if (target == null) { skipped++; continue }
+            val existing = descriptionMappingDao.getCategoryBucket(target.id, bcd.bucket)
+            if (existing != null && existing.learnedAt >= bcd.learnedAt) continue
+            descriptionMappingDao.upsertCategory(
+                CategoryDescriptionMapping(
+                    categoryId = target.id,
+                    timeBucket = bcd.bucket,
+                    description = bcd.description,
+                    learnedAt = bcd.learnedAt,
+                ),
+            )
+            if (existing == null) cdAdded++ else cdUpdated++
+        }
+
+        ImportResult(
+            categoriesCreated = categoriesCreated,
+            merchantMappingsAdded = mAdded,
+            merchantMappingsUpdated = mUpdated,
+            merchantDescriptionsAdded = mdAdded,
+            merchantDescriptionsUpdated = mdUpdated,
+            categoryDescriptionsAdded = cdAdded,
+            categoryDescriptionsUpdated = cdUpdated,
+            skippedDueToMissingCategory = skipped,
+        )
+    }
 }
 
 /**

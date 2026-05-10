@@ -2,6 +2,8 @@ package cy.txtracker.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -49,8 +51,15 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val exportStatus by viewModel.exportStatus.collectAsState()
+    val backupStatus by viewModel.backupStatus.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    val pickBackup = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.importBackup(uri)
+    }
 
     LaunchedEffect(exportStatus) {
         when (val s = exportStatus) {
@@ -66,6 +75,36 @@ fun SettingsScreen(
             is SettingsViewModel.ExportStatus.Error -> {
                 snackbar.showSnackbar(s.message)
                 viewModel.consumeStatus()
+            }
+            else -> Unit
+        }
+    }
+
+    LaunchedEffect(backupStatus) {
+        when (val s = backupStatus) {
+            is SettingsViewModel.BackupStatus.ExportReady -> {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_STREAM, Uri.parse(s.uri))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, "Save backup"))
+                viewModel.consumeBackupStatus()
+            }
+            is SettingsViewModel.BackupStatus.Imported -> {
+                val r = s.result
+                snackbar.showSnackbar(
+                    "Restored: " +
+                        "${r.categoriesCreated} categories, " +
+                        "${r.merchantMappingsAdded + r.merchantMappingsUpdated} merchants, " +
+                        "${r.merchantDescriptionsAdded + r.merchantDescriptionsUpdated +
+                            r.categoryDescriptionsAdded + r.categoryDescriptionsUpdated} descriptions.",
+                )
+                viewModel.consumeBackupStatus()
+            }
+            is SettingsViewModel.BackupStatus.Error -> {
+                snackbar.showSnackbar(s.message)
+                viewModel.consumeBackupStatus()
             }
             else -> Unit
         }
@@ -121,6 +160,41 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().clickableRow(
                     enabled = !isExporting,
                     onClick = viewModel::export,
+                ),
+            )
+            HorizontalDivider()
+
+            val isBackupBusy = backupStatus is SettingsViewModel.BackupStatus.Running
+            ListItem(
+                headlineContent = { Text("Backup categories and learning") },
+                supportingContent = {
+                    Text(
+                        when (val s = backupStatus) {
+                            is SettingsViewModel.BackupStatus.Running -> s.message
+                            else -> "Save categories and learned mappings to a JSON file."
+                        },
+                    )
+                },
+                trailingContent = {
+                    if (isBackupBusy) CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    enabled = !isBackupBusy,
+                    onClick = viewModel::exportBackup,
+                ),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Restore from backup") },
+                supportingContent = {
+                    Text(
+                        "Pick a previously saved backup. Newer local mappings are kept; " +
+                            "older ones are refreshed from the file.",
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    enabled = !isBackupBusy,
+                    onClick = { pickBackup.launch(arrayOf("application/json", "*/*")) },
                 ),
             )
             HorizontalDivider()
