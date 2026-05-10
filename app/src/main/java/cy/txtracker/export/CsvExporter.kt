@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -56,6 +57,14 @@ class CsvExporter @Inject constructor(
  * Categories are emitted in their declared `sortOrder`, then `name` for stable output.
  * If the user has added or renamed categories, the column header reflects the current set
  * at export time.
+ *
+ * **One row per day**, not per transaction. For each day:
+ *   - The `description` column joins all non-blank descriptions with `", "`, in
+ *     chronological order. Blanks are skipped.
+ *   - Each category column is empty if the day had no tx in that category; the literal
+ *     amount if exactly one; a spreadsheet formula `=A+B+C` if more than one. The formula
+ *     evaluates to the sum but a single click on the cell reveals the individual values,
+ *     which matches the user's mental model of "see the total but keep the details".
  */
 fun buildCsv(transactions: List<Transaction>, categories: List<Category>): String {
     val orderedCategories = categories.sortedWith(
@@ -72,33 +81,54 @@ fun buildCsv(transactions: List<Transaction>, categories: List<Category>): Strin
     }
     sb.append(",Unverified\n")
 
-    // Rows.
-    for (tx in transactions) {
-        sb.append(formatDate(tx))
-        sb.append(',').append(csvEscape(tx.description.orEmpty()))
+    // Group by day (Asia/Kuala_Lumpur). Sorted ascending so the export reads chronologically.
+    val byDate: Map<LocalDate, List<Transaction>> = transactions
+        .groupBy { it.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
+        .toSortedMap()
 
-        val resolvedCategoryId = tx.categoryId
+    for ((date, daysTransactions) in byDate) {
+        val txs = daysTransactions.sortedBy { it.occurredAt }
+
+        sb.append(formatDate(date))
+
+        // Description column.
+        val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }
+        sb.append(',').append(csvEscape(descriptions.joinToString(", ")))
+
+        // Per-category columns.
         for (c in orderedCategories) {
             sb.append(',')
-            if (resolvedCategoryId == c.id) {
-                sb.append(formatAmount(tx.amountMinor))
-            }
+            val amounts = txs.filter { it.categoryId == c.id }.map { it.amountMinor }
+            sb.append(buildAmountCell(amounts))
         }
+
+        // Unverified column: null categoryId OR a categoryId pointing at a deleted category.
         sb.append(',')
-        if (resolvedCategoryId == null || categoryById[resolvedCategoryId] == null) {
-            // Either uncategorized OR pointing at a category that was deleted between
-            // ingestion and export — in both cases the amount belongs in Unverified.
-            sb.append(formatAmount(tx.amountMinor))
-        }
+        val unverifiedAmounts = txs
+            .filter { it.categoryId == null || categoryById[it.categoryId] == null }
+            .map { it.amountMinor }
+        sb.append(buildAmountCell(unverifiedAmounts))
+
         sb.append('\n')
     }
 
     return sb.toString()
 }
 
-/** ISO-8601 date in Asia/Kuala_Lumpur. */
-private fun formatDate(tx: Transaction): String {
-    val date = tx.occurredAt.toLocalDateTime(MalaysiaTimeZone).date
+/**
+ * Builds the contents of a single category column for a single day:
+ *   - empty list  → blank
+ *   - one amount  → "12.50"
+ *   - many amounts → "=12.50+4.00+5.00"  (a spreadsheet formula)
+ */
+private fun buildAmountCell(amountsMinor: List<Long>): String = when {
+    amountsMinor.isEmpty() -> ""
+    amountsMinor.size == 1 -> formatAmount(amountsMinor[0])
+    else -> amountsMinor.joinToString(prefix = "=", separator = "+") { formatAmount(it) }
+}
+
+/** ISO-8601 date. */
+private fun formatDate(date: LocalDate): String {
     val month = date.monthNumber.toString().padStart(2, '0')
     val day = date.dayOfMonth.toString().padStart(2, '0')
     return "${date.year}-$month-$day"

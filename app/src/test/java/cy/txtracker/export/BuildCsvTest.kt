@@ -44,7 +44,7 @@ class BuildCsvTest {
     }
 
     @Test
-    fun amount_lands_in_matching_category_column_only() {
+    fun single_tx_lands_in_matching_category_column_only() {
         val csv = buildCsv(
             transactions = listOf(tx(amountMinor = 1250, merchant = "PJ Cafe", description = "lunch", categoryId = food.id)),
             categories = categories,
@@ -64,7 +64,7 @@ class BuildCsvTest {
     }
 
     @Test
-    fun multiple_rows_each_in_correct_column() {
+    fun multiple_days_produce_multiple_rows() {
         val csv = buildCsv(
             transactions = listOf(
                 tx(amountMinor = 1000, merchant = "A", description = "lunch", categoryId = food.id),
@@ -84,24 +84,127 @@ class BuildCsvTest {
             categories = categories,
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows).hasSize(4)  // header + 3 rows
+        assertThat(rows).hasSize(4)  // header + 3 days
         assertThat(rows[1]).isEqualTo("2026-05-09,lunch,10.00,,")
         assertThat(rows[2]).isEqualTo("2026-05-10,ride,,25.00,")
         assertThat(rows[3]).isEqualTo("2026-05-11,,,,7.00")
     }
 
+    // ─── Same-day grouping ──────────────────────────────────────────────────────────────
+
     @Test
-    fun amount_format_pads_cents() {
+    fun multiple_txs_same_day_same_category_collapse_into_a_formula() {
         val csv = buildCsv(
             transactions = listOf(
-                tx(amountMinor = 5, merchant = "tiny", categoryId = food.id),  // 0.05
-                tx(amountMinor = 100, merchant = "round", categoryId = food.id),  // 1.00
+                tx(amountMinor = 1250, merchant = "Cafe A", description = "lunch", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T04:00:00Z")),
+                tx(amountMinor = 400, merchant = "Cafe B", description = "coffee", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T08:00:00Z")),
             ),
             categories = categories,
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).contains(",0.05,")
-        assertThat(rows[2]).contains(",1.00,")
+        assertThat(rows).hasSize(2)  // header + 1 day
+        // Description joins; Food column is a formula in chronological order.
+        assertThat(rows[1]).isEqualTo("2026-05-09,\"lunch, coffee\",=12.50+4.00,,")
+    }
+
+    @Test
+    fun multiple_txs_same_day_different_categories_each_get_their_own_cell() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 1250, merchant = "Cafe", description = "lunch", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T04:00:00Z")),
+                tx(amountMinor = 2500, merchant = "Grab", description = "ride", categoryId = transport.id,
+                    occurredAt = Instant.parse("2026-05-09T08:00:00Z")),
+                tx(amountMinor = 700, merchant = "?", description = "snack", categoryId = null,
+                    occurredAt = Instant.parse("2026-05-09T10:00:00Z")),
+            ),
+            categories = categories,
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,\"lunch, ride, snack\",12.50,25.00,7.00")
+    }
+
+    @Test
+    fun same_category_three_txs_same_day_chains_three_terms() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 100, merchant = "A", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T01:00:00Z")),
+                tx(amountMinor = 200, merchant = "B", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T05:00:00Z")),
+                tx(amountMinor = 300, merchant = "C", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T09:00:00Z")),
+            ),
+            categories = categories,
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,=1.00+2.00+3.00,,")
+    }
+
+    @Test
+    fun blank_descriptions_skipped_in_join_keep_present_ones() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 100, merchant = "A", description = null, categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T01:00:00Z")),
+                tx(amountMinor = 200, merchant = "B", description = "lunch", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T05:00:00Z")),
+                tx(amountMinor = 300, merchant = "C", description = "  ", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T09:00:00Z")),
+            ),
+            categories = categories,
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,=1.00+2.00+3.00,,")
+    }
+
+    @Test
+    fun all_blank_descriptions_produce_empty_description_cell() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 100, merchant = "A", categoryId = food.id),
+                tx(amountMinor = 200, merchant = "B", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T05:00:00Z")),
+            ),
+            categories = categories,
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,=1.00+2.00,,")
+    }
+
+    @Test
+    fun unverified_column_also_uses_formula_for_multiple_uncategorized_amounts() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 500, merchant = "A", categoryId = null,
+                    occurredAt = Instant.parse("2026-05-09T01:00:00Z")),
+                tx(amountMinor = 1500, merchant = "B", categoryId = null,
+                    occurredAt = Instant.parse("2026-05-09T05:00:00Z")),
+            ),
+            categories = categories,
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,,=5.00+15.00")
+    }
+
+    // ─── Existing behaviors that still hold ─────────────────────────────────────────────
+
+    @Test
+    fun amount_format_pads_cents_inside_formula_and_alone() {
+        // Two cents + one ringgit on the same day → "=0.05+1.00".
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 5, merchant = "tiny", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T01:00:00Z")),
+                tx(amountMinor = 100, merchant = "round", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T05:00:00Z")),
+            ),
+            categories = categories,
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,=0.05+1.00,,")
     }
 
     @Test
@@ -126,8 +229,6 @@ class BuildCsvTest {
 
     @Test
     fun deleted_category_falls_through_to_unverified() {
-        // categoryId points at id=99 which doesn't exist in the categories list (e.g., the
-        // category was deleted between ingestion and export). Should land in Unverified.
         val csv = buildCsv(
             transactions = listOf(tx(amountMinor = 500, merchant = "A", categoryId = 99L)),
             categories = categories,
