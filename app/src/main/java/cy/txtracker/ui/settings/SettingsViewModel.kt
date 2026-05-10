@@ -7,6 +7,8 @@ import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
 import cy.txtracker.export.ImportResult
+import cy.txtracker.ui.lock.LockPrefs
+import cy.txtracker.ui.lock.LockState
 import cy.txtracker.ui.onboarding.OnboardingPrefs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -21,7 +23,20 @@ class SettingsViewModel @Inject constructor(
     private val backupExporter: BackupExporter,
     private val backupImporter: BackupImporter,
     private val onboardingPrefs: OnboardingPrefs,
+    private val lockPrefs: LockPrefs,
+    private val lockState: LockState,
 ) : ViewModel() {
+
+    val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
+
+    fun setLockEnabled(value: Boolean) {
+        lockPrefs.setEnabled(value)
+        // Turning the toggle off should also clear any pending runtime lock state so the
+        // user doesn't stay locked-in-memory unexpectedly. Toggling on doesn't lock the
+        // current session — the lock kicks in next time the app cold-starts or comes back
+        // from a long background.
+        if (!value) lockState.unlock()
+    }
 
     fun resetOnboarding() = onboardingPrefs.clearDismissed()
 

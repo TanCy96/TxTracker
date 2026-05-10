@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -51,6 +52,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val exportStatus by viewModel.exportStatus.collectAsState()
     val backupStatus by viewModel.backupStatus.collectAsState()
+    val lockEnabled by viewModel.lockEnabled.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -220,6 +222,25 @@ fun SettingsScreen(
                         viewModel.resetOnboarding()
                         scope.launch { snackbar.showSnackbar("Onboarding reset.") }
                     },
+                ),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Require unlock") },
+                supportingContent = {
+                    Text(
+                        "Use fingerprint, face, or your device PIN to open the app. " +
+                            "Re-locks after 30s in the background.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = lockEnabled,
+                        onCheckedChange = viewModel::setLockEnabled,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    onClick = { viewModel.setLockEnabled(!lockEnabled) },
                 ),
             )
         }

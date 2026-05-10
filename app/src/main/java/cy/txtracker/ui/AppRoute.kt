@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import cy.txtracker.ui.home.HomeRoute
+import cy.txtracker.ui.lock.LockScreen
 import cy.txtracker.ui.onboarding.OnboardingScreen
 import cy.txtracker.ui.onboarding.openListenerSettings
 import cy.txtracker.ui.onboarding.rememberListenerGrantState
@@ -46,11 +47,20 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val granted by rememberListenerGrantState()
     val dismissed by viewModel.onboardingDismissed.collectAsStateWithLifecycle()
+    val locked by viewModel.locked.collectAsStateWithLifecycle()
 
     LaunchedEffect(granted) {
         if (granted && !dismissed) {
             viewModel.markOnboardingDismissed()
         }
+    }
+
+    // Lock check first — even ahead of onboarding. If the user has the lock toggle on and
+    // the app cold-starts or returns from background after the grace period, they
+    // authenticate before seeing anything else.
+    if (locked) {
+        LockScreen(onUnlocked = viewModel::unlock)
+        return
     }
 
     if (!dismissed) {
