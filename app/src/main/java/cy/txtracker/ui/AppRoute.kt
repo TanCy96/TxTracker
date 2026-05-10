@@ -55,7 +55,17 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
 
     if (!dismissed) {
         OnboardingScreen(
-            onGrantAccess = { context.openListenerSettings() },
+            onGrantAccess = {
+                // Optimistically dismiss before opening settings. The grant takes one or two
+                // beats to propagate to Settings.Secure on some OEMs, which made the
+                // post-grant LaunchedEffect occasionally miss the transition and leave the
+                // user stranded on the onboarding screen. Dismissing up front means the
+                // user always lands on home after returning from settings, regardless of
+                // whether they actually completed the toggle. If they didn't grant,
+                // capture stays silent until they fix it via Reset Onboarding.
+                viewModel.markOnboardingDismissed()
+                context.openListenerSettings()
+            },
             onSkip = { viewModel.markOnboardingDismissed() },
         )
         return

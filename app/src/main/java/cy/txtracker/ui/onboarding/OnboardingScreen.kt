@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,14 +25,20 @@ fun OnboardingScreen(
     onGrantAccess: () -> Unit,
     onSkip: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+    // Surface paints the theme background so the activity's white window background doesn't
+    // bleed through. Without this, dark-mode users see hard-to-read black text on white.
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().widthIn(max = 480.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.Start,
+        Box(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize().widthIn(max = 480.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.Start,
+            ) {
             Text(
                 text = "TxTracker",
                 style = MaterialTheme.typography.headlineLarge,
@@ -79,6 +86,7 @@ fun OnboardingScreen(
             ) {
                 Text("Continue without notifications")
             }
+        }
         }
     }
 }
