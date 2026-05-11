@@ -66,6 +66,60 @@ interface TransactionDao {
     @Query("UPDATE transactions SET needsVerification = :needsVerification WHERE id = :id")
     suspend fun updateNeedsVerification(id: Long, needsVerification: Boolean)
 
+    /**
+     * Cross-source dedupe lookup. Returns the most recently captured row matching the
+     * amount + currency + 5-min bucket window with a DIFFERENT source app. Limit 1 because
+     * v1 collapses multiple matches into "first known" — same-tier multi-match is rare in
+     * practice and v1 chooses one deterministic outcome.
+     */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE amountMinor = :amountMinor
+          AND currency = :currency
+          AND occurredAt >= :bucketStart
+          AND occurredAt < :bucketEndExclusive
+          AND sourceApp != :excludeSourceApp
+        ORDER BY createdAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun findCrossMerchantDupe(
+        amountMinor: Long,
+        currency: String,
+        bucketStart: Instant,
+        bucketEndExclusive: Instant,
+        excludeSourceApp: String,
+    ): Transaction?
+
+    /**
+     * Promotes a row's source fields in place. Used when an incoming Tier 1 notification
+     * arrives for a row previously inserted from a Tier 2 source. Preserves id, createdAt,
+     * categoryId, description; rewrites merchantRaw/Normalized/sourceApp/rawText and the
+     * recomputed notificationDedupeKey.
+     */
+    @Query(
+        """
+        UPDATE transactions
+        SET merchantRaw = :merchantRaw,
+            merchantNormalized = :merchantNormalized,
+            sourceApp = :sourceApp,
+            rawText = :rawText,
+            notificationDedupeKey = :notificationDedupeKey,
+            needsVerification = :needsVerification
+        WHERE id = :id
+        """
+    )
+    suspend fun promoteSourceFields(
+        id: Long,
+        merchantRaw: String,
+        merchantNormalized: String,
+        sourceApp: String,
+        rawText: String?,
+        notificationDedupeKey: String,
+        needsVerification: Boolean,
+    )
+
     @Query(
         """
         UPDATE transactions
