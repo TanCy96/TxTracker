@@ -47,6 +47,7 @@ fun SettingsScreen(
     onCategoriesClick: () -> Unit,
     onMerchantMappingsClick: () -> Unit,
     onDescriptionMappingsClick: () -> Unit,
+    onNotificationPriorityClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -143,6 +144,14 @@ fun SettingsScreen(
                 headlineContent = { Text("Learned descriptions") },
                 supportingContent = { Text("Review or unlink description suggestions.") },
                 modifier = Modifier.fillMaxWidth().clickableRow(onDescriptionMappingsClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Notification priority") },
+                supportingContent = {
+                    Text("Pick which apps win when two notify about the same payment.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(onNotificationPriorityClick),
             )
             HorizontalDivider()
 
