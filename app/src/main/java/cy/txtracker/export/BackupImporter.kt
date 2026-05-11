@@ -7,6 +7,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 
 /**
@@ -31,6 +32,20 @@ class BackupImporter @Inject constructor(
                 "(expected ${Backup.CURRENT_VERSION})."
         }
         return repository.applyBackup(backup)
+    }
+
+    /** Convenience for cloud restore: parse a JSON string and call applyBackup. */
+    suspend fun importFromJsonString(json: String): ImportResult {
+        val backup = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+        return repository.applyBackup(backup)
+    }
+
+    /** Fresh-install heuristic for the auto-restore prompt: both transactions and merchant
+     *  mappings are empty. Seed categories don't count. */
+    suspend fun isLocalDataEmpty(): Boolean {
+        val transactions = repository.getAllTransactionsOnce()
+        val mappingCount = repository.observeMerchantMappings().first().size
+        return transactions.isEmpty() && mappingCount == 0
     }
 
     private fun readText(uri: Uri): String? =

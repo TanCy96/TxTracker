@@ -3,11 +3,17 @@ package cy.txtracker.ui.settings
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cy.txtracker.cloud.CloudSyncScheduler
+import cy.txtracker.cloud.DriveClient
+import cy.txtracker.cloud.GoogleSignInStateProvider
 import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
 import cy.txtracker.export.ImportResult
+import cy.txtracker.export.YearMonth
 import cy.txtracker.service.CapturePrefs
+import cy.txtracker.service.CloudSyncPrefs
+import kotlinx.datetime.Instant
 import cy.txtracker.ui.lock.LockPrefs
 import cy.txtracker.ui.lock.LockState
 import cy.txtracker.ui.onboarding.OnboardingPrefs
@@ -27,6 +33,10 @@ class SettingsViewModel @Inject constructor(
     private val lockPrefs: LockPrefs,
     private val lockState: LockState,
     private val capturePrefs: CapturePrefs,
+    private val cloudSyncPrefs: CloudSyncPrefs,
+    private val cloudSyncScheduler: CloudSyncScheduler,
+    private val driveClient: DriveClient,
+    private val signInState: GoogleSignInStateProvider,
 ) : ViewModel() {
 
     val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
@@ -99,6 +109,102 @@ class SettingsViewModel @Inject constructor(
 
     fun consumeBackupStatus() {
         _backupStatus.value = BackupStatus.Idle
+    }
+
+    // ─── Cloud sync state ──────────────────────────────────────────────────────────
+
+    val cloudSyncEnabled: StateFlow<Boolean> = cloudSyncPrefs.enabled
+    val cloudSyncPaused: StateFlow<Boolean> = cloudSyncPrefs.paused
+    val cloudAccountEmail: StateFlow<String?> = cloudSyncPrefs.accountEmail
+    val cloudLastSyncAt: StateFlow<Instant?> = cloudSyncPrefs.lastSyncAt
+    val cloudLastSyncError: StateFlow<String?> = cloudSyncPrefs.lastSyncError
+    val cloudTransactionCutoff: StateFlow<YearMonth?> = cloudSyncPrefs.transactionCutoff
+
+    private val _cloudSyncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Idle)
+    val cloudSyncStatus: StateFlow<CloudSyncStatus> = _cloudSyncStatus.asStateFlow()
+
+    /** Called after a successful Google Sign-In activity result. */
+    fun completeSignIn(email: String?) {
+        cloudSyncPrefs.setEnabled(true)
+        cloudSyncPrefs.setAccountEmail(email)
+        _cloudSyncStatus.value = CloudSyncStatus.CheckingForBackup
+        viewModelScope.launch {
+            val exists = driveClient.exists().getOrNull() ?: false
+            val isFreshInstall = backupImporter.isLocalDataEmpty()
+            _cloudSyncStatus.value = if (exists && isFreshInstall) {
+                CloudSyncStatus.RestorePrompt
+            } else {
+                CloudSyncStatus.Idle
+            }
+        }
+    }
+
+    /** Called after sign-in fails or is cancelled. */
+    fun signInFailed(message: String) {
+        _cloudSyncStatus.value = CloudSyncStatus.Error(message)
+    }
+
+    fun setCloudPaused(value: Boolean) = cloudSyncPrefs.setPaused(value)
+
+    fun cloudSyncNow() {
+        cloudSyncScheduler.enqueueImmediateUpload()
+    }
+
+    fun setTransactionCutoff(value: YearMonth?) {
+        viewModelScope.launch {
+            backupExporter.saveLocalRollbackSnapshot("pre-cutoff-change")
+            cloudSyncPrefs.setTransactionCutoff(value)
+        }
+    }
+
+    fun cloudSignOut(deleteCloudBackup: Boolean) {
+        viewModelScope.launch {
+            if (deleteCloudBackup) driveClient.delete().getOrNull()
+            cloudSyncScheduler.cancelPending()
+            cloudSyncPrefs.clearSession()
+            signInState.signInClient.signOut()
+        }
+    }
+
+    /** Restore from cloud — explicit user action. Snapshots local state first. */
+    fun restoreFromCloud() {
+        _cloudSyncStatus.value = CloudSyncStatus.Restoring
+        viewModelScope.launch {
+            try {
+                backupExporter.saveLocalRollbackSnapshot("pre-cloud-restore")
+                val json = driveClient.download().getOrThrow()
+                if (json == null) {
+                    _cloudSyncStatus.value =
+                        CloudSyncStatus.Error("No backup found in cloud")
+                    return@launch
+                }
+                val result = backupImporter.importFromJsonString(json)
+                _cloudSyncStatus.value = CloudSyncStatus.RestoreSuccess(result)
+            } catch (t: Throwable) {
+                _cloudSyncStatus.value =
+                    CloudSyncStatus.Error(t.message ?: "Restore failed")
+            }
+        }
+    }
+
+    fun dismissRestorePrompt() {
+        _cloudSyncStatus.value = CloudSyncStatus.Idle
+    }
+
+    fun consumeCloudStatus() {
+        _cloudSyncStatus.value = CloudSyncStatus.Idle
+    }
+
+    /** Intent used by the Settings screen's sign-in launcher. */
+    fun signInIntent() = signInState.signInClient.signInIntent
+
+    sealed interface CloudSyncStatus {
+        data object Idle : CloudSyncStatus
+        data object CheckingForBackup : CloudSyncStatus
+        data object RestorePrompt : CloudSyncStatus
+        data object Restoring : CloudSyncStatus
+        data class RestoreSuccess(val result: ImportResult) : CloudSyncStatus
+        data class Error(val message: String) : CloudSyncStatus
     }
 
     sealed interface ExportStatus {
