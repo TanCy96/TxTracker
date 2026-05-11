@@ -4,24 +4,30 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.domain.MalaysiaTimeZone
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Clock
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Builds a JSON backup of categories and learned mappings (merchant → category, merchant +
- * bucket → description, category + bucket → description) and writes it to cacheDir/exports/
- * for sharing via the existing FileProvider.
+ * Builds a JSON backup of learning state + transactions, optionally filtered by a
+ * year-month floor on transactions.
  *
- * Transactions are intentionally NOT included — they're large, contain potentially sensitive
- * merchant strings the user may not want to back up, and the categorization "voice" of the
- * mappings is what's actually expensive to lose. Re-capture from notifications fills in
- * future spending; restore brings back the lessons.
+ * Two entry points:
+ *   - [export]: writes to cacheDir/exports/ for sharing via FileProvider (the existing
+ *     manual-backup flow). Always uses no cutoff — manual exports include everything.
+ *   - [exportToJsonString]: returns the JSON content directly. Honors a cutoff if
+ *     supplied. Used by cloud-sync upload.
+ *
+ * Plus [saveLocalRollbackSnapshot] for before-restore / before-cutoff-change safety —
+ * writes a full no-cutoff snapshot to cacheDir, retains last 5 per name prefix.
  */
 @Singleton
 class BackupExporter @Inject constructor(
@@ -29,13 +35,35 @@ class BackupExporter @Inject constructor(
     private val repository: TransactionRepository,
 ) {
     suspend fun export(): Uri {
-        // Load everything once, join in memory by id → name. Categories table is small
-        // (10s of rows at most), so this is cheaper than per-row lookups.
+        val json = exportToJsonString(transactionCutoff = null)
+        val file = writeToCache(json, prefix = "txtracker-backup")
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+    }
+
+    /**
+     * Builds the backup JSON. If [transactionCutoff] is non-null, only transactions with
+     * `occurredAt >= cutoffStartInstant` are included; cutoffStart is the first instant
+     * of the cutoff year-month in [MalaysiaTimeZone].
+     */
+    suspend fun exportToJsonString(transactionCutoff: YearMonth? = null): String {
         val categories = repository.getAllCategoriesOnce()
         val nameById = categories.associate { it.id to it.name }
 
+        val txs = if (transactionCutoff != null) {
+            val cutoffStart = LocalDate(transactionCutoff.year, transactionCutoff.month, 1)
+                .atStartOfDayIn(MalaysiaTimeZone)
+            repository.getAllTransactionsOnceFrom(cutoffStart)
+        } else {
+            repository.getAllTransactionsOnce()
+        }
+
         val backup = Backup(
             exportedAt = Clock.System.now(),
+            transactionCutoff = transactionCutoff,
             categories = categories.map {
                 BackupCategory(
                     name = it.name,
@@ -71,26 +99,52 @@ class BackupExporter @Inject constructor(
                         learnedAt = d.learnedAt,
                     )
                 },
-            userFacingSources = repository.observeUserFacingSources()
-                .first().map { s ->
-                    BackupUserFacingSource(packageName = s.packageName, addedAt = s.addedAt)
-                },
-            approvedSources = repository.observeApprovedSources()
-                .first().map { s ->
-                    BackupApprovedSource(packageName = s.packageName, firstApprovedAt = s.firstApprovedAt)
-                },
-            merchantNotes = repository.observeMerchantNotes()
-                .first().map { n ->
-                    BackupMerchantNote(
-                        merchant = n.merchantNormalized,
-                        note = n.note,
-                        updatedAt = n.updatedAt,
-                    )
-                },
+            merchantNotes = repository.observeMerchantNotes().first().map { n ->
+                BackupMerchantNote(
+                    merchant = n.merchantNormalized,
+                    note = n.note,
+                    updatedAt = n.updatedAt,
+                )
+            },
+            userFacingSources = repository.observeUserFacingSources().first().map { s ->
+                BackupUserFacingSource(packageName = s.packageName, addedAt = s.addedAt)
+            },
+            approvedSources = repository.observeApprovedSources().first().map { s ->
+                BackupApprovedSource(packageName = s.packageName, firstApprovedAt = s.firstApprovedAt)
+            },
+            transactions = txs.map { tx ->
+                BackupTransaction(
+                    amountMinor = tx.amountMinor,
+                    currency = tx.currency,
+                    merchantRaw = tx.merchantRaw,
+                    merchantNormalized = tx.merchantNormalized,
+                    categoryName = tx.categoryId?.let { nameById[it] },
+                    description = tx.description,
+                    occurredAt = tx.occurredAt,
+                    timeBucket = tx.timeBucket,
+                    sourceApp = tx.sourceApp,
+                    rawText = tx.rawText,
+                    direction = tx.direction,
+                    createdAt = tx.createdAt,
+                    notificationDedupeKey = tx.notificationDedupeKey,
+                    needsVerification = tx.needsVerification,
+                )
+            },
         )
 
-        val json = JSON.encodeToString(backup)
-        val file = writeToCache(json)
+        return JSON.encodeToString(backup)
+    }
+
+    /**
+     * Writes a no-cutoff snapshot to cacheDir/exports/ with a `<name>-<ts>.json`
+     * filename so the user can roll back via the existing "Restore from backup"
+     * Settings flow. Cleans up older snapshots with the same prefix, keeping the
+     * most recent 5.
+     */
+    suspend fun saveLocalRollbackSnapshot(name: String): Uri {
+        val json = exportToJsonString(transactionCutoff = null)
+        val file = writeToCache(json, prefix = name)
+        pruneSnapshots(prefix = name, keep = 5)
         return FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
@@ -98,17 +152,29 @@ class BackupExporter @Inject constructor(
         )
     }
 
-    private fun writeToCache(json: String): File {
+    private fun writeToCache(json: String, prefix: String): File {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-        val filename = "txtracker-backup-${System.currentTimeMillis()}.json"
+        val filename = "$prefix-${System.currentTimeMillis()}.json"
         val file = File(dir, filename)
         file.writeText(json, Charsets.UTF_8)
         return file
     }
 
+    /** Keeps the most recent [keep] snapshots whose filename starts with `$prefix-`,
+     *  deleting older ones. Cheap idempotent loop. */
+    private fun pruneSnapshots(prefix: String, keep: Int) {
+        val dir = File(context.cacheDir, "exports")
+        if (!dir.exists()) return
+        val matches = dir.listFiles { f -> f.name.startsWith("$prefix-") && f.name.endsWith(".json") }
+            ?.sortedByDescending { it.lastModified() }
+            ?: return
+        matches.drop(keep).forEach { it.delete() }
+    }
+
     companion object {
-        /** Pretty-printed for human inspection. `encodeDefaults` so the version field is always
-         *  emitted — matters when a future format upgrade reads the field to decide how to parse. */
+        /** Pretty-printed for human inspection. `encodeDefaults` so the version field is
+         *  always emitted — matters when a future format upgrade reads the field to
+         *  decide how to parse. */
         val JSON: Json = Json {
             prettyPrint = true
             ignoreUnknownKeys = true
