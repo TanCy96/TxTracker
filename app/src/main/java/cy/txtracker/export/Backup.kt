@@ -21,9 +21,10 @@ data class Backup(
     val merchantMappings: List<BackupMerchantMapping>,
     val merchantDescriptionMappings: List<BackupMerchantDescriptionMapping>,
     val categoryDescriptionMappings: List<BackupCategoryDescriptionMapping>,
+    val userFacingSources: List<BackupUserFacingSource> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 1
+        const val CURRENT_VERSION = 2
     }
 }
 
@@ -56,4 +57,10 @@ data class BackupCategoryDescriptionMapping(
     val bucket: TimeBucket,
     val description: String,
     val learnedAt: Instant,
+)
+
+@Serializable
+data class BackupUserFacingSource(
+    val packageName: String,
+    val addedAt: Instant,
 )

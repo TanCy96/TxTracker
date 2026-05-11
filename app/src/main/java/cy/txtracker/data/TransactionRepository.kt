@@ -398,6 +398,14 @@ class TransactionRepository @Inject constructor(
             if (existing == null) cdAdded++ else cdUpdated++
         }
 
+        // 6. User-facing sources. Idempotent: insert-or-ignore. Existing rows untouched so
+        //    we never bump a local `addedAt` backwards from an older backup.
+        for (bs in backup.userFacingSources) {
+            userFacingSourceDao.insert(
+                UserFacingSource(packageName = bs.packageName, addedAt = bs.addedAt),
+            )
+        }
+
         ImportResult(
             categoriesCreated = categoriesCreated,
             merchantMappingsAdded = mAdded,

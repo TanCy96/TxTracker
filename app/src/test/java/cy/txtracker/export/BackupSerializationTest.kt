@@ -86,4 +86,45 @@ class BackupSerializationTest {
         assertThat(parsed.version).isEqualTo(1)
         assertThat(parsed.categories).isEmpty()
     }
+
+    @Test
+    fun userFacingSources_roundtrip() {
+        val original = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            userFacingSources = listOf(
+                BackupUserFacingSource("com.example.app",
+                    Instant.parse("2026-05-10T10:00:00Z")),
+            ),
+        )
+
+        val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+
+        assertThat(parsed.userFacingSources).hasSize(1)
+        assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
+        assertThat(parsed.version).isEqualTo(2)
+    }
+
+    @Test
+    fun v1_backup_parses_with_empty_userFacingSources() {
+        // A serialized v1 file (no userFacingSources field) must still parse.
+        val v1Json = """
+            {
+              "version": 1,
+              "exportedAt": "2026-05-01T00:00:00Z",
+              "categories": [],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": []
+            }
+        """.trimIndent()
+
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v1Json)
+
+        assertThat(parsed.userFacingSources).isEmpty()
+    }
 }

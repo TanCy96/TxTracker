@@ -71,6 +71,10 @@ class BackupExporter @Inject constructor(
                         learnedAt = d.learnedAt,
                     )
                 },
+            userFacingSources = repository.observeUserFacingSources()
+                .first().map { s ->
+                    BackupUserFacingSource(packageName = s.packageName, addedAt = s.addedAt)
+                },
         )
 
         val json = JSON.encodeToString(backup)
