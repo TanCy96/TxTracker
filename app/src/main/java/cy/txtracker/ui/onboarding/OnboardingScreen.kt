@@ -40,7 +40,7 @@ fun OnboardingScreen(
                 horizontalAlignment = Alignment.Start,
             ) {
             Text(
-                text = "TxTracker",
+                text = "Tally",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -54,7 +54,7 @@ fun OnboardingScreen(
 
             BulletParagraph(
                 title = "Notification access",
-                body = "TxTracker needs to read notifications from Google Wallet, Touch ‘n Go, " +
+                body = "Tally needs to read notifications from Google Wallet, Touch ‘n Go, " +
                     "Grab, and your bank app to extract amounts and merchants. Tapping " +
                     "“Grant access” opens Android’s system settings page where you " +
                     "can enable it.",

@@ -78,7 +78,7 @@ fun LockScreen(onUnlocked: () -> Unit) {
     }
     val promptInfo = remember {
         BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Unlock TxTracker")
+            .setTitle("Unlock Tally")
             .setSubtitle("Use your fingerprint, face, or device PIN to continue.")
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -108,7 +108,7 @@ fun LockScreen(onUnlocked: () -> Unit) {
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
                 Text(
-                    text = "TxTracker is locked",
+                    text = "Tally is locked",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
