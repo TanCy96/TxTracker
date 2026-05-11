@@ -2,10 +2,13 @@ package cy.txtracker.ui.settings.cloud
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cy.txtracker.export.YearMonth
@@ -133,26 +137,40 @@ fun CloudSyncSection(
     )
 
     if (showSignOutDialog) {
+        var alsoDelete by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showSignOutDialog = false },
             title = { Text("Sign out from cloud sync?") },
-            text = { Text("Your local data stays intact.") },
+            text = {
+                Column {
+                    Text("Your local data stays intact.")
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { alsoDelete = !alsoDelete }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = alsoDelete,
+                            onCheckedChange = { alsoDelete = it },
+                        )
+                        Text(
+                            text = "Also delete the cloud backup",
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showSignOutDialog = false
-                    onSignOutClick(false)
+                    onSignOutClick(alsoDelete)
                 }) { Text("Sign out") }
             },
             dismissButton = {
-                Column {
-                    TextButton(onClick = {
-                        showSignOutDialog = false
-                        onSignOutClick(true)
-                    }) { Text("Sign out and delete cloud backup") }
-                    TextButton(onClick = { showSignOutDialog = false }) {
-                        Text("Cancel")
-                    }
-                }
+                TextButton(onClick = { showSignOutDialog = false }) { Text("Cancel") }
             },
         )
     }
