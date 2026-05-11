@@ -9,14 +9,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Persisted "capture all packages" toggle. When ON, the notification listener bypasses
- * its finance-app allowlist and runs the heuristic + permissive extractors on every
- * package's notifications. Useful for discovering new finance apps; noisy day-to-day
- * because chat / news / shopping apps with RM amounts will create review-needed rows.
+ * Persisted "capture all packages" toggle. When ON, the notification listener bypasses its
+ * finance-app allowlist and processes notifications from every package. **Default is ON**
+ * — first-time users discover their finance apps by verifying the Pending rows that surface
+ * from each new package. Verifying a row implicitly adds its package to the persisted
+ * [cy.txtracker.data.ApprovedSource] allowlist, so when the user later turns this off, all
+ * previously-verified sources continue to be processed.
  *
- * Default OFF. Mirrors the StateFlow-backed pattern used by
- * [cy.txtracker.ui.lock.LockPrefs] so the Settings toggle and the runtime state stay
- * in sync without a restart.
+ * Cost when ON: chat / news / shopping apps mentioning RM amounts will create
+ * review-needed rows that the user triages from the home Pending filter.
+ *
+ * Mirrors the StateFlow-backed pattern used by [cy.txtracker.ui.lock.LockPrefs] so the
+ * Settings toggle and runtime state stay in sync without a restart.
  */
 @Singleton
 class CapturePrefs @Inject constructor(
@@ -24,7 +28,7 @@ class CapturePrefs @Inject constructor(
 ) {
     private val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    private val _captureAllPackages = MutableStateFlow(prefs.getBoolean(KEY_ALL_PACKAGES, false))
+    private val _captureAllPackages = MutableStateFlow(prefs.getBoolean(KEY_ALL_PACKAGES, true))
     val captureAllPackages: StateFlow<Boolean> = _captureAllPackages.asStateFlow()
 
     fun setCaptureAllPackages(value: Boolean) {

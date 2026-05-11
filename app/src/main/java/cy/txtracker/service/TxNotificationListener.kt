@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import cy.txtracker.data.TransactionRepository
 import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.PermissiveExtractor
 import cy.txtracker.parsing.SourcePackages
@@ -13,6 +14,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -32,7 +34,7 @@ import kotlinx.datetime.Instant
  * bank notification must not take down the listener for everything else.
  *
  * The user-controllable [CapturePrefs.captureAllPackages] toggle bypasses the allowlist
- * for discovery; off by default.
+ * for discovery; on by default for new installs.
  */
 @AndroidEntryPoint
 class TxNotificationListener : NotificationListenerService() {
@@ -41,18 +43,30 @@ class TxNotificationListener : NotificationListenerService() {
     @Inject lateinit var permissiveExtractor: PermissiveExtractor
     @Inject lateinit var ingestor: TxIngestor
     @Inject lateinit var capturePrefs: CapturePrefs
+    @Inject lateinit var repository: TransactionRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Packages the listener processes when capture-all is off. Notifications outside this
      * set bail at the top of [onNotificationPosted] without doing any work.
+     * Refreshed reactively via [watchedPackagesJob] whenever [ApprovedSource] rows change.
      */
-    private val watchedPackages: Set<String> = SourcePackages.PERMISSIVE_PACKAGES
+    @Volatile
+    private var watchedPackages: Set<String> = SourcePackages.PERMISSIVE_PACKAGES
+
+    private var watchedPackagesJob: Job? = null
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        Log.i(TAG, "Connected. Watching ${watchedPackages.size} packages.")
+        watchedPackagesJob?.cancel()
+        watchedPackagesJob = scope.launch {
+            repository.observeApprovedSourcePackages().collect { approved ->
+                watchedPackages = SourcePackages.PERMISSIVE_PACKAGES + approved
+                Log.i(TAG, "Watching ${watchedPackages.size} packages " +
+                    "(${SourcePackages.PERMISSIVE_PACKAGES.size} default + ${approved.size} approved).")
+            }
+        }
         if (capturePrefs.captureAllPackages.value) {
             Log.w(TAG, "Capture-all-packages is ON — every package's notifications will be processed.")
         }

@@ -252,10 +252,11 @@ fun SettingsScreen(
                 headlineContent = { Text("Capture all packages") },
                 supportingContent = {
                     Text(
-                        "When on, processes notifications from every app, not just " +
-                            "finance apps. Useful for discovering new finance apps. Off " +
-                            "by default — chat / news / shopping apps may create " +
-                            "review-needed rows.",
+                        "On by default for new users. Processes notifications from every " +
+                            "app, not just finance apps. Verifying a Pending row from a new " +
+                            "app automatically adds it to your allowlist, so turning this " +
+                            "off later still keeps those apps working. Cost: chat / news / " +
+                            "shopping apps mentioning RM amounts may create review-needed rows.",
                     )
                 },
                 trailingContent = {

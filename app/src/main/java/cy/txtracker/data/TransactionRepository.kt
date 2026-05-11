@@ -26,6 +26,7 @@ class TransactionRepository @Inject constructor(
     private val descriptionMappingDao: DescriptionMappingDao,
     private val merchantNoteDao: MerchantNoteDao,
     private val userFacingSourceDao: UserFacingSourceDao,
+    private val approvedSourceDao: ApprovedSourceDao,
 ) {
     // Reads ---------------------------------------------------------------
 
@@ -59,6 +60,9 @@ class TransactionRepository @Inject constructor(
 
     fun observeUserFacingSources(): Flow<List<UserFacingSource>> =
         userFacingSourceDao.observeAll()
+
+    fun observeApprovedSourcePackages(): Flow<List<String>> =
+        approvedSourceDao.observeAllPackageNames()
 
     fun observeAllSourcePackages(): Flow<List<String>> =
         transactionDao.observeDistinctSourceApps()
@@ -236,8 +240,27 @@ class TransactionRepository @Inject constructor(
         )
     }
 
-    suspend fun setNeedsVerification(txId: Long, needsVerification: Boolean) =
+    /**
+     * Toggles the verification flag. When the user CONFIRMS a Pending row (verify=false), we
+     * also implicitly approve its source package — adding it to [ApprovedSource] so the
+     * listener will continue processing notifications from this app even after the user
+     * turns off capture-all-packages. Manual entries are skipped (their sourceApp is
+     * `manual`, not a real package).
+     */
+    suspend fun setNeedsVerification(
+        txId: Long,
+        needsVerification: Boolean,
+        now: Instant = Clock.System.now(),
+    ) {
+        if (!needsVerification) {
+            val tx = transactionDao.getById(txId)
+            val sourceApp = tx?.sourceApp
+            if (sourceApp != null && sourceApp != MANUAL_SOURCE_APP) {
+                approvedSourceDao.insert(ApprovedSource(packageName = sourceApp, firstApprovedAt = now))
+            }
+        }
         transactionDao.updateNeedsVerification(txId, needsVerification)
+    }
 
     /**
      * Looks up an existing row that matches the incoming notification on amount + currency

@@ -35,6 +35,7 @@ class TxIngestorCrossSourceDedupeTest {
             descriptionMappingDao = dbRule.descriptionMappingDao,
             merchantNoteDao = dbRule.merchantNoteDao,
             userFacingSourceDao = dbRule.userFacingSourceDao,
+            approvedSourceDao = dbRule.approvedSourceDao,
         )
         return TxIngestor(
             database = dbRule.db,
@@ -198,6 +199,7 @@ class TxIngestorCrossSourceDedupeTest {
             descriptionMappingDao = dbRule.descriptionMappingDao,
             merchantNoteDao = dbRule.merchantNoteDao,
             userFacingSourceDao = dbRule.userFacingSourceDao,
+            approvedSourceDao = dbRule.approvedSourceDao,
         )
         val manualId = repo.addManualTransaction(
             amountMinor = 2500,

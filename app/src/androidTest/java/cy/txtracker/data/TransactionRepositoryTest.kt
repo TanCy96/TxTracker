@@ -25,6 +25,7 @@ class TransactionRepositoryTest {
         descriptionMappingDao = dbRule.descriptionMappingDao,
         merchantNoteDao = dbRule.merchantNoteDao,
         userFacingSourceDao = dbRule.userFacingSourceDao,
+        approvedSourceDao = dbRule.approvedSourceDao,
     )
 
     @Test
