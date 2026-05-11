@@ -33,6 +33,7 @@ object SourcePackages {
         // CIMB variants
         "com.cimb.octo",
         "com.cimbbank.octo",
+        "com.cimb.cimbocto",
         "com.cimbmalaysia",
         "com.cimb.cimbclicks.my",
         "com.cimb.bizchannel",
