@@ -8,6 +8,7 @@ import cy.txtracker.export.BackupCategory
 import cy.txtracker.export.BackupCategoryDescriptionMapping
 import cy.txtracker.export.BackupMerchantDescriptionMapping
 import cy.txtracker.export.BackupMerchantMapping
+import cy.txtracker.export.BackupApprovedSource
 import cy.txtracker.export.BackupUserFacingSource
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -230,5 +231,50 @@ class ApplyBackupTest {
 
         val source = dbRule.userFacingSourceDao.getAllOnce().single()
         assertThat(source.addedAt).isEqualTo(localAddedAt)
+    }
+
+    @Test
+    fun applyBackup_inserts_approved_sources() = runTest {
+        val repo = repo()
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            approvedSources = listOf(
+                BackupApprovedSource("com.cimb.cimbocto",
+                    Instant.parse("2026-05-10T10:00:00Z")),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        val sources = dbRule.approvedSourceDao.getAllOnce()
+        assertThat(sources.map { it.packageName }).containsExactly("com.cimb.cimbocto")
+    }
+
+    @Test
+    fun applyBackup_does_not_overwrite_existing_approved_source_firstApprovedAt() = runTest {
+        val repo = repo()
+        val localFirstApprovedAt = Instant.parse("2026-05-11T10:00:00Z")
+        dbRule.approvedSourceDao.insert(ApprovedSource("com.cimb.cimbocto", localFirstApprovedAt))
+
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            approvedSources = listOf(
+                BackupApprovedSource("com.cimb.cimbocto",
+                    Instant.parse("2026-04-01T10:00:00Z")),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        val source = dbRule.approvedSourceDao.getAllOnce().single()
+        assertThat(source.firstApprovedAt).isEqualTo(localFirstApprovedAt)
     }
 }

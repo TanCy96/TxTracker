@@ -64,6 +64,9 @@ class TransactionRepository @Inject constructor(
     fun observeApprovedSourcePackages(): Flow<List<String>> =
         approvedSourceDao.observeAllPackageNames()
 
+    fun observeApprovedSources(): Flow<List<ApprovedSource>> =
+        approvedSourceDao.observeAll()
+
     fun observeAllSourcePackages(): Flow<List<String>> =
         transactionDao.observeDistinctSourceApps()
 
@@ -429,6 +432,15 @@ class TransactionRepository @Inject constructor(
         for (bs in backup.userFacingSources) {
             userFacingSourceDao.insert(
                 UserFacingSource(packageName = bs.packageName, addedAt = bs.addedAt),
+            )
+        }
+
+        // 7. Approved sources. Idempotent insert-or-ignore — existing local rows keep their
+        //    `firstApprovedAt` (the earliest local approval wins; we never push it forward
+        //    based on a newer backup file).
+        for (bs in backup.approvedSources) {
+            approvedSourceDao.insert(
+                ApprovedSource(packageName = bs.packageName, firstApprovedAt = bs.firstApprovedAt),
             )
         }
 

@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(2)
+        assertThat(parsed.version).isEqualTo(3)
     }
 
     @Test
@@ -126,5 +126,47 @@ class BackupSerializationTest {
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v1Json)
 
         assertThat(parsed.userFacingSources).isEmpty()
+    }
+
+    @Test
+    fun approvedSources_roundtrip() {
+        val original = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            approvedSources = listOf(
+                BackupApprovedSource("com.cimb.cimbocto",
+                    Instant.parse("2026-05-10T10:00:00Z")),
+            ),
+        )
+
+        val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+
+        assertThat(parsed.approvedSources).hasSize(1)
+        assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
+        assertThat(parsed.version).isEqualTo(3)
+    }
+
+    @Test
+    fun v2_backup_parses_with_empty_approvedSources() {
+        // A serialized v2 file (no approvedSources field) must still parse cleanly.
+        val v2Json = """
+            {
+              "version": 2,
+              "exportedAt": "2026-05-01T00:00:00Z",
+              "categories": [],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": [],
+              "userFacingSources": []
+            }
+        """.trimIndent()
+
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v2Json)
+
+        assertThat(parsed.approvedSources).isEmpty()
     }
 }
