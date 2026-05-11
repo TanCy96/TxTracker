@@ -53,6 +53,17 @@ class PermissiveExtractorTest {
     }
 
     @Test
+    fun grab_package_uses_GRAB_merchant_without_review_suffix() {
+        // Grab notifications never name the underlying driver / merchant, so the permissive
+        // layer hardcodes "GRAB" rather than "Grab (review)" — same convention the retired
+        // strict parser used.
+        val text = "Your Mastercard 1868 has been charged RM 25.00 for booking A-9AK6JSBWXF8SAV"
+        val r = extractor.extract(text, SourcePackages.GRAB, now)!!
+        assertThat(r.merchantRaw).isEqualTo("GRAB")
+        assertThat(r.amountMinor).isEqualTo(2500L)
+    }
+
+    @Test
     fun returns_null_when_package_is_not_in_allowlist() {
         // Random IM app's notification mentioning a price — must not become a transaction.
         val text = "Friend: hey can you transfer me RM 50.00 for dinner"

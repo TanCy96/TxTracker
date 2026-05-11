@@ -27,10 +27,12 @@ import kotlinx.datetime.Instant
  * offloaded to an IO scope owned by this service so the system thread doesn't
  * block on disk.
  *
- * Group-summary notifications and notifications from unregistered packages are
- * ignored cheaply with no parser invocation. Extractor exceptions are logged but
- * never propagate — a malformed bank notification must not take down the listener
- * for everything else.
+ * Group-summary notifications and notifications from non-allowlisted packages are
+ * ignored cheaply. Extractor exceptions are logged but never propagate — a malformed
+ * bank notification must not take down the listener for everything else.
+ *
+ * The user-controllable [CapturePrefs.captureAllPackages] toggle bypasses the allowlist
+ * for discovery; off by default.
  */
 @AndroidEntryPoint
 class TxNotificationListener : NotificationListenerService() {
@@ -38,18 +40,22 @@ class TxNotificationListener : NotificationListenerService() {
     @Inject lateinit var heuristicExtractor: HeuristicExtractor
     @Inject lateinit var permissiveExtractor: PermissiveExtractor
     @Inject lateinit var ingestor: TxIngestor
+    @Inject lateinit var capturePrefs: CapturePrefs
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Packages the listener processes. Notifications outside this set bail at the top of
-     * [onNotificationPosted] without doing any work.
+     * Packages the listener processes when capture-all is off. Notifications outside this
+     * set bail at the top of [onNotificationPosted] without doing any work.
      */
     private val watchedPackages: Set<String> = SourcePackages.PERMISSIVE_PACKAGES
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "Connected. Watching ${watchedPackages.size} packages.")
+        if (capturePrefs.captureAllPackages.value) {
+            Log.w(TAG, "Capture-all-packages is ON — every package's notifications will be processed.")
+        }
     }
 
     override fun onListenerDisconnected() {
@@ -61,9 +67,11 @@ class TxNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        // Cheap filter: bail unless this package is on the finance-app allowlist.
-        // Random app notifications never get here.
-        if (sbn.packageName !in watchedPackages) return
+        val bypassAllowlist = capturePrefs.captureAllPackages.value
+
+        // Cheap filter: bail unless this package is on the finance-app allowlist (or the
+        // user has turned on capture-all-packages for discovery).
+        if (!bypassAllowlist && sbn.packageName !in watchedPackages) return
 
         if ((sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
             Log.d(TAG, "Skipping group summary from ${sbn.packageName}")
@@ -85,11 +93,15 @@ class TxNotificationListener : NotificationListenerService() {
                     return@launch
                 }
 
-                // 2. Permissive last-resort capture for finance-app packages: anything with
-                //    an RM/MYR amount, even without a verb or recipient. Lands as Pending so
-                //    the user reviews and confirms or deletes.
+                // 2. Permissive last-resort capture: anything with an RM/MYR amount lands
+                //    as Pending so the user reviews and confirms or deletes.
                 val permissive = text?.let {
-                    permissiveExtractor.extract(it, sbn.packageName, postedAt)
+                    permissiveExtractor.extract(
+                        text = it,
+                        sourceApp = sbn.packageName,
+                        postedAt = postedAt,
+                        bypassAllowlist = bypassAllowlist,
+                    )
                 }
                 if (permissive != null) {
                     insert(permissive, sbn.packageName, needsVerification = true)

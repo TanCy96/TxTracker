@@ -54,6 +54,7 @@ fun SettingsScreen(
     val exportStatus by viewModel.exportStatus.collectAsState()
     val backupStatus by viewModel.backupStatus.collectAsState()
     val lockEnabled by viewModel.lockEnabled.collectAsState()
+    val captureAllPackages by viewModel.captureAllPackages.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -231,6 +232,27 @@ fun SettingsScreen(
                         viewModel.resetOnboarding()
                         scope.launch { snackbar.showSnackbar("Onboarding reset.") }
                     },
+                ),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Capture all packages") },
+                supportingContent = {
+                    Text(
+                        "When on, processes notifications from every app, not just " +
+                            "finance apps. Useful for discovering new finance apps. Off " +
+                            "by default — chat / news / shopping apps may create " +
+                            "review-needed rows.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = captureAllPackages,
+                        onCheckedChange = viewModel::setCaptureAllPackages,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    onClick = { viewModel.setCaptureAllPackages(!captureAllPackages) },
                 ),
             )
             HorizontalDivider()

@@ -7,6 +7,7 @@ import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
 import cy.txtracker.export.ImportResult
+import cy.txtracker.service.CapturePrefs
 import cy.txtracker.ui.lock.LockPrefs
 import cy.txtracker.ui.lock.LockState
 import cy.txtracker.ui.onboarding.OnboardingPrefs
@@ -25,6 +26,7 @@ class SettingsViewModel @Inject constructor(
     private val onboardingPrefs: OnboardingPrefs,
     private val lockPrefs: LockPrefs,
     private val lockState: LockState,
+    private val capturePrefs: CapturePrefs,
 ) : ViewModel() {
 
     val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
@@ -36,6 +38,12 @@ class SettingsViewModel @Inject constructor(
         // current session — the lock kicks in next time the app cold-starts or comes back
         // from a long background.
         if (!value) lockState.unlock()
+    }
+
+    val captureAllPackages: StateFlow<Boolean> = capturePrefs.captureAllPackages
+
+    fun setCaptureAllPackages(value: Boolean) {
+        capturePrefs.setCaptureAllPackages(value)
     }
 
     fun resetOnboarding() = onboardingPrefs.clearDismissed()
