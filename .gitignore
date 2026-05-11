@@ -26,3 +26,9 @@ release/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Claude Code conversation transcripts (archived from ~/.claude/projects/)
+.claude-history/
+
+# Serena tooling state
+.serena/
