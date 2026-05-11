@@ -60,6 +60,9 @@ class TransactionRepository @Inject constructor(
     fun observeUserFacingSources(): Flow<List<UserFacingSource>> =
         userFacingSourceDao.observeAll()
 
+    fun observeAllSourcePackages(): Flow<List<String>> =
+        transactionDao.observeDistinctSourceApps()
+
     suspend fun addUserFacingSource(packageName: String, now: Instant = Clock.System.now()) {
         userFacingSourceDao.insert(UserFacingSource(packageName, now))
     }
