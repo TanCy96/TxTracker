@@ -379,7 +379,21 @@ fun computeDedupeKey(
     return sha1Hex(payload)
 }
 
-private const val FIVE_MINUTES_MS: Long = 5 * 60 * 1000
+/**
+ * The half-open `[start, endExclusive)` instant range of the 5-minute bucket containing
+ * [occurredAt], using the same bucketing arithmetic as [computeDedupeKey]. The
+ * cross-source dedup lookup uses this so its bucket boundaries match the hash dedupe
+ * key's bucket boundaries.
+ */
+fun bucketBoundsFor(occurredAt: Instant): Pair<Instant, Instant> {
+    val bucketStartMs =
+        (occurredAt.toEpochMilliseconds() / FIVE_MINUTES_MS) * FIVE_MINUTES_MS
+    val start = Instant.fromEpochMilliseconds(bucketStartMs)
+    val endExclusive = Instant.fromEpochMilliseconds(bucketStartMs + FIVE_MINUTES_MS)
+    return start to endExclusive
+}
+
+internal const val FIVE_MINUTES_MS: Long = 5 * 60 * 1000
 
 private fun sha1Hex(input: String): String {
     val digest = java.security.MessageDigest.getInstance("SHA-1")
