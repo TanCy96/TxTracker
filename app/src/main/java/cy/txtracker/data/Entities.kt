@@ -138,3 +138,13 @@ data class CategoryTotal(
     @ColumnInfo(name = "categoryId") val categoryId: Long?,
     @ColumnInfo(name = "totalMinor") val totalMinor: Long,
 )
+
+/**
+ * User-added packages that win cross-source dedupe duplicates against any other source.
+ * Built-in user-facing packages (Grab, TnG) live in code, not in this table.
+ */
+@Entity(tableName = "user_facing_sources")
+data class UserFacingSource(
+    @PrimaryKey val packageName: String,
+    val addedAt: Instant,
+)
