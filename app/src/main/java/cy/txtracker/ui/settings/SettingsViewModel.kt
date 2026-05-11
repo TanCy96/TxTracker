@@ -1,8 +1,10 @@
 package cy.txtracker.ui.settings
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import cy.txtracker.cloud.CloudSyncScheduler
 import cy.txtracker.cloud.DriveClient
 import cy.txtracker.cloud.GoogleSignInStateProvider
@@ -18,10 +20,14 @@ import cy.txtracker.ui.lock.LockPrefs
 import cy.txtracker.ui.lock.LockState
 import cy.txtracker.ui.onboarding.OnboardingPrefs
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -37,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val cloudSyncScheduler: CloudSyncScheduler,
     private val driveClient: DriveClient,
     private val signInState: GoogleSignInStateProvider,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
@@ -119,6 +126,19 @@ class SettingsViewModel @Inject constructor(
     val cloudLastSyncAt: StateFlow<Instant?> = cloudSyncPrefs.lastSyncAt
     val cloudLastSyncError: StateFlow<String?> = cloudSyncPrefs.lastSyncError
     val cloudTransactionCutoff: StateFlow<YearMonth?> = cloudSyncPrefs.transactionCutoff
+
+    /** True when a cloud-sync WorkManager job is enqueued OR running. Drives the
+     *  "Sync now" row's spinner so the user gets visible feedback when uploads are
+     *  pending (e.g., waiting on a network constraint) or in flight. */
+    val cloudSyncInFlight: StateFlow<Boolean> =
+        WorkManager.getInstance(appContext)
+            .getWorkInfosForUniqueWorkFlow(CloudSyncScheduler.WORK_NAME)
+            .map { infos -> infos.any { !it.state.isFinished } }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000L),
+                initialValue = false,
+            )
 
     private val _cloudSyncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Idle)
     val cloudSyncStatus: StateFlow<CloudSyncStatus> = _cloudSyncStatus.asStateFlow()

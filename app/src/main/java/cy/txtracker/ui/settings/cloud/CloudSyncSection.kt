@@ -3,6 +3,7 @@ package cy.txtracker.ui.settings.cloud
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -35,6 +36,7 @@ fun CloudSyncSection(
     lastSyncAt: Instant?,
     lastSyncError: String?,
     transactionCutoff: YearMonth?,
+    syncInFlight: Boolean,
     onSignInClick: () -> Unit,
     onSignOutClick: (deleteCloudBackup: Boolean) -> Unit,
     onSyncNowClick: () -> Unit,
@@ -75,8 +77,23 @@ fun CloudSyncSection(
 
     ListItem(
         headlineContent = { Text("Sync now") },
-        supportingContent = { Text("Upload the current backup immediately") },
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onSyncNowClick),
+        supportingContent = {
+            Text(
+                if (syncInFlight) "Syncing in the background…"
+                else "Upload the current backup immediately",
+            )
+        },
+        trailingContent = {
+            if (syncInFlight) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.height(20.dp),
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth().clickable(
+            enabled = !syncInFlight,
+            onClick = onSyncNowClick,
+        ),
     )
     HorizontalDivider()
 
