@@ -12,6 +12,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,24 +61,30 @@ fun CloudSyncSection(
 
     var showSignOutDialog by remember { mutableStateOf(false) }
 
-    ListItem(
-        headlineContent = { Text("Sync to Google Drive") },
-        supportingContent = {
-            val statusText = buildStatusText(
-                paused = paused,
-                accountEmail = accountEmail,
-                lastSyncAt = lastSyncAt,
-                lastSyncError = lastSyncError,
-            )
-            Text(
-                text = statusText,
-                color = if (lastSyncError != null) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
-    )
-    HorizontalDivider()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                text = "Status",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = buildStatusText(
+                    paused = paused,
+                    accountEmail = accountEmail,
+                    lastSyncAt = lastSyncAt,
+                    lastSyncError = lastSyncError,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (lastSyncError != null) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
 
     ListItem(
         headlineContent = { Text("Sync now") },
