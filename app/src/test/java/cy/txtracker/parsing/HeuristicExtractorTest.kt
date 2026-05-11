@@ -117,11 +117,48 @@ class HeuristicExtractorTest {
     }
 
     @Test
-    fun rejects_gwallet_text_that_lacks_a_verb() {
-        // GWallet's notification has no out-verb in it. The strict parser handles this format;
-        // the heuristic deliberately requires a verb so we don't double-extract.
-        val gwallet = "CHONG TYRE AUTO SVC RM530.00 with CIMB Cash Rebate Plat MasterCard **1868"
-        assertThat(extractor.extract(gwallet, "anything", now)).isNull()
+    fun gwallet_card_spend_shape_extracts_merchant_from_head() {
+        // No verb, but the "MERCHANT RM<amt> with <card> ••<last4>" structure is unambiguous —
+        // it's a card spend. Pre-widening the heuristic rejected this; the strict parser was
+        // supposed to catch it but its regex expected `**1868` and modern Google Wallet uses
+        // `••1868` (U+2022 bullets).
+        val gwallet = "HEXTAR LUCKIN (M) SB RM7.41 with CIMB Cash Rebate Plat MasterCard ••1868"
+        val r = extractor.extract(gwallet, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("HEXTAR LUCKIN (M) SB")
+        assertThat(r.amountMinor).isEqualTo(741L)
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
+
+    @Test
+    fun gwallet_card_spend_works_with_legacy_asterisk_suffix() {
+        // Older Google Wallet pushes used **<last4> instead of ••<last4>. Both shapes
+        // must work so nothing regresses if the user has older captured rows replayed.
+        val text = "CHONG TYRE AUTO SVC RM530.00 with CIMB Cash Rebate Plat MasterCard **1868"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("CHONG TYRE AUTO SVC")
+        assertThat(r.amountMinor).isEqualTo(53000L)
+    }
+
+    @Test
+    fun card_spend_pattern_does_not_match_text_without_card_suffix() {
+        // Promo / marketing text that mentions an amount and "with" but no card-bullets
+        // suffix must NOT trigger the card-spend path. The OUT_VERB requirement protects
+        // these.
+        val text = "Pay RM 5.00 with your wallet to earn 5% cashback"
+        // No verb? "Pay" is not in our OUT_VERB list; "earn" indicates incoming. No
+        // recipient pattern fires either (no "to MERCHANT" before "for|on|..."). And the
+        // card-spend pattern doesn't match because there's no <bullets>+<last4> trailer.
+        assertThat(extractor.extract(text, "anything", now)).isNull()
+    }
+
+    @Test
+    fun card_spend_pattern_handles_multibullet_card_suffix() {
+        // Some captures observed had 4 bullets: ••••1868. The regex must accept any
+        // run of bullets/asterisks before the last4.
+        val text = "BOOK STORE RM12.00 with HSBC Platinum ••••5678"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("BOOK STORE")
+        assertThat(r.amountMinor).isEqualTo(1200L)
     }
 
     @Test

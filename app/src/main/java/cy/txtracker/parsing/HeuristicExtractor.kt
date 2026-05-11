@@ -8,31 +8,34 @@ import kotlinx.datetime.Instant
 /**
  * Generic, keyword-based fallback for when no strict per-source parser matches.
  *
- * Triggers only when **all three** signals are present in the notification text:
- *   1. An amount: `RM<n>.<2d>` or `MYR<n>.<2d>`, with or without space, with optional thousands.
- *   2. An out-direction verb: paid / transferred / charged / debited / spent / withdrawn /
- *      sent / deducted (case-insensitive).
- *   3. A recipient phrase: `to <X>` / `@<X>` / `at <X>`.
+ * Two trigger shapes:
  *
- * Requiring all three keeps false positives out of the captured stream — promo text like
- * "RM 5.00 cashback expires soon" has no out-verb; balance updates have neither verb nor
- * recipient. Anything that does match all three is real enough to be worth surfacing, but
- * gets `needsVerification = true` so the user can confirm before it counts as real spend.
+ *   A. **Verb + recipient.** All three of:
+ *      1. An amount: `RM<n>.<2d>` or `MYR<n>.<2d>`, with or without space, with optional thousands.
+ *      2. An out-direction verb: paid / transferred / charged / debited / spent / withdrawn /
+ *         sent / deducted (case-insensitive).
+ *      3. A recipient phrase: `to <X>` / `@<X>` / `at <X>`.
  *
- * The extractor doesn't try to be the strict parser's equal — it accepts noisier merchant
- * strings than a hand-rolled regex would. Cleanup happens later when the user confirms or
- * edits the row.
+ *   B. **Card-spend (no verb required).** The full text matches
+ *      `<MERCHANT> RM<amount> with <CARD> <bullets-or-asterisks><LAST4>`. Wallets like
+ *      Google Wallet use this verb-less form. The head before the amount is the merchant.
+ *
+ * Either shape is sufficient. Shape B is tried first so the card-spend head extraction
+ * doesn't get accidentally caught by the more permissive shape-A merchant patterns.
+ *
+ * Requiring at least one of these keeps false positives out of the captured stream — promo
+ * text like "RM 5.00 cashback expires soon" matches neither. Anything that does match gets
+ * `needsVerification = true` so the user can confirm before it counts as real spend.
  */
 @Singleton
 class HeuristicExtractor @Inject constructor() {
 
     fun extract(text: String, sourceApp: String, postedAt: Instant): ParsedTransaction? {
         if (text.isBlank()) return null
+        val trimmed = text.trim()
+        val amountMatch = AMOUNT.find(trimmed) ?: return null
 
-        val amountMatch = AMOUNT.find(text) ?: return null
-        if (!OUT_VERB.containsMatchIn(text)) return null
-
-        val merchant = extractMerchant(text)?.takeIf { it.isNotBlank() } ?: return null
+        val merchant = resolveMerchant(trimmed)?.takeIf { it.isNotBlank() } ?: return null
 
         return ParsedTransaction(
             amountMinor = parseRinggitAmountMinor(amountMatch.groups["amount"]!!.value),
@@ -46,15 +49,20 @@ class HeuristicExtractor @Inject constructor() {
     }
 
     /**
-     * Walk the recipient patterns in priority order, returning the first non-blank merchant.
-     * Trailing punctuation is stripped because notifications often end the merchant phrase
-     * with a period.
+     * Tries the card-spend shape first (no verb required), then falls back to the
+     * verb+recipient shape. Returns null if neither shape matches.
      */
-    private fun extractMerchant(text: String): String? {
-        for (pattern in MERCHANT_PATTERNS) {
-            val m = pattern.find(text) ?: continue
-            val raw = m.groups["merchant"]?.value ?: continue
-            return raw.trim().trimEnd('.', ',', ';')
+    private fun resolveMerchant(text: String): String? {
+        CARD_SPEND_PATTERN.matchEntire(text)?.groups?.get("merchant")?.value?.trim()?.let {
+            if (it.isNotEmpty()) return it
+        }
+
+        if (!OUT_VERB.containsMatchIn(text)) return null
+        for (pattern in RECIPIENT_PATTERNS) {
+            val raw = pattern.find(text)?.groups?.get("merchant")?.value
+                ?.trim()
+                ?.trimEnd('.', ',', ';')
+            if (!raw.isNullOrEmpty()) return raw
         }
         return null
     }
@@ -74,10 +82,18 @@ class HeuristicExtractor @Inject constructor() {
             RegexOption.IGNORE_CASE,
         )
 
-        // Each merchant pattern stops before common follow-on tokens ("on <date>", "for <X>",
+        // Card-spend shape (full-string match): `<MERCHANT> RM<amt> with <CARD> <bullets><last4>`.
+        // Accepts both U+2022 bullets (••1868 — current Google Wallet) and asterisks (**1868
+        // — older Google Wallet style and some other wallets). Bullet/asterisk run of any
+        // length to handle ••••1868 captures observed in the wild.
+        private val CARD_SPEND_PATTERN = Regex(
+            """^(?<merchant>.+?)\s+RM\s*[\d,]+\.\d{2}\s+with\s+.+?\s+[•*]+\s*(?<last4>\d{4})\s*$""",
+        )
+
+        // Each recipient pattern stops before common follow-on tokens ("on <date>", "for <X>",
         // "via <X>", etc.) and at sentence-ending punctuation. Order matters — we try the most
         // specific shapes first.
-        private val MERCHANT_PATTERNS = listOf(
+        private val RECIPIENT_PATTERNS = listOf(
             // "@MERCHANT on <date>" (bank-style)
             Regex(
                 """@(?<merchant>[^\.\n,]+?)(?=\s+on\s+\d{2}/\d{2}|[\.\n,]|\s*$)""",
