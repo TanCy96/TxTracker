@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -28,12 +29,15 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -57,13 +61,34 @@ fun SettingsScreen(
     val backupStatus by viewModel.backupStatus.collectAsState()
     val lockEnabled by viewModel.lockEnabled.collectAsState()
     val captureAllPackages by viewModel.captureAllPackages.collectAsState()
+    val cloudSyncEnabled by viewModel.cloudSyncEnabled.collectAsState()
+    val cloudSyncPaused by viewModel.cloudSyncPaused.collectAsState()
+    val cloudAccountEmail by viewModel.cloudAccountEmail.collectAsState()
+    val cloudLastSyncAt by viewModel.cloudLastSyncAt.collectAsState()
+    val cloudLastSyncError by viewModel.cloudLastSyncError.collectAsState()
+    val cloudTransactionCutoff by viewModel.cloudTransactionCutoff.collectAsState()
+    val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var showCutoffDialog by remember { mutableStateOf(false) }
 
     val pickBackup = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) viewModel.importBackup(uri)
+    }
+
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val task = com.google.android.gms.auth.api.signin.GoogleSignIn
+            .getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            viewModel.completeSignIn(email = account.email)
+        } catch (e: com.google.android.gms.common.api.ApiException) {
+            viewModel.signInFailed("Sign-in failed (code ${e.statusCode})")
+        }
     }
 
     LaunchedEffect(exportStatus) {
@@ -270,6 +295,21 @@ fun SettingsScreen(
                 ),
             )
 
+            cy.txtracker.ui.settings.cloud.CloudSyncSection(
+                enabled = cloudSyncEnabled,
+                paused = cloudSyncPaused,
+                accountEmail = cloudAccountEmail,
+                lastSyncAt = cloudLastSyncAt,
+                lastSyncError = cloudLastSyncError,
+                transactionCutoff = cloudTransactionCutoff,
+                onSignInClick = { signInLauncher.launch(viewModel.signInIntent()) },
+                onSignOutClick = { deleteCloud -> viewModel.cloudSignOut(deleteCloud) },
+                onSyncNowClick = { viewModel.cloudSyncNow() },
+                onPausedChange = { viewModel.setCloudPaused(it) },
+                onCutoffClick = { showCutoffDialog = true },
+                onRestoreClick = { viewModel.restoreFromCloud() },
+            )
+
             SectionHeader("About")
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -282,6 +322,59 @@ fun SettingsScreen(
                 )
             }
             Spacer(Modifier.height(16.dp))
+        }
+
+        if (showCutoffDialog) {
+            cy.txtracker.ui.settings.cloud.CutoffPickerDialog(
+                currentValue = cloudTransactionCutoff,
+                onDismiss = { showCutoffDialog = false },
+                onSave = { value ->
+                    viewModel.setTransactionCutoff(value)
+                    showCutoffDialog = false
+                },
+            )
+        }
+
+        when (val s = cloudSyncStatus) {
+            is SettingsViewModel.CloudSyncStatus.RestorePrompt -> {
+                AlertDialog(
+                    onDismissRequest = { viewModel.dismissRestorePrompt() },
+                    title = { Text("Restore from cloud?") },
+                    text = { Text("A backup was found in your Google Drive. Restore it now?") },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.restoreFromCloud() }) { Text("Restore") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.dismissRestorePrompt() }) { Text("Skip") }
+                    },
+                )
+            }
+            is SettingsViewModel.CloudSyncStatus.Restoring -> {
+                AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text("Restoring…") },
+                    text = { CircularProgressIndicator() },
+                    confirmButton = {},
+                )
+            }
+            is SettingsViewModel.CloudSyncStatus.RestoreSuccess -> {
+                LaunchedEffect(s) {
+                    val r = s.result
+                    snackbar.showSnackbar(
+                        "Restored: ${r.transactionsAdded} transactions, " +
+                            "${r.categoriesCreated} categories, " +
+                            "${r.merchantMappingsAdded + r.merchantMappingsUpdated} merchants.",
+                    )
+                    viewModel.consumeCloudStatus()
+                }
+            }
+            is SettingsViewModel.CloudSyncStatus.Error -> {
+                LaunchedEffect(s) {
+                    snackbar.showSnackbar(s.message)
+                    viewModel.consumeCloudStatus()
+                }
+            }
+            else -> Unit
         }
     }
 }
