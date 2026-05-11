@@ -1,5 +1,6 @@
 package cy.txtracker.export
 
+import cy.txtracker.data.Direction
 import cy.txtracker.domain.TimeBucket
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
@@ -17,16 +18,19 @@ import kotlinx.serialization.Serializable
 data class Backup(
     val version: Int = CURRENT_VERSION,
     val exportedAt: Instant,
+    @Serializable(with = YearMonthSerializer::class)
+    val transactionCutoff: YearMonth? = null,
     val categories: List<BackupCategory>,
     val merchantMappings: List<BackupMerchantMapping>,
     val merchantDescriptionMappings: List<BackupMerchantDescriptionMapping>,
     val categoryDescriptionMappings: List<BackupCategoryDescriptionMapping>,
+    val merchantNotes: List<BackupMerchantNote> = emptyList(),
     val userFacingSources: List<BackupUserFacingSource> = emptyList(),
     val approvedSources: List<BackupApprovedSource> = emptyList(),
-    val merchantNotes: List<BackupMerchantNote> = emptyList(),
+    val transactions: List<BackupTransaction> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 4
+        const val CURRENT_VERSION = 5
     }
 }
 
@@ -78,4 +82,22 @@ data class BackupMerchantNote(
     val merchant: String,
     val note: String,
     val updatedAt: Instant,
+)
+
+@Serializable
+data class BackupTransaction(
+    val amountMinor: Long,
+    val currency: String,
+    val merchantRaw: String,
+    val merchantNormalized: String,
+    val categoryName: String?,
+    val description: String?,
+    val occurredAt: Instant,
+    val timeBucket: TimeBucket,
+    val sourceApp: String,
+    val rawText: String?,
+    val direction: Direction,
+    val createdAt: Instant,
+    val notificationDedupeKey: String,
+    val needsVerification: Boolean,
 )

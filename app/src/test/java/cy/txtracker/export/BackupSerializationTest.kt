@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(4)
+        assertThat(parsed.version).isEqualTo(5)
     }
 
     @Test
@@ -147,7 +147,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.approvedSources).hasSize(1)
         assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
-        assertThat(parsed.version).isEqualTo(4)
+        assertThat(parsed.version).isEqualTo(5)
     }
 
     @Test
@@ -195,7 +195,7 @@ class BackupSerializationTest {
         assertThat(note.merchant).isEqualTo("WARUNG UNCLE")
         assertThat(note.note).isEqualTo("SS15 kopitiam, only takes cash")
         assertThat(note.updatedAt).isEqualTo(Instant.parse("2026-05-10T10:00:00Z"))
-        assertThat(parsed.version).isEqualTo(4)
+        assertThat(parsed.version).isEqualTo(5)
     }
 
     @Test
@@ -217,5 +217,83 @@ class BackupSerializationTest {
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v3Json)
 
         assertThat(parsed.merchantNotes).isEmpty()
+    }
+
+    @Test
+    fun transactions_roundtrip() {
+        val original = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 1250L,
+                    currency = "MYR",
+                    merchantRaw = "GRAB",
+                    merchantNormalized = "GRAB",
+                    categoryName = "Transport",
+                    description = "ride home",
+                    occurredAt = Instant.parse("2026-05-10T10:00:00Z"),
+                    timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                    sourceApp = "com.grabtaxi.passenger",
+                    rawText = "Your Mastercard 1868 has been charged RM 12.50 for booking A-XX",
+                    direction = cy.txtracker.data.Direction.OUT,
+                    createdAt = Instant.parse("2026-05-10T10:00:00Z"),
+                    notificationDedupeKey = "abc123",
+                    needsVerification = false,
+                ),
+            ),
+        )
+
+        val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+
+        assertThat(parsed.version).isEqualTo(5)
+        assertThat(parsed.transactions).hasSize(1)
+        val tx = parsed.transactions.single()
+        assertThat(tx.merchantRaw).isEqualTo("GRAB")
+        assertThat(tx.categoryName).isEqualTo("Transport")
+        assertThat(tx.amountMinor).isEqualTo(1250L)
+    }
+
+    @Test
+    fun transactionCutoff_roundtrips_as_yyyy_mm_string() {
+        val original = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            transactionCutoff = YearMonth(2024, 1),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+        )
+
+        val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        assertThat(json).contains(""""transactionCutoff": "2024-01"""")
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+        assertThat(parsed.transactionCutoff).isEqualTo(YearMonth(2024, 1))
+    }
+
+    @Test
+    fun v4_backup_parses_with_empty_transactions_and_null_cutoff() {
+        val v4Json = """
+            {
+              "version": 4,
+              "exportedAt": "2026-05-01T00:00:00Z",
+              "categories": [],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": [],
+              "merchantNotes": [],
+              "userFacingSources": [],
+              "approvedSources": []
+            }
+        """.trimIndent()
+
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v4Json)
+
+        assertThat(parsed.transactions).isEmpty()
+        assertThat(parsed.transactionCutoff).isNull()
     }
 }
