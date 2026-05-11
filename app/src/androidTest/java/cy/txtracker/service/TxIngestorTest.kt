@@ -12,6 +12,7 @@ import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
 import cy.txtracker.parsing.ParsedTransaction
+import cy.txtracker.parsing.SourceTierResolver
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import org.junit.Rule
@@ -24,6 +25,7 @@ class TxIngestorTest {
     @get:Rule val dbRule = DbRule()
 
     private fun ingestor() = TxIngestor(
+        database = dbRule.db,
         repository = TransactionRepository(
             database = dbRule.db,
             transactionDao = dbRule.transactionDao,
@@ -40,6 +42,7 @@ class TxIngestorTest {
         descriptionEngine = DescriptionEngine(
             descriptionMappingDao = dbRule.descriptionMappingDao,
         ),
+        sourceTierResolver = SourceTierResolver(dbRule.userFacingSourceDao),
     )
 
     private suspend fun categoryId(name: String): Long =
