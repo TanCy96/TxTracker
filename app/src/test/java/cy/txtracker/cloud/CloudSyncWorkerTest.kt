@@ -1,5 +1,6 @@
 package cy.txtracker.cloud
 
+import android.util.Log
 import androidx.work.ListenableWorker
 import com.google.common.truth.Truth.assertThat
 import cy.txtracker.export.BackupExporter
@@ -8,12 +9,22 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import org.junit.Before
 import org.junit.Test
 
 class CloudSyncWorkerTest {
+
+    @Before
+    fun mockLog() {
+        mockkStatic(Log::class)
+        every { Log.i(any(), any()) } returns 0
+        every { Log.w(any<String>(), any<String>()) } returns 0
+        every { Log.w(any<String>(), any<String>(), any()) } returns 0
+    }
 
     private val prefs = mockk<CloudSyncPrefs>(relaxed = true)
     private val exporter = mockk<BackupExporter>()

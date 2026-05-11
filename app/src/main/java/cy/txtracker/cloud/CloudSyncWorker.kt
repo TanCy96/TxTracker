@@ -1,6 +1,7 @@
 package cy.txtracker.cloud
 
 import android.content.Context
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -31,6 +32,8 @@ class CloudSyncWorker @AssistedInject constructor(
         execute(prefs, backupExporter, driveClient)
 
     companion object {
+        private const val TAG = "CloudSyncWorker"
+
         /** Pure function used by both production [doWork] and unit tests. Decoupled from
          *  Context/WorkerParameters so it's trivially testable. */
         suspend fun execute(
@@ -38,23 +41,30 @@ class CloudSyncWorker @AssistedInject constructor(
             backupExporter: BackupExporter,
             driveClient: DriveClient,
         ): Result {
-            if (!prefs.enabled.value || prefs.paused.value) return Result.success()
+            if (!prefs.enabled.value || prefs.paused.value) {
+                Log.i(TAG, "Bailing: enabled=${prefs.enabled.value} paused=${prefs.paused.value}")
+                return Result.success()
+            }
 
             val json = try {
                 backupExporter.exportToJsonString(prefs.transactionCutoff.value)
             } catch (t: Throwable) {
+                Log.w(TAG, "Export failed: ${t.message}", t)
                 prefs.setLastSync(success = false, error = t.message ?: "Export failed")
                 return Result.failure()
             }
 
+            Log.i(TAG, "Uploading ${json.length} bytes (cutoff=${prefs.transactionCutoff.value})")
             val uploadResult = driveClient.upload(json)
             return uploadResult.fold(
                 onSuccess = {
+                    Log.i(TAG, "Upload succeeded")
                     prefs.setLastSync(success = true, error = null)
                     Result.success()
                 },
                 onFailure = { e ->
                     val message = e.message ?: "Upload failed"
+                    Log.w(TAG, "Upload failed: $message", e)
                     prefs.setLastSync(success = false, error = message)
                     when (e) {
                         is TransientNetworkException -> Result.retry()
