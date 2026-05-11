@@ -53,4 +53,5 @@ data class ImportResult(
     val categoryDescriptionsAdded: Int,
     val categoryDescriptionsUpdated: Int,
     val skippedDueToMissingCategory: Int,
+    val transactionsAdded: Int = 0,
 )

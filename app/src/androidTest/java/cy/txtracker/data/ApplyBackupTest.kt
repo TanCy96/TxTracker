@@ -10,6 +10,7 @@ import cy.txtracker.export.BackupMerchantDescriptionMapping
 import cy.txtracker.export.BackupMerchantMapping
 import cy.txtracker.export.BackupApprovedSource
 import cy.txtracker.export.BackupMerchantNote
+import cy.txtracker.export.BackupTransaction
 import cy.txtracker.export.BackupUserFacingSource
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -367,5 +368,143 @@ class ApplyBackupTest {
 
         val note = repo.observeMerchantNotes().first().single()
         assertThat(note.note).isEqualTo("local newer note")
+    }
+
+    @Test
+    fun applyBackup_inserts_transactions() = runTest {
+        val repo = repo()
+        // Ensure the category exists locally so categoryName resolves.
+        val food = dbRule.categoryDao.getAll().first { it.name == "Food" }
+
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 1500,
+                    currency = "MYR",
+                    merchantRaw = "MCDONALDS",
+                    merchantNormalized = "MCDONALDS",
+                    categoryName = "Food",
+                    description = "lunch",
+                    occurredAt = Instant.parse("2026-05-10T12:30:00Z"),
+                    timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                    sourceApp = "com.google.android.apps.walletnfcrel",
+                    rawText = "MCDONALDS RM15.00 with CIMB ••1868",
+                    direction = cy.txtracker.data.Direction.OUT,
+                    createdAt = Instant.parse("2026-05-10T12:30:00Z"),
+                    notificationDedupeKey = "import-test-key-1",
+                    needsVerification = false,
+                ),
+            ),
+        )
+
+        val result = repo.applyBackup(backup)
+
+        assertThat(result.transactionsAdded).isEqualTo(1)
+        val all = dbRule.transactionDao.getAllOnce()
+        assertThat(all).hasSize(1)
+        val tx = all.single()
+        assertThat(tx.merchantNormalized).isEqualTo("MCDONALDS")
+        assertThat(tx.categoryId).isEqualTo(food.id)
+        assertThat(tx.notificationDedupeKey).isEqualTo("import-test-key-1")
+    }
+
+    @Test
+    fun applyBackup_skips_transaction_when_dedupe_key_collides_with_local() = runTest {
+        val repo = repo()
+        // Pre-insert a local transaction with a specific dedupe key.
+        val existingId = repo.insert(
+            cy.txtracker.data.Transaction(
+                amountMinor = 1000,
+                currency = "MYR",
+                merchantRaw = "LOCAL",
+                merchantNormalized = "LOCAL",
+                categoryId = null,
+                description = null,
+                occurredAt = Instant.parse("2026-05-10T10:00:00Z"),
+                timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                sourceApp = "manual",
+                rawText = null,
+                direction = cy.txtracker.data.Direction.OUT,
+                createdAt = Instant.parse("2026-05-10T10:00:00Z"),
+                notificationDedupeKey = "collide-key",
+                needsVerification = false,
+            ),
+        )!!
+
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 9999, // different amount, same dedupe key
+                    currency = "MYR",
+                    merchantRaw = "FROM-BACKUP",
+                    merchantNormalized = "FROM-BACKUP",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = Instant.parse("2026-05-10T10:00:00Z"),
+                    timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                    sourceApp = "manual",
+                    rawText = null,
+                    direction = cy.txtracker.data.Direction.OUT,
+                    createdAt = Instant.parse("2026-05-10T10:00:00Z"),
+                    notificationDedupeKey = "collide-key",
+                    needsVerification = false,
+                ),
+            ),
+        )
+
+        val result = repo.applyBackup(backup)
+
+        assertThat(result.transactionsAdded).isEqualTo(0)
+        val all = dbRule.transactionDao.getAllOnce()
+        assertThat(all).hasSize(1)
+        assertThat(all.single().id).isEqualTo(existingId)
+        assertThat(all.single().merchantRaw).isEqualTo("LOCAL")
+    }
+
+    @Test
+    fun applyBackup_inserts_transaction_with_null_category_when_categoryName_not_local() = runTest {
+        val repo = repo()
+
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 500,
+                    currency = "MYR",
+                    merchantRaw = "X",
+                    merchantNormalized = "X",
+                    categoryName = "NonExistentCategory",
+                    description = null,
+                    occurredAt = Instant.parse("2026-05-10T10:00:00Z"),
+                    timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                    sourceApp = "manual",
+                    rawText = null,
+                    direction = cy.txtracker.data.Direction.OUT,
+                    createdAt = Instant.parse("2026-05-10T10:00:00Z"),
+                    notificationDedupeKey = "null-cat-test",
+                    needsVerification = false,
+                ),
+            ),
+        )
+
+        val result = repo.applyBackup(backup)
+
+        assertThat(result.transactionsAdded).isEqualTo(1)
+        val tx = dbRule.transactionDao.getAllOnce().single()
+        assertThat(tx.categoryId).isNull()
     }
 }

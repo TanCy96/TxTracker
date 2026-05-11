@@ -464,6 +464,34 @@ class TransactionRepository @Inject constructor(
             )
         }
 
+        // 9. Transactions. Insert with IGNORE on the unique notificationDedupeKey index —
+        //    local transactions always win on conflict. Backup transactions whose
+        //    categoryName doesn't resolve to a local category get inserted with
+        //    categoryId = null (Unverified, same as a fresh capture).
+        var transactionsAdded = 0
+        for (bt in backup.transactions) {
+            val categoryId = bt.categoryName?.let { categoriesByName[it]?.id }
+            val rowId = transactionDao.insert(
+                Transaction(
+                    amountMinor = bt.amountMinor,
+                    currency = bt.currency,
+                    merchantRaw = bt.merchantRaw,
+                    merchantNormalized = bt.merchantNormalized,
+                    categoryId = categoryId,
+                    description = bt.description,
+                    occurredAt = bt.occurredAt,
+                    timeBucket = bt.timeBucket,
+                    sourceApp = bt.sourceApp,
+                    rawText = bt.rawText,
+                    direction = bt.direction,
+                    createdAt = bt.createdAt,
+                    notificationDedupeKey = bt.notificationDedupeKey,
+                    needsVerification = bt.needsVerification,
+                ),
+            )
+            if (rowId >= 0) transactionsAdded++
+        }
+
         ImportResult(
             categoriesCreated = categoriesCreated,
             merchantMappingsAdded = mAdded,
@@ -473,6 +501,7 @@ class TransactionRepository @Inject constructor(
             categoryDescriptionsAdded = cdAdded,
             categoryDescriptionsUpdated = cdUpdated,
             skippedDueToMissingCategory = skipped,
+            transactionsAdded = transactionsAdded,
         )
     }
 }
