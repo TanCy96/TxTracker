@@ -148,3 +148,18 @@ data class UserFacingSource(
     @PrimaryKey val packageName: String,
     val addedAt: Instant,
 )
+
+/**
+ * Package names the user has implicitly approved by confirming a Pending transaction from
+ * that source. The listener unions this set with [SourcePackages.PERMISSIVE_PACKAGES] to
+ * decide what counts as a finance app. Self-grows over time: every Pending row the user
+ * verifies adds its package here (insert-or-ignore).
+ *
+ * Distinct from [UserFacingSource], which represents a *tier* (Tier 1 vs Tier 2 for
+ * cross-source dedup priority). A package can be in both, one, or neither.
+ */
+@Entity(tableName = "approved_sources")
+data class ApprovedSource(
+    @PrimaryKey val packageName: String,
+    val firstApprovedAt: Instant,
+)

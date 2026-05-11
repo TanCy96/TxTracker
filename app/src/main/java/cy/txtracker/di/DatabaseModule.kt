@@ -10,6 +10,7 @@ import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
+import cy.txtracker.data.ApprovedSourceDao
 import cy.txtracker.data.UserFacingSourceDao
 import dagger.Module
 import dagger.Provides
@@ -51,7 +52,7 @@ object DatabaseModule {
             // (adds the merchant_notes table). Preserves all captured transactions and
             // learned mappings rather than wiping them. fallbackToDestructiveMigration
             // stays as a safety net for any unforeseen mismatch.
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -74,6 +75,10 @@ object DatabaseModule {
     @Provides
     fun provideUserFacingSourceDao(db: TxDatabase): UserFacingSourceDao =
         db.userFacingSourceDao()
+
+    @Provides
+    fun provideApprovedSourceDao(db: TxDatabase): ApprovedSourceDao =
+        db.approvedSourceDao()
 }
 
 /**
@@ -109,6 +114,40 @@ private val MIGRATION_3_4 = object : Migration(3, 4) {
                 `addedAt` INTEGER NOT NULL,
                 PRIMARY KEY(`packageName`)
             )
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * Adds the `approved_sources` table introduced in v5 and backfills it with the package names
+ * of every already-verified transaction. This way users who upgrade keep their existing
+ * finance-app coverage when capture-all-packages is later turned off — without needing to
+ * re-verify a row from each source. Schema mirrors what Room would generate for
+ * [cy.txtracker.data.ApprovedSource] so the resulting DB matches a fresh install on v5.
+ */
+private val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `approved_sources` (
+                `packageName` TEXT NOT NULL,
+                `firstApprovedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`)
+            )
+            """.trimIndent(),
+        )
+        // Backfill: for every package the user has already verified at least one transaction
+        // from, record the earliest createdAt as firstApprovedAt. Skip manual entries — they
+        // aren't packages.
+        db.execSQL(
+            """
+            INSERT OR IGNORE INTO `approved_sources` (`packageName`, `firstApprovedAt`)
+            SELECT sourceApp, MIN(createdAt)
+            FROM `transactions`
+            WHERE `needsVerification` = 0
+              AND sourceApp != 'manual'
+            GROUP BY sourceApp
             """.trimIndent(),
         )
     }
