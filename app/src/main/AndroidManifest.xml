@@ -46,6 +46,26 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
         </provider>
+
+        <!--
+            Disable WorkManager's default initializer so our Application's
+            Configuration.Provider (which supplies the HiltWorkerFactory) is used
+            instead. Without this, androidx.startup auto-initializes WorkManager
+            BEFORE Application.onCreate, leaving the default WorkerFactory in
+            charge — which fails to instantiate any @HiltWorker (its
+            @AssistedInject constructor doesn't match the default factory's
+            expected (Context, WorkerParameters) shape).
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>
