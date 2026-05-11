@@ -31,6 +31,7 @@ class TxIngestorTest {
             merchantMappingDao = dbRule.merchantMappingDao,
             descriptionMappingDao = dbRule.descriptionMappingDao,
             merchantNoteDao = dbRule.merchantNoteDao,
+            userFacingSourceDao = dbRule.userFacingSourceDao,
         ),
         categorizationEngine = CategorizationEngine(
             merchantMappingDao = dbRule.merchantMappingDao,

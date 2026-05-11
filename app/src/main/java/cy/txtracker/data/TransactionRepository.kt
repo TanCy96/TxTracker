@@ -25,6 +25,7 @@ class TransactionRepository @Inject constructor(
     private val merchantMappingDao: MerchantMappingDao,
     private val descriptionMappingDao: DescriptionMappingDao,
     private val merchantNoteDao: MerchantNoteDao,
+    private val userFacingSourceDao: UserFacingSourceDao,
 ) {
     // Reads ---------------------------------------------------------------
 
@@ -55,6 +56,17 @@ class TransactionRepository @Inject constructor(
         descriptionMappingDao.observeAllCategory()
 
     fun observeMerchantNotes(): Flow<List<MerchantNote>> = merchantNoteDao.observeAll()
+
+    fun observeUserFacingSources(): Flow<List<UserFacingSource>> =
+        userFacingSourceDao.observeAll()
+
+    suspend fun addUserFacingSource(packageName: String, now: Instant = Clock.System.now()) {
+        userFacingSourceDao.insert(UserFacingSource(packageName, now))
+    }
+
+    suspend fun removeUserFacingSource(packageName: String) {
+        userFacingSourceDao.delete(packageName)
+    }
 
     suspend fun getMerchantNote(merchantNormalized: String): MerchantNote? =
         merchantNoteDao.get(merchantNormalized)
@@ -223,6 +235,45 @@ class TransactionRepository @Inject constructor(
 
     suspend fun setNeedsVerification(txId: Long, needsVerification: Boolean) =
         transactionDao.updateNeedsVerification(txId, needsVerification)
+
+    /**
+     * Looks up an existing row that matches the incoming notification on amount + currency
+     * + 5-min bucket but came from a different source app. Returns null if no such row.
+     * Caller (TxIngestor) decides whether to promote, drop, or insert normally.
+     */
+    suspend fun findCrossMerchantDupe(
+        amountMinor: Long,
+        currency: String,
+        occurredAt: Instant,
+        excludeSourceApp: String,
+    ): Transaction? {
+        val (bucketStart, bucketEndExclusive) = bucketBoundsFor(occurredAt)
+        return transactionDao.findCrossMerchantDupe(
+            amountMinor = amountMinor,
+            currency = currency,
+            bucketStart = bucketStart,
+            bucketEndExclusive = bucketEndExclusive,
+            excludeSourceApp = excludeSourceApp,
+        )
+    }
+
+    suspend fun promoteSourceFields(
+        id: Long,
+        merchantRaw: String,
+        merchantNormalized: String,
+        sourceApp: String,
+        rawText: String?,
+        notificationDedupeKey: String,
+        needsVerification: Boolean,
+    ) = transactionDao.promoteSourceFields(
+        id = id,
+        merchantRaw = merchantRaw,
+        merchantNormalized = merchantNormalized,
+        sourceApp = sourceApp,
+        rawText = rawText,
+        notificationDedupeKey = notificationDedupeKey,
+        needsVerification = needsVerification,
+    )
 
     suspend fun delete(txId: Long) = transactionDao.delete(txId)
 
