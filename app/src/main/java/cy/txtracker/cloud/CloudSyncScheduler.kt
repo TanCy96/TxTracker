@@ -17,9 +17,7 @@ import javax.inject.Singleton
 
 /**
  * Observes Room's [InvalidationTracker] on the backup-relevant tables and re-arms a
- * single unique WorkManager job 15 minutes after every change. The REPLACE policy
- * produces a trailing-edge debounce: only one upload fires 15 minutes after the most
- * recent write.
+ * single unique WorkManager job 15 minutes after every change.
  *
  * The same `WORK_NAME` is used for the manual "Sync now" path with no initial delay;
  * tapping "Sync now" cancels any pending debounce and runs immediately.
@@ -42,7 +40,16 @@ class CloudSyncScheduler @Inject constructor(
         database.invalidationTracker.addObserver(observer)
     }
 
-    /** Enqueues a 15-minute-delayed upload, REPLACE so each new write resets the timer. */
+    /**
+     * Enqueues a 15-minute-delayed upload with KEEP policy: if a worker is already
+     * pending or running for the same unique name, this is a no-op. KEEP (leading-edge
+     * debounce) replaces the previous REPLACE-based trailing-edge design because:
+     *   1. Leading-edge has the same effect — the worker reads current DB state when it
+     *      runs, not when it was scheduled, so changes that arrive during the wait window
+     *      are uploaded on the same scheduled run.
+     *   2. REPLACE was cancelling the user-initiated immediate Sync now job when any DB
+     *      write happened mid-upload, leaving the status as if the upload never ran.
+     */
     fun enqueueDebouncedUpload() {
         val request = OneTimeWorkRequestBuilder<CloudSyncWorker>()
             .setInitialDelay(15, TimeUnit.MINUTES)
@@ -50,7 +57,7 @@ class CloudSyncScheduler @Inject constructor(
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
-            WORK_NAME, ExistingWorkPolicy.REPLACE, request,
+            WORK_NAME, ExistingWorkPolicy.KEEP, request,
         )
     }
 
