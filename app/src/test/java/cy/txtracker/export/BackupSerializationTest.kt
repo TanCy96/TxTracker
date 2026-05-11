@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(3)
+        assertThat(parsed.version).isEqualTo(4)
     }
 
     @Test
@@ -147,7 +147,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.approvedSources).hasSize(1)
         assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
-        assertThat(parsed.version).isEqualTo(3)
+        assertThat(parsed.version).isEqualTo(4)
     }
 
     @Test
@@ -168,5 +168,54 @@ class BackupSerializationTest {
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v2Json)
 
         assertThat(parsed.approvedSources).isEmpty()
+    }
+
+    @Test
+    fun merchantNotes_roundtrip() {
+        val original = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            merchantNotes = listOf(
+                BackupMerchantNote(
+                    merchant = "WARUNG UNCLE",
+                    note = "SS15 kopitiam, only takes cash",
+                    updatedAt = Instant.parse("2026-05-10T10:00:00Z"),
+                ),
+            ),
+        )
+
+        val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+
+        assertThat(parsed.merchantNotes).hasSize(1)
+        val note = parsed.merchantNotes.single()
+        assertThat(note.merchant).isEqualTo("WARUNG UNCLE")
+        assertThat(note.note).isEqualTo("SS15 kopitiam, only takes cash")
+        assertThat(note.updatedAt).isEqualTo(Instant.parse("2026-05-10T10:00:00Z"))
+        assertThat(parsed.version).isEqualTo(4)
+    }
+
+    @Test
+    fun v3_backup_parses_with_empty_merchantNotes() {
+        // A serialized v3 file (no merchantNotes field) must still parse cleanly.
+        val v3Json = """
+            {
+              "version": 3,
+              "exportedAt": "2026-05-01T00:00:00Z",
+              "categories": [],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": [],
+              "userFacingSources": [],
+              "approvedSources": []
+            }
+        """.trimIndent()
+
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v3Json)
+
+        assertThat(parsed.merchantNotes).isEmpty()
     }
 }

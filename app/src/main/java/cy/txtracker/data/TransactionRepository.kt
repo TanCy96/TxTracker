@@ -444,6 +444,21 @@ class TransactionRepository @Inject constructor(
             )
         }
 
+        // 8. Merchant notes. Later-updatedAt wins on conflict — symmetrical to the
+        //    merchant-mapping / description-mapping merges. Skip notes that aren't newer
+        //    than the local copy.
+        for (bn in backup.merchantNotes) {
+            val existing = merchantNoteDao.get(bn.merchant)
+            if (existing != null && existing.updatedAt >= bn.updatedAt) continue
+            merchantNoteDao.upsert(
+                MerchantNote(
+                    merchantNormalized = bn.merchant,
+                    note = bn.note,
+                    updatedAt = bn.updatedAt,
+                ),
+            )
+        }
+
         ImportResult(
             categoriesCreated = categoriesCreated,
             merchantMappingsAdded = mAdded,

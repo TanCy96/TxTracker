@@ -79,6 +79,14 @@ class BackupExporter @Inject constructor(
                 .first().map { s ->
                     BackupApprovedSource(packageName = s.packageName, firstApprovedAt = s.firstApprovedAt)
                 },
+            merchantNotes = repository.observeMerchantNotes()
+                .first().map { n ->
+                    BackupMerchantNote(
+                        merchant = n.merchantNormalized,
+                        note = n.note,
+                        updatedAt = n.updatedAt,
+                    )
+                },
         )
 
         val json = JSON.encodeToString(backup)

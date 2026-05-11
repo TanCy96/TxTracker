@@ -9,7 +9,9 @@ import cy.txtracker.export.BackupCategoryDescriptionMapping
 import cy.txtracker.export.BackupMerchantDescriptionMapping
 import cy.txtracker.export.BackupMerchantMapping
 import cy.txtracker.export.BackupApprovedSource
+import cy.txtracker.export.BackupMerchantNote
 import cy.txtracker.export.BackupUserFacingSource
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import org.junit.Rule
@@ -276,5 +278,94 @@ class ApplyBackupTest {
 
         val source = dbRule.approvedSourceDao.getAllOnce().single()
         assertThat(source.firstApprovedAt).isEqualTo(localFirstApprovedAt)
+    }
+
+    @Test
+    fun applyBackup_inserts_merchant_notes() = runTest {
+        val repo = repo()
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            merchantNotes = listOf(
+                BackupMerchantNote(
+                    merchant = "WARUNG UNCLE",
+                    note = "SS15 kopitiam",
+                    updatedAt = Instant.parse("2026-05-10T10:00:00Z"),
+                ),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        val notes = repo.observeMerchantNotes().first()
+        assertThat(notes).hasSize(1)
+        val note = notes.single()
+        assertThat(note.merchantNormalized).isEqualTo("WARUNG UNCLE")
+        assertThat(note.note).isEqualTo("SS15 kopitiam")
+    }
+
+    @Test
+    fun applyBackup_overwrites_merchant_note_when_backup_is_newer() = runTest {
+        val repo = repo()
+        // Local: older note
+        repo.setMerchantNote(
+            merchantNormalized = "WARUNG UNCLE",
+            note = "old note",
+            now = Instant.parse("2026-05-01T10:00:00Z"),
+        )
+
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            merchantNotes = listOf(
+                BackupMerchantNote(
+                    merchant = "WARUNG UNCLE",
+                    note = "new note from another device",
+                    updatedAt = Instant.parse("2026-05-10T10:00:00Z"),
+                ),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        val note = repo.observeMerchantNotes().first().single()
+        assertThat(note.note).isEqualTo("new note from another device")
+    }
+
+    @Test
+    fun applyBackup_does_not_overwrite_merchant_note_when_local_is_newer() = runTest {
+        val repo = repo()
+        // Local: newer note
+        repo.setMerchantNote(
+            merchantNormalized = "WARUNG UNCLE",
+            note = "local newer note",
+            now = Instant.parse("2026-05-15T10:00:00Z"),
+        )
+
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-11T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            merchantNotes = listOf(
+                BackupMerchantNote(
+                    merchant = "WARUNG UNCLE",
+                    note = "older note from backup",
+                    updatedAt = Instant.parse("2026-05-10T10:00:00Z"),
+                ),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        val note = repo.observeMerchantNotes().first().single()
+        assertThat(note.note).isEqualTo("local newer note")
     }
 }
