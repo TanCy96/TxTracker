@@ -51,12 +51,6 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     val dismissed by viewModel.onboardingDismissed.collectAsStateWithLifecycle()
     val locked by viewModel.locked.collectAsStateWithLifecycle()
 
-    LaunchedEffect(granted) {
-        if (granted && !dismissed) {
-            viewModel.markOnboardingDismissed()
-        }
-    }
-
     // Lock check first — even ahead of onboarding. If the user has the lock toggle on and
     // the app cold-starts or returns from background after the grace period, they
     // authenticate before seeing anything else.
@@ -67,18 +61,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
 
     if (!dismissed) {
         OnboardingScreen(
-            onGrantAccess = {
-                // Optimistically dismiss before opening settings. The grant takes one or two
-                // beats to propagate to Settings.Secure on some OEMs, which made the
-                // post-grant LaunchedEffect occasionally miss the transition and leave the
-                // user stranded on the onboarding screen. Dismissing up front means the
-                // user always lands on home after returning from settings, regardless of
-                // whether they actually completed the toggle. If they didn't grant,
-                // capture stays silent until they fix it via Reset Onboarding.
-                viewModel.markOnboardingDismissed()
-                context.openListenerSettings()
-            },
-            onSkip = { viewModel.markOnboardingDismissed() },
+            granted = granted,
+            onGrantAccess = { context.openListenerSettings() },
+            onDismiss = { viewModel.markOnboardingDismissed() },
         )
         return
     }
