@@ -25,4 +25,12 @@ object CloudSyncModule {
 
     @Provides
     fun provideSignInTokenSource(impl: GoogleSignInStateProvider): SignInTokenSource = impl
+
+    @Provides
+    @Singleton
+    fun provideDriveClient(
+        okHttpClient: OkHttpClient,
+        json: Json,
+        signInState: SignInTokenSource,
+    ): DriveClient = DriveClient(okHttpClient, json, signInState)
 }
