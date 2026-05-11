@@ -44,17 +44,21 @@ class AddManualViewModel @Inject constructor(
     private val _state = MutableStateFlow(AddManualUiState())
     val state: StateFlow<AddManualUiState> = _state.asStateFlow()
 
-    /** Loads the category list and initializes date/time to "now" in KL. */
+    /**
+     * Resets all input fields to defaults and initializes date/time to "now" in KL.
+     * Called every time the sheet opens — without the full reset, the previous entry's
+     * text fields and category selection would persist (Hilt scopes the ViewModel to the
+     * parent NavGraph, so the same instance is reused across sheet openings).
+     */
     fun load() {
         viewModelScope.launch {
             val now = Clock.System.now().toLocalDateTime(MalaysiaTimeZone)
-            _state.update {
-                it.copy(
-                    date = now.date,
-                    time = LocalTime(now.hour, now.minute),
-                    categories = repository.observeAllCategories().first(),
-                )
-            }
+            val categories = repository.observeAllCategories().first()
+            _state.value = AddManualUiState(
+                date = now.date,
+                time = LocalTime(now.hour, now.minute),
+                categories = categories,
+            )
         }
     }
 

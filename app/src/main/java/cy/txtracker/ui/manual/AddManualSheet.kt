@@ -24,6 +24,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -156,23 +157,17 @@ private fun Content(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
+            ClickableField(
                 value = "${state.date.year}-${state.date.monthNumber.pad()}-${state.date.dayOfMonth.pad()}",
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Date") },
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { showDatePicker = true },
+                label = "Date",
+                onClick = { showDatePicker = true },
+                modifier = Modifier.weight(1f),
             )
-            OutlinedTextField(
+            ClickableField(
                 value = "${state.time.hour.pad()}:${state.time.minute.pad()}",
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Time") },
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { showTimePicker = true },
+                label = "Time",
+                onClick = { showTimePicker = true },
+                modifier = Modifier.weight(1f),
             )
         }
         Spacer(Modifier.height(20.dp))
@@ -206,6 +201,43 @@ private fun Content(
                 onTimeChange(it)
                 showTimePicker = false
             },
+        )
+    }
+}
+
+/**
+ * A read-only field that looks like an [OutlinedTextField] but acts like a button.
+ * Necessary because `OutlinedTextField(readOnly = true)` still captures touch events
+ * before a `.clickable` modifier on the field can fire — the trick is to disable the
+ * field (so it doesn't intercept pointer input) and overlay an invisible clickable Box.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClickableField(
+    value: String,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            enabled = false,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clickable(onClick = onClick),
         )
     }
 }
