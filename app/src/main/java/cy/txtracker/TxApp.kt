@@ -15,6 +15,7 @@ class TxApp : Application(), Configuration.Provider {
 
     @Inject lateinit var lockState: LockState
     @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var cloudSyncScheduler: cy.txtracker.cloud.CloudSyncScheduler
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -33,5 +34,6 @@ class TxApp : Application(), Configuration.Provider {
                 override fun onStop(owner: LifecycleOwner) = lockState.onBackgrounded()
             },
         )
+        cloudSyncScheduler.start()
     }
 }
