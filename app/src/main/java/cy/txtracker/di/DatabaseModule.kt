@@ -10,6 +10,7 @@ import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
+import cy.txtracker.data.UserFacingSourceDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -50,7 +51,7 @@ object DatabaseModule {
             // (adds the merchant_notes table). Preserves all captured transactions and
             // learned mappings rather than wiping them. fallbackToDestructiveMigration
             // stays as a safety net for any unforeseen mismatch.
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -69,6 +70,10 @@ object DatabaseModule {
 
     @Provides
     fun provideMerchantNoteDao(db: TxDatabase): MerchantNoteDao = db.merchantNoteDao()
+
+    @Provides
+    fun provideUserFacingSourceDao(db: TxDatabase): UserFacingSourceDao =
+        db.userFacingSourceDao()
 }
 
 /**
@@ -85,6 +90,24 @@ private val MIGRATION_2_3 = object : Migration(2, 3) {
                 `note` TEXT NOT NULL,
                 `updatedAt` INTEGER NOT NULL,
                 PRIMARY KEY(`merchantNormalized`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * Adds the `user_facing_sources` table introduced in v4. Schema mirrors what Room would
+ * generate for [cy.txtracker.data.UserFacingSource].
+ */
+private val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `user_facing_sources` (
+                `packageName` TEXT NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`)
             )
             """.trimIndent(),
         )

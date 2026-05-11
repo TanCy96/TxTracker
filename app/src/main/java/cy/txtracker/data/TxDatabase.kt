@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    version = 3,
+    version = 4,
     exportSchema = true,
     entities = [
         Transaction::class,
@@ -15,6 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MerchantDescriptionMapping::class,
         CategoryDescriptionMapping::class,
         MerchantNote::class,
+        UserFacingSource::class,
     ],
 )
 @TypeConverters(Converters::class)
@@ -24,6 +25,7 @@ abstract class TxDatabase : RoomDatabase() {
     abstract fun merchantMappingDao(): MerchantMappingDao
     abstract fun descriptionMappingDao(): DescriptionMappingDao
     abstract fun merchantNoteDao(): MerchantNoteDao
+    abstract fun userFacingSourceDao(): UserFacingSourceDao
 
     companion object {
         const val DB_NAME = "txtracker.db"
