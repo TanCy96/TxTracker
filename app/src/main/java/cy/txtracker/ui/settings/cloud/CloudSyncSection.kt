@@ -69,7 +69,7 @@ fun CloudSyncSection(
                         else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        modifier = Modifier.fillMaxWidth().clickable { showSignOutDialog = true },
+        modifier = Modifier.fillMaxWidth(),
     )
     HorizontalDivider()
 
