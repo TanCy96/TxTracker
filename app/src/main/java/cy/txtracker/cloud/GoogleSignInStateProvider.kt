@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 @Singleton
 class GoogleSignInStateProvider @Inject constructor(
     @ApplicationContext private val context: Context,
-) {
+) : SignInTokenSource {
     val signInClient: GoogleSignInClient by lazy {
         val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
@@ -36,12 +36,12 @@ class GoogleSignInStateProvider @Inject constructor(
     }
 
     /** Email of the currently signed-in account, or null if not signed in. */
-    fun currentAccountEmail(): String? =
+    override fun currentAccountEmail(): String? =
         GoogleSignIn.getLastSignedInAccount(context)?.email
 
     /** Returns an OAuth access token for Drive AppData. Throws [NotSignedInException] if
      *  not signed in or [AuthExpiredException] if refresh fails. */
-    suspend fun currentAccessToken(): String = withContext(Dispatchers.IO) {
+    override suspend fun currentAccessToken(): String = withContext(Dispatchers.IO) {
         val account: GoogleSignInAccount = GoogleSignIn.getLastSignedInAccount(context)
             ?: throw NotSignedInException()
         val androidAccount: Account = account.androidAccount()
