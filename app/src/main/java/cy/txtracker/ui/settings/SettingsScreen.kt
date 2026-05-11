@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -127,8 +129,12 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState()),
         ) {
+            SectionHeader("Learning")
             ListItem(
                 headlineContent = { Text("Categories") },
                 supportingContent = { Text("Add, rename, or delete categories.") },
@@ -154,8 +160,8 @@ fun SettingsScreen(
                 },
                 modifier = Modifier.fillMaxWidth().clickableRow(onNotificationPriorityClick),
             )
-            HorizontalDivider()
 
+            SectionHeader("Backup & export")
             val isExporting = exportStatus is SettingsViewModel.ExportStatus.Running
             ListItem(
                 headlineContent = { Text("Export to CSV") },
@@ -208,20 +214,8 @@ fun SettingsScreen(
                     onClick = { pickBackup.launch(arrayOf("application/json", "*/*")) },
                 ),
             )
-            HorizontalDivider()
 
-            Spacer(Modifier.height(24.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text("About", style = MaterialTheme.typography.labelLarge)
-                Text(
-                    text = "TxTracker ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            SectionHeader("App")
             ListItem(
                 headlineContent = { Text("Reset onboarding") },
                 supportingContent = {
@@ -232,6 +226,25 @@ fun SettingsScreen(
                         viewModel.resetOnboarding()
                         scope.launch { snackbar.showSnackbar("Onboarding reset.") }
                     },
+                ),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Require unlock") },
+                supportingContent = {
+                    Text(
+                        "Use fingerprint, face, or your device PIN to open the app. " +
+                            "Re-locks after 30s in the background.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = lockEnabled,
+                        onCheckedChange = viewModel::setLockEnabled,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    onClick = { viewModel.setLockEnabled(!lockEnabled) },
                 ),
             )
             HorizontalDivider()
@@ -255,27 +268,33 @@ fun SettingsScreen(
                     onClick = { viewModel.setCaptureAllPackages(!captureAllPackages) },
                 ),
             )
-            HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Require unlock") },
-                supportingContent = {
-                    Text(
-                        "Use fingerprint, face, or your device PIN to open the app. " +
-                            "Re-locks after 30s in the background.",
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = lockEnabled,
-                        onCheckedChange = viewModel::setLockEnabled,
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().clickableRow(
-                    onClick = { viewModel.setLockEnabled(!lockEnabled) },
-                ),
-            )
+
+            SectionHeader("About")
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "TxTracker ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
+    )
 }
 
 private fun Modifier.clickableRow(

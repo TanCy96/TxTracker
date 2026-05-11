@@ -253,9 +253,9 @@ private fun TransactionList(
     onTransactionClick: (Transaction) -> Unit,
 ) {
     LazyColumn(contentPadding = contentPadding) {
-        days.forEach { group ->
+        days.forEachIndexed { index, group ->
             item(key = "header-${group.date}") {
-                DayHeader(group)
+                DayHeader(group, isFirst = index == 0)
             }
             items(group.transactions, key = { it.transaction.id }) { row ->
                 TransactionRow(
@@ -269,24 +269,35 @@ private fun TransactionList(
 }
 
 @Composable
-private fun DayHeader(group: DayGroup) {
+private fun DayHeader(group: DayGroup, isFirst: Boolean) {
     val total = group.transactions.sumOf { it.transaction.amountMinor }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = formatDayHeader(group.date),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = formatMyr(total),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    Column {
+        if (!isFirst) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = formatDayHeader(group.date),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = formatMyr(total),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
