@@ -105,6 +105,11 @@ class TransactionRepository @Inject constructor(
     /** All transactions sorted by occurredAt ASC. Used by CSV export. */
     suspend fun getAllTransactionsOnce(): List<Transaction> = transactionDao.getAllOnce()
 
+    /** All transactions with `occurredAt >= cutoffStart`, sorted ASC. Used by cloud-sync
+     *  upload when a year-month floor is configured. */
+    suspend fun getAllTransactionsOnceFrom(cutoffStart: Instant): List<Transaction> =
+        transactionDao.getAllFrom(cutoffStart)
+
     suspend fun getAllCategoriesOnce(): List<Category> = categoryDao.getAll()
 
     // Writes --------------------------------------------------------------

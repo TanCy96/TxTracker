@@ -27,6 +27,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY occurredAt ASC")
     suspend fun getAllOnce(): List<Transaction>
 
+    @Query("SELECT * FROM transactions WHERE occurredAt >= :cutoffStart ORDER BY occurredAt ASC")
+    suspend fun getAllFrom(cutoffStart: Instant): List<Transaction>
+
     @Query(
         """
         SELECT * FROM transactions
