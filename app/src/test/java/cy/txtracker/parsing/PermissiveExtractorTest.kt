@@ -53,14 +53,41 @@ class PermissiveExtractorTest {
     }
 
     @Test
-    fun grab_package_uses_GRAB_merchant_without_review_suffix() {
-        // Grab notifications never name the underlying driver / merchant, so the permissive
-        // layer hardcodes "GRAB" rather than "Grab (review)" — same convention the retired
-        // strict parser used.
+    fun grab_car_booking_id_resolves_to_Grab_Car_merchant() {
+        // Grab Car bookings use the `A-<alphanumeric>` booking ID format.
         val text = "Your Mastercard 1868 has been charged RM 25.00 for booking A-9AK6JSBWXF8SAV"
         val r = extractor.extract(text, SourcePackages.GRAB, now)!!
-        assertThat(r.merchantRaw).isEqualTo("GRAB")
+        assertThat(r.merchantRaw).isEqualTo("Grab Car")
         assertThat(r.amountMinor).isEqualTo(2500L)
+    }
+
+    @Test
+    fun grab_food_booking_id_resolves_to_Grab_Food_merchant() {
+        // Grab Food bookings use the `<digits>-<alphanumeric>` booking ID format. The
+        // trailing period in the notification body must not contaminate the prefix check.
+        val text = "Your MasterCard 1868 has been charged MYR 9.45 for booking 00193115115-C76ERE3UTTKHTA."
+        val r = extractor.extract(text, SourcePackages.GRAB, now)!!
+        assertThat(r.merchantRaw).isEqualTo("Grab Food")
+        assertThat(r.amountMinor).isEqualTo(945L)
+    }
+
+    @Test
+    fun grab_unknown_booking_id_format_falls_back_to_GRAB_merchant() {
+        // Any other Grab product (Grab Mart, Grab Express, etc.) uses an unknown booking
+        // ID format we haven't catalogued — fall back to "GRAB" rather than guess wrong.
+        // Future enhancement: learn the mapping from user edits (FUTURE.md item 7c).
+        val text = "Your MasterCard 1868 has been charged MYR 15.00 for booking X-99-FOOTHING"
+        val r = extractor.extract(text, SourcePackages.GRAB, now)!!
+        assertThat(r.merchantRaw).isEqualTo("GRAB")
+    }
+
+    @Test
+    fun grab_text_without_booking_phrase_falls_back_to_GRAB_merchant() {
+        // Defensive: if Grab ever changes the wording, we still get a "GRAB" capture
+        // rather than an empty merchant or a crash.
+        val text = "Your MasterCard 1868 was charged MYR 5.00 today"
+        val r = extractor.extract(text, SourcePackages.GRAB, now)!!
+        assertThat(r.merchantRaw).isEqualTo("GRAB")
     }
 
     @Test

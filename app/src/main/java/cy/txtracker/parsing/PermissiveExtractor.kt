@@ -67,8 +67,29 @@ class PermissiveExtractor @Inject constructor() {
      * so we commit to `"GRAB"` directly and skip the review suffix.
      */
     private fun merchantFor(sourceApp: String, text: String): String {
-        if (sourceApp == SourcePackages.GRAB) return "GRAB"
+        if (sourceApp == SourcePackages.GRAB) return grabMerchantFrom(text)
         return "${sourceLabel(sourceApp)} (review)"
+    }
+
+    /**
+     * Resolves the Grab sub-product label from a booking ID inside the notification text.
+     * Two observed formats today:
+     *   - `A-<alphanumeric>`  → Grab Car
+     *   - `<digits>-<alphanumeric>` → Grab Food
+     * Anything else falls back to the bare "GRAB" label so a future product (Grab Mart,
+     * Grab Express, …) isn't mislabeled — the user can re-label from the Pending list.
+     *
+     * If the notification text doesn't carry a "for booking <ID>" phrase at all (e.g.,
+     * Grab changes wording), also falls back to "GRAB".
+     */
+    private fun grabMerchantFrom(text: String): String {
+        val rawId = GRAB_BOOKING_ID.find(text)?.groups?.get("id")?.value ?: return "GRAB"
+        val id = rawId.trimEnd('.', ',', ';')
+        return when {
+            id.startsWith("A-") -> "Grab Car"
+            GRAB_FOOD_BOOKING.matches(id) -> "Grab Food"
+            else -> "GRAB"
+        }
     }
 
     /** Friendlier short name for the row's merchant placeholder, derived from the package. */
@@ -96,6 +117,20 @@ class PermissiveExtractor @Inject constructor() {
         // future change to the heuristic to silently widen this layer too.
         private val AMOUNT = Regex(
             """\b(?:RM|MYR)\s*(?<amount>[\d,]+\.\d{2})\b""",
+        )
+
+        // "for booking <id>" anchored to a whitespace-delimited token. Greedy `\S+` so the
+        // booking ID's trailing period (some captures end with it) is included; the caller
+        // trims trailing punctuation before classifying.
+        private val GRAB_BOOKING_ID = Regex(
+            """for booking (?<id>\S+)""",
+        )
+
+        // Grab Food bookings: `<one or more digits>-<one or more alphanumeric chars>`.
+        // Grab Car bookings start with the literal `A-` and are handled by `startsWith`,
+        // not this regex.
+        private val GRAB_FOOD_BOOKING = Regex(
+            """^\d+-[A-Z0-9]+$""",
         )
     }
 }
