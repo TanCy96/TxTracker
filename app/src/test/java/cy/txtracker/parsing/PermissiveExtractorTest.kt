@@ -16,7 +16,7 @@ class PermissiveExtractorTest {
         // and the heuristic both reject this; the permissive layer is the safety net.
         val text = "CHONG TYRE AUTO SVC RM530.00 with CIMB Cash Rebate Plat MasterCard **1868"
 
-        val r = extractor.extract(text, GoogleWalletParser.GOOGLE_WALLET_PACKAGE, now)!!
+        val r = extractor.extract(text, SourcePackages.GOOGLE_WALLET, now)!!
         assertThat(r.amountMinor).isEqualTo(53000L)
         assertThat(r.merchantRaw).isEqualTo("GWallet (review)")
         assertThat(r.rawText).isEqualTo(text)
@@ -63,21 +63,21 @@ class PermissiveExtractorTest {
     fun returns_null_when_text_has_no_amount() {
         // Allowlisted package but the notification carries no amount (e.g., promo, balance
         // alert without value, sign-in confirmation). No phantom row.
-        assertThat(extractor.extract("Welcome to Google Wallet", GoogleWalletParser.GOOGLE_WALLET_PACKAGE, now)).isNull()
+        assertThat(extractor.extract("Welcome to Google Wallet", SourcePackages.GOOGLE_WALLET, now)).isNull()
         assertThat(extractor.extract("CIMB: Your password was changed.", "com.cimb.octo", now)).isNull()
     }
 
     @Test
     fun returns_null_for_blank_text() {
-        assertThat(extractor.extract("", GoogleWalletParser.GOOGLE_WALLET_PACKAGE, now)).isNull()
-        assertThat(extractor.extract("   ", GoogleWalletParser.GOOGLE_WALLET_PACKAGE, now)).isNull()
+        assertThat(extractor.extract("", SourcePackages.GOOGLE_WALLET, now)).isNull()
+        assertThat(extractor.extract("   ", SourcePackages.GOOGLE_WALLET, now)).isNull()
     }
 
     @Test
     fun handles_thousands_separator() {
         val r = extractor.extract(
             "Charge of RM 1,234.56 confirmed",
-            GoogleWalletParser.GOOGLE_WALLET_PACKAGE,
+            SourcePackages.GOOGLE_WALLET,
             now,
         )!!
         assertThat(r.amountMinor).isEqualTo(123456L)

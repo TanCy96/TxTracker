@@ -4,18 +4,12 @@ import android.app.Notification
 import android.service.notification.StatusBarNotification
 
 /**
- * Parses payment notifications from a specific source app (Google Wallet, a bank app, etc.).
+ * Shared helpers used by the heuristic and permissive extractors.
  *
- * Each implementation owns the regex/format for its source and is registered in the parsing
- * Hilt module via `@IntoSet`. The listener iterates the set and dispatches by package name.
+ * (Historically this file also defined a `NotificationParser` interface that strict
+ * per-source parsers implemented. Those parsers were retired in favor of the
+ * heuristic+permissive pipeline; only the text/amount helpers remain.)
  */
-interface NotificationParser {
-    /** Package names this parser claims responsibility for. */
-    val packageNames: Set<String>
-
-    /** Returns a parsed transaction, or null if the notification doesn't match a known shape. */
-    fun parse(sbn: StatusBarNotification): ParsedTransaction?
-}
 
 /**
  * Returns the text payload most likely to contain the full payment shape, in priority order:

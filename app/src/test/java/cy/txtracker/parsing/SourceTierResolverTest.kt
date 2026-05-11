@@ -15,14 +15,14 @@ class SourceTierResolverTest {
     @Test
     fun grab_is_user_facing() = runTest {
         val resolver = SourceTierResolver(FakeUserFacingDao())
-        assertThat(resolver.tierFor(GrabParser.GRAB_PACKAGE))
+        assertThat(resolver.tierFor(SourcePackages.GRAB))
             .isEqualTo(SourceTier.USER_FACING)
     }
 
     @Test
     fun tng_is_user_facing() = runTest {
         val resolver = SourceTierResolver(FakeUserFacingDao())
-        assertThat(resolver.tierFor(TouchNGoParser.TNG_PACKAGE))
+        assertThat(resolver.tierFor(SourcePackages.TOUCH_N_GO))
             .isEqualTo(SourceTier.USER_FACING)
     }
 

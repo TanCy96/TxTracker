@@ -8,8 +8,8 @@ import cy.txtracker.data.MANUAL_SOURCE_APP
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
-import cy.txtracker.parsing.GrabParser
 import cy.txtracker.parsing.ParsedTransaction
+import cy.txtracker.parsing.SourcePackages
 import cy.txtracker.parsing.SourceTierResolver
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -67,7 +67,7 @@ class TxIngestorCrossSourceDedupeTest {
             currency = "MYR",
             merchantRaw = "GRAB",
             occurredAt = at,
-            sourceApp = GrabParser.GRAB_PACKAGE,
+            sourceApp = SourcePackages.GRAB,
             rawText = "Your Mastercard 1868 has been charged RM 25.00 for booking A-1",
             direction = Direction.OUT,
         )
@@ -83,7 +83,7 @@ class TxIngestorCrossSourceDedupeTest {
         assertThat(rows).hasSize(1)
         val row = rows.single()
         assertThat(row.id).isEqualTo(gwalletId)
-        assertThat(row.sourceApp).isEqualTo(GrabParser.GRAB_PACKAGE)
+        assertThat(row.sourceApp).isEqualTo(SourcePackages.GRAB)
         assertThat(row.merchantNormalized).isEqualTo("GRAB")
         assertThat(row.merchantRaw).isEqualTo("GRAB")
     }
@@ -101,7 +101,7 @@ class TxIngestorCrossSourceDedupeTest {
         val rows = dbRule.transactionDao.getAllOnce()
         assertThat(rows).hasSize(1)
         assertThat(rows.single().id).isEqualTo(grabId)
-        assertThat(rows.single().sourceApp).isEqualTo(GrabParser.GRAB_PACKAGE)
+        assertThat(rows.single().sourceApp).isEqualTo(SourcePackages.GRAB)
     }
 
     @Test

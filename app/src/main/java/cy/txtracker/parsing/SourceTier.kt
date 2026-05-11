@@ -32,8 +32,8 @@ class SourceTierResolver @Inject constructor(
 
     companion object {
         val BUILTIN_USER_FACING_PACKAGES: Set<String> = setOf(
-            GrabParser.GRAB_PACKAGE,
-            TouchNGoParser.TNG_PACKAGE,
+            SourcePackages.GRAB,
+            SourcePackages.TOUCH_N_GO,
         )
     }
 }

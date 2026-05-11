@@ -4,9 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.MANUAL_SOURCE_APP
 import cy.txtracker.data.TransactionRepository
-import cy.txtracker.parsing.GrabParser
+import cy.txtracker.parsing.SourcePackages
 import cy.txtracker.parsing.SourceTierResolver
-import cy.txtracker.parsing.TouchNGoParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -76,8 +75,8 @@ class NotificationPriorityViewModel @Inject constructor(
     }
 
     private fun displayLabelFor(pkg: String): String = when (pkg) {
-        GrabParser.GRAB_PACKAGE -> "Grab"
-        TouchNGoParser.TNG_PACKAGE -> "Touch 'n Go eWallet"
+        SourcePackages.GRAB -> "Grab"
+        SourcePackages.TOUCH_N_GO -> "Touch 'n Go eWallet"
         else -> pkg
     }
 
