@@ -22,6 +22,12 @@ import cy.txtracker.domain.MalaysiaTimeZone
 import kotlinx.datetime.Clock
 import kotlinx.datetime.toLocalDateTime
 
+private enum class TripStatus(val label: String) {
+    Upcoming("Upcoming"),
+    Active("Active"),
+    Ended("Ended"),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripHistoryScreen(
@@ -45,7 +51,11 @@ fun TripHistoryScreen(
     ) { padding ->
         LazyColumn(Modifier.padding(padding)) {
             items(state.trips, key = { it.id }) { trip ->
-                val active = trip.startAt <= now && (trip.endAt == null || trip.endAt > now)
+                val status = when {
+                    trip.startAt > now -> TripStatus.Upcoming
+                    trip.endAt != null && trip.endAt <= now -> TripStatus.Ended
+                    else -> TripStatus.Active
+                }
                 ListItem(
                     headlineContent = {
                         val startStr = trip.startAt.toLocalDateTime(MalaysiaTimeZone).date.toString()
@@ -53,10 +63,17 @@ fun TripHistoryScreen(
                             ?.toLocalDateTime(MalaysiaTimeZone)?.date?.toString() ?: "open"
                         Text("$startStr → $endStr")
                     },
-                    supportingContent = { Text(if (active) "Active" else "Ended") },
+                    supportingContent = { Text(status.label) },
                     trailingContent = {
-                        if (active) {
-                            TextButton(onClick = { viewModel.endTrip(trip.id) }) { Text("End now") }
+                        // "End now" only makes sense for currently-running trips —
+                        // setting endAt on an Upcoming trip would produce
+                        // endAt < startAt (a degenerate window). Cancelling an
+                        // Upcoming trip would need a separate delete path; not
+                        // wired up yet.
+                        if (status == TripStatus.Active) {
+                            TextButton(onClick = { viewModel.endTrip(trip.id) }) {
+                                Text("End now")
+                            }
                         }
                     },
                 )
