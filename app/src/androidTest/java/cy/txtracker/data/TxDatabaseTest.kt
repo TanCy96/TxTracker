@@ -93,45 +93,45 @@ class TxDatabaseTest {
 
     companion object {
         private const val TEST_DB = "migration_test"
+    }
+}
 
-        // Test copy of the production MIGRATION_5_6. Kept byte-identical to the version in
-        // DatabaseModule.kt — diverging will surface as a runMigrationsAndValidate failure.
-        private val MIGRATION_5_6_TEST_COPY = object : Migration(5, 6) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS `tracked_currencies` (
-                        `code` TEXT NOT NULL,
-                        `displaySymbol` TEXT NOT NULL,
-                        `isDefaultForSymbol` INTEGER NOT NULL,
-                        `addedAt` INTEGER NOT NULL,
-                        PRIMARY KEY(`code`)
-                    )
-                    """.trimIndent(),
-                )
+// Test copy of the production MIGRATION_5_6. Kept byte-identical to the version in
+// DatabaseModule.kt — diverging will surface as a runMigrationsAndValidate failure.
+private val MIGRATION_5_6_TEST_COPY = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `tracked_currencies` (
+                `code` TEXT NOT NULL,
+                `displaySymbol` TEXT NOT NULL,
+                `isDefaultForSymbol` INTEGER NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`code`)
+            )
+            """.trimIndent(),
+        )
 
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS `trip_windows` (
-                        `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                        `currency` TEXT NOT NULL,
-                        `startAt` INTEGER NOT NULL,
-                        `endAt` INTEGER,
-                        `createdAt` INTEGER NOT NULL
-                    )
-                    """.trimIndent(),
-                )
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_currency` ON `trip_windows`(`currency`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_startAt`  ON `trip_windows`(`startAt`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_endAt`    ON `trip_windows`(`endAt`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `trip_windows` (
+                `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                `currency` TEXT NOT NULL,
+                `startAt` INTEGER NOT NULL,
+                `endAt` INTEGER,
+                `createdAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_currency` ON `trip_windows`(`currency`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_startAt`  ON `trip_windows`(`startAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_endAt`    ON `trip_windows`(`endAt`)")
 
-                db.execSQL(
-                    """
-                    ALTER TABLE `transactions`
-                    ADD COLUMN `needsCurrencyConfirmation` INTEGER NOT NULL DEFAULT 0
-                    """.trimIndent(),
-                )
-            }
-        }
+        db.execSQL(
+            """
+            ALTER TABLE `transactions`
+            ADD COLUMN `needsCurrencyConfirmation` INTEGER NOT NULL DEFAULT 0
+            """.trimIndent(),
+        )
     }
 }
