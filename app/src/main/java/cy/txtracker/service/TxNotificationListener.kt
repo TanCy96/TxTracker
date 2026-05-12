@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import cy.txtracker.data.TrackedCurrencyDao
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.PermissiveExtractor
@@ -44,6 +45,7 @@ class TxNotificationListener : NotificationListenerService() {
     @Inject lateinit var ingestor: TxIngestor
     @Inject lateinit var capturePrefs: CapturePrefs
     @Inject lateinit var repository: TransactionRepository
+    @Inject lateinit var trackedCurrencyDao: TrackedCurrencyDao
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -97,10 +99,13 @@ class TxNotificationListener : NotificationListenerService() {
 
         scope.launch {
             try {
+                val symbolDefaults = trackedCurrencyDao.getDefaultsForSymbol()
+                    .associate { it.displaySymbol to it.code }
+
                 // 1. Heuristic extractor for any watched package. Verb+recipient or
                 //    card-spend shape. Lands as Pending so the user can verify.
                 val heuristic = text?.let {
-                    heuristicExtractor.extract(it, sbn.packageName, postedAt)
+                    heuristicExtractor.extract(it, sbn.packageName, postedAt, symbolDefaults)
                 }
                 if (heuristic != null) {
                     insert(heuristic, sbn.packageName, needsVerification = true)
@@ -115,6 +120,7 @@ class TxNotificationListener : NotificationListenerService() {
                         sourceApp = sbn.packageName,
                         postedAt = postedAt,
                         bypassAllowlist = bypassAllowlist,
+                        symbolDefaults = symbolDefaults,
                     )
                 }
                 if (permissive != null) {

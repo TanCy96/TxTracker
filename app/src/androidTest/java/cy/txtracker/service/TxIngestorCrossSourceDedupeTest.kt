@@ -36,6 +36,8 @@ class TxIngestorCrossSourceDedupeTest {
             merchantNoteDao = dbRule.merchantNoteDao,
             userFacingSourceDao = dbRule.userFacingSourceDao,
             approvedSourceDao = dbRule.approvedSourceDao,
+            trackedCurrencyDao = dbRule.trackedCurrencyDao,
+            tripWindowDao = dbRule.tripWindowDao,
         )
         return TxIngestor(
             database = dbRule.db,
@@ -200,6 +202,8 @@ class TxIngestorCrossSourceDedupeTest {
             merchantNoteDao = dbRule.merchantNoteDao,
             userFacingSourceDao = dbRule.userFacingSourceDao,
             approvedSourceDao = dbRule.approvedSourceDao,
+            trackedCurrencyDao = dbRule.trackedCurrencyDao,
+            tripWindowDao = dbRule.tripWindowDao,
         )
         val manualId = repo.addManualTransaction(
             amountMinor = 2500,

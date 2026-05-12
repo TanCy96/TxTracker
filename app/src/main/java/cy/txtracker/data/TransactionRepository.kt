@@ -27,6 +27,8 @@ class TransactionRepository @Inject constructor(
     private val merchantNoteDao: MerchantNoteDao,
     private val userFacingSourceDao: UserFacingSourceDao,
     private val approvedSourceDao: ApprovedSourceDao,
+    private val trackedCurrencyDao: TrackedCurrencyDao,
+    private val tripWindowDao: TripWindowDao,
 ) {
     // Reads ---------------------------------------------------------------
 
@@ -323,6 +325,31 @@ class TransactionRepository @Inject constructor(
             excludeSourceApp = excludeSourceApp,
         )
     }
+
+    /**
+     * Idempotent. Ensures a [TrackedCurrency] row exists for [code]. Picks the
+     * display symbol from [cy.txtracker.parsing.Currencies.CODE_TO_DISPLAY_SYMBOL]; falls back to
+     * the code itself when no symbol is registered (uncommon — most ISO codes have a symbol).
+     *
+     * Auto-creation here just makes the currency visible in Settings → Foreign currencies
+     * so the user can act on it. It does NOT make the currency "active" anywhere — the user
+     * still has to open a trip.
+     */
+    suspend fun ensureTrackedCurrency(code: String, now: Instant = Clock.System.now()) {
+        if (code == "MYR" || code == "UNKNOWN") return
+        val symbol = cy.txtracker.parsing.Currencies.CODE_TO_DISPLAY_SYMBOL[code] ?: code
+        trackedCurrencyDao.insertIfAbsent(
+            TrackedCurrency(
+                code = code,
+                displaySymbol = symbol,
+                isDefaultForSymbol = false,
+                addedAt = now,
+            ),
+        )
+    }
+
+    suspend fun findActiveTrip(currency: String, at: Instant): TripWindow? =
+        tripWindowDao.findActiveAt(currency, at)
 
     suspend fun promoteSourceFields(
         id: Long,

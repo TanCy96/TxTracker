@@ -26,6 +26,8 @@ class TransactionRepositoryTest {
         merchantNoteDao = dbRule.merchantNoteDao,
         userFacingSourceDao = dbRule.userFacingSourceDao,
         approvedSourceDao = dbRule.approvedSourceDao,
+        trackedCurrencyDao = dbRule.trackedCurrencyDao,
+        tripWindowDao = dbRule.tripWindowDao,
     )
 
     @Test

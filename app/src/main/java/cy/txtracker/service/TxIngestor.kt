@@ -84,6 +84,13 @@ class TxIngestor @Inject constructor(
                 return@withTransaction null
             }
 
+            val needsCurrencyConfirmation = if (parsed.currency == "MYR") {
+                false
+            } else {
+                repository.ensureTrackedCurrency(parsed.currency)
+                repository.findActiveTrip(parsed.currency, parsed.occurredAt) == null
+            }
+
             val row = Transaction(
                 amountMinor = parsed.amountMinor,
                 currency = parsed.currency,
@@ -99,6 +106,7 @@ class TxIngestor @Inject constructor(
                 createdAt = Clock.System.now(),
                 notificationDedupeKey = dedupeKey,
                 needsVerification = needsVerification,
+                needsCurrencyConfirmation = needsCurrencyConfirmation,
             )
             repository.insert(row)
         }

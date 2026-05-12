@@ -37,4 +37,6 @@ class DbRule : ExternalResource() {
     val merchantNoteDao: MerchantNoteDao get() = db.merchantNoteDao()
     val userFacingSourceDao: UserFacingSourceDao get() = db.userFacingSourceDao()
     val approvedSourceDao: ApprovedSourceDao get() = db.approvedSourceDao()
+    val trackedCurrencyDao: TrackedCurrencyDao get() = db.trackedCurrencyDao()
+    val tripWindowDao: TripWindowDao get() = db.tripWindowDao()
 }

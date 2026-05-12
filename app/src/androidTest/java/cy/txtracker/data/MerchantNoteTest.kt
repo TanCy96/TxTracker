@@ -22,6 +22,8 @@ class MerchantNoteTest {
         merchantNoteDao = dbRule.merchantNoteDao,
         userFacingSourceDao = dbRule.userFacingSourceDao,
         approvedSourceDao = dbRule.approvedSourceDao,
+        trackedCurrencyDao = dbRule.trackedCurrencyDao,
+        tripWindowDao = dbRule.tripWindowDao,
     )
 
     private val now = Instant.parse("2026-05-09T12:30:00Z")
