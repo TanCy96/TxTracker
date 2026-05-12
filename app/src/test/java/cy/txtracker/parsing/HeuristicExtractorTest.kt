@@ -166,4 +166,29 @@ class HeuristicExtractorTest {
         val r = extractor.extract("transferred RM 5.00 to JOHN.", "anything", now)!!
         assertThat(r.merchantRaw).isEqualTo("JOHN")
     }
+
+    @Test
+    fun handles_cimb_fpx_payment_with_accepted_suffix() {
+        // Real capture: CIMB Clicks FPX confirmation. Two parser gaps to close:
+        //   1. "Payment" (noun) gates the OUT_VERB check — was not in the verb list.
+        //   2. "to TAOBAO accepted on ..." — "accepted" must terminate the merchant
+        //      match, otherwise the lookahead's `on <date>` slurps "accepted" into the
+        //      merchant name as "TAOBAO accepted".
+        val text = "CIMB: FPX Payment RM256.59 to TAOBAO accepted on 12-May-2026, 10:57:03. " +
+            "Call the no at the back of your card for queries"
+        val r = extractor.extract(text, "com.cimb.cimbclicks.my", now)!!
+        assertThat(r.merchantRaw).isEqualTo("TAOBAO")
+        assertThat(r.amountMinor).isEqualTo(25659L)
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
+
+    @Test
+    fun handles_to_merchant_successfully_suffix() {
+        // Confirmation-style language some banks use. "successfully" should be a stop word
+        // so it doesn't get pulled into the merchant.
+        val text = "Paid RM 12.00 to MERCHANT successfully on 09/05"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("MERCHANT")
+        assertThat(r.amountMinor).isEqualTo(1200L)
+    }
 }

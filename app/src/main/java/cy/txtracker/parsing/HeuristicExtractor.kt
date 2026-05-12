@@ -76,9 +76,10 @@ class HeuristicExtractor @Inject constructor() {
         // Verbs that imply outgoing money. Refunds / credits / cashback all use different
         // verbs (received, refunded, earned, credited) and are intentionally NOT in this
         // list. Includes both past-tense and bare forms — bank apps differ in phrasing
-        // ("transferred" vs "transfer", "withdrawn" vs "withdrew").
+        // ("transferred" vs "transfer", "withdrawn" vs "withdrew"). `payment` is the
+        // noun-form gate for bank FPX confirmations ("FPX Payment RM... to MERCHANT").
         private val OUT_VERB = Regex(
-            """\b(?:paid|transferred|transfer|charged|debited|debit|spent|withdrawn|withdrew|withdraw|sent|deducted|purchased|purchase|billed)\b""",
+            """\b(?:paid|payment|transferred|transfer|charged|debited|debit|spent|withdrawn|withdrew|withdraw|sent|deducted|purchased|purchase|billed)\b""",
             RegexOption.IGNORE_CASE,
         )
 
@@ -98,14 +99,17 @@ class HeuristicExtractor @Inject constructor() {
             Regex(
                 """@(?<merchant>[^\.\n,]+?)(?=\s+on\s+\d{2}/\d{2}|[\.\n,]|\s*$)""",
             ),
-            // "to MERCHANT for|on|via|using|by ..." or "to MERCHANT" at end of sentence
+            // "to MERCHANT for|on|via|using|by ..." or "to MERCHANT" at end of sentence.
+            // Bank confirmation suffixes (`accepted`, `successfully`, `completed`,
+            // `processed`) also terminate the merchant — they sit between the merchant
+            // and a date/time and would otherwise be slurped into the merchant name.
             Regex(
-                """\bto\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|at|via|using|by)\b|[\.\n,]|\s*$)""",
+                """\bto\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|at|via|using|by|accepted|successfully|completed|processed)\b|[\.\n,]|\s*$)""",
                 RegexOption.IGNORE_CASE,
             ),
             // "at MERCHANT" — store-style ("paid at COFFEE BEAN")
             Regex(
-                """\bat\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|via|using|by)\b|[\.\n,]|\s*$)""",
+                """\bat\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|via|using|by|accepted|successfully|completed|processed)\b|[\.\n,]|\s*$)""",
                 RegexOption.IGNORE_CASE,
             ),
         )
