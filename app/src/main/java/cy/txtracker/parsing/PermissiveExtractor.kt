@@ -127,7 +127,7 @@ class PermissiveExtractor @Inject constructor() {
             """(?:""" +
             """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>\d{1,3}(?:,\d{3})*(?:\.\d+)?)""" +
             """|""" +
-            """(?<amtB>\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?<suffix>[A-Z]{3})""" +
+            """(?<amtB>\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))""" +
             """)""",
             RegexOption.IGNORE_CASE,
         )
