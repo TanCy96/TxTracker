@@ -1,6 +1,8 @@
 # TxTracker / Tally
 
-A hobby project that serves my own personal use, or like-minded people who need something like this. Disclaimer: this project is completely vibecoded and doesn't follow any well-planned structure beyond my own experience as a programmer. I just needed an Android app to fix a personal problem, and I find it fun to document the process.
+A hobby project that serves my own personal use, or like-minded people who need something like this.
+
+**Disclaimer:** this project is completely vibecoded and doesn't follow any well-planned structure beyond my own experience as a programmer. I just needed an Android app to fix a personal problem, and I find it fun to document the process.
 
 ## Introduction
 
@@ -9,6 +11,8 @@ I've been recording expenses in an Excel sheet for years, and occasionally life 
 1. Read relevant notifications and record "Paid MYR XX.XX to 'Merchant'"
 2. Auto-categorize transactions based on merchant and timing
 3. Provide CSV export so my existing Excel sheet can still be updated
+
+This will probably never be published to store, I don't really want to go through the hassle because the app reads notification and it is a "finance" app. If you feel like you need a personal app like this, feel free to fork it and edit to your own personal liking and usage.
 
 ## Features
 
