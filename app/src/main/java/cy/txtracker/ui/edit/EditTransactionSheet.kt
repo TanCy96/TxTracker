@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -159,7 +162,14 @@ private fun EditingContent(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            // imePadding shifts the column up so the focused text field stays above the
+            // keyboard. verticalScroll lets the user reach any field that would otherwise
+            // be pushed past the top of the sheet when the keyboard is open.
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
         if (tx.needsVerification) {
             VerificationBanner()
