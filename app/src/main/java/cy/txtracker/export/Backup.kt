@@ -28,9 +28,11 @@ data class Backup(
     val userFacingSources: List<BackupUserFacingSource> = emptyList(),
     val approvedSources: List<BackupApprovedSource> = emptyList(),
     val transactions: List<BackupTransaction> = emptyList(),
+    val trackedCurrencies: List<BackupTrackedCurrency> = emptyList(),
+    val tripWindows: List<BackupTripWindow> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 5
+        const val CURRENT_VERSION = 6
     }
 }
 
@@ -85,6 +87,22 @@ data class BackupMerchantNote(
 )
 
 @Serializable
+data class BackupTrackedCurrency(
+    val code: String,
+    val displaySymbol: String,
+    val isDefaultForSymbol: Boolean,
+    val addedAt: Instant,
+)
+
+@Serializable
+data class BackupTripWindow(
+    val currency: String,
+    val startAt: Instant,
+    val endAt: Instant?,
+    val createdAt: Instant,
+)
+
+@Serializable
 data class BackupTransaction(
     val amountMinor: Long,
     val currency: String,
@@ -100,4 +118,5 @@ data class BackupTransaction(
     val createdAt: Instant,
     val notificationDedupeKey: String,
     val needsVerification: Boolean,
+    val needsCurrencyConfirmation: Boolean = false,
 )

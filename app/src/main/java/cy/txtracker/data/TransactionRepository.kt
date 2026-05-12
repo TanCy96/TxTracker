@@ -9,6 +9,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Instant.Companion.DISTANT_FUTURE
@@ -607,10 +608,39 @@ class TransactionRepository @Inject constructor(
             )
         }
 
-        // 9. Transactions. Insert with IGNORE on the unique notificationDedupeKey index —
-        //    local transactions always win on conflict. Backup transactions whose
-        //    categoryName doesn't resolve to a local category get inserted with
-        //    categoryId = null (Unverified, same as a fresh capture).
+        // 9. Tracked currencies. Insert-or-ignore — local rows win on conflict.
+        for (bc in backup.trackedCurrencies) {
+            trackedCurrencyDao.insertIfAbsent(
+                TrackedCurrency(
+                    code = bc.code,
+                    displaySymbol = bc.displaySymbol,
+                    isDefaultForSymbol = bc.isDefaultForSymbol,
+                    addedAt = bc.addedAt,
+                ),
+            )
+        }
+
+        // 10. Trip windows. Dedupe by (currency, startAt) at the application level
+        //     since the primary key is an autoincrement id, not the natural key.
+        val existingTrips = tripWindowDao.observeAll().first()
+            .map { it.currency to it.startAt }
+            .toSet()
+        for (bt in backup.tripWindows) {
+            if (bt.currency to bt.startAt in existingTrips) continue
+            tripWindowDao.insert(
+                TripWindow(
+                    currency = bt.currency,
+                    startAt = bt.startAt,
+                    endAt = bt.endAt,
+                    createdAt = bt.createdAt,
+                ),
+            )
+        }
+
+        // 11. Transactions. Insert with IGNORE on the unique notificationDedupeKey index —
+        //     local transactions always win on conflict. Backup transactions whose
+        //     categoryName doesn't resolve to a local category get inserted with
+        //     categoryId = null (Unverified, same as a fresh capture).
         var transactionsAdded = 0
         for (bt in backup.transactions) {
             val categoryId = bt.categoryName?.let { categoriesByName[it]?.id }
@@ -630,6 +660,7 @@ class TransactionRepository @Inject constructor(
                     createdAt = bt.createdAt,
                     notificationDedupeKey = bt.notificationDedupeKey,
                     needsVerification = bt.needsVerification,
+                    needsCurrencyConfirmation = bt.needsCurrencyConfirmation,
                 ),
             )
             if (rowId >= 0) transactionsAdded++

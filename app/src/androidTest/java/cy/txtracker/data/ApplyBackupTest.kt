@@ -10,8 +10,11 @@ import cy.txtracker.export.BackupMerchantDescriptionMapping
 import cy.txtracker.export.BackupMerchantMapping
 import cy.txtracker.export.BackupApprovedSource
 import cy.txtracker.export.BackupMerchantNote
+import cy.txtracker.export.BackupTrackedCurrency
 import cy.txtracker.export.BackupTransaction
+import cy.txtracker.export.BackupTripWindow
 import cy.txtracker.export.BackupUserFacingSource
+import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -471,6 +474,92 @@ class ApplyBackupTest {
         assertThat(all).hasSize(1)
         assertThat(all.single().id).isEqualTo(existingId)
         assertThat(all.single().merchantRaw).isEqualTo("LOCAL")
+    }
+
+    @Test
+    fun applyBackup_v6_round_trips_currencies_trips_and_confirmation_flag() = runTest {
+        val repo = repo()
+        val backup = Backup(
+            version = 6,
+            exportedAt = now,
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 2000L,
+                    currency = "GBP",
+                    merchantRaw = "WISE",
+                    merchantNormalized = "WISE",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = now,
+                    timeBucket = TimeBucket.MIDDAY,
+                    sourceApp = "com.transferwise.android",
+                    rawText = null,
+                    direction = Direction.OUT,
+                    createdAt = now,
+                    notificationDedupeKey = "k-gbp",
+                    needsVerification = false,
+                    needsCurrencyConfirmation = true,
+                ),
+            ),
+            trackedCurrencies = listOf(
+                BackupTrackedCurrency("GBP", "£", isDefaultForSymbol = false, addedAt = now),
+            ),
+            tripWindows = listOf(
+                BackupTripWindow("GBP", startAt = now - 1.hours, endAt = null, createdAt = now),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        assertThat(dbRule.trackedCurrencyDao.get("GBP")).isNotNull()
+        assertThat(dbRule.tripWindowDao.observeAll().first()).hasSize(1)
+        val txs = repo.getAllTransactionsOnce()
+        assertThat(txs).hasSize(1)
+        assertThat(txs.first().needsCurrencyConfirmation).isTrue()
+    }
+
+    @Test
+    fun applyBackup_v5_defaults_missing_currency_fields_cleanly() = runTest {
+        val repo = repo()
+        val backup = Backup(
+            version = 5,
+            exportedAt = now,
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 1250L,
+                    currency = "MYR",
+                    merchantRaw = "MCDONALDS",
+                    merchantNormalized = "MCDONALDS",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = now,
+                    timeBucket = TimeBucket.MIDDAY,
+                    sourceApp = "manual",
+                    rawText = null,
+                    direction = Direction.OUT,
+                    createdAt = now,
+                    notificationDedupeKey = "k-myr",
+                    needsVerification = false,
+                    // needsCurrencyConfirmation uses default = false
+                ),
+            ),
+            // trackedCurrencies and tripWindows use default = emptyList()
+        )
+
+        repo.applyBackup(backup)
+
+        assertThat(dbRule.trackedCurrencyDao.observeAll().first()).isEmpty()
+        assertThat(dbRule.tripWindowDao.observeAll().first()).isEmpty()
+        val txs = repo.getAllTransactionsOnce()
+        assertThat(txs.first().needsCurrencyConfirmation).isFalse()
     }
 
     @Test

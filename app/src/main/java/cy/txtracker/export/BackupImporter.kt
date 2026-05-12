@@ -27,7 +27,7 @@ class BackupImporter @Inject constructor(
     suspend fun import(uri: Uri): ImportResult {
         val json = readText(uri) ?: throw IOException("Couldn't open backup file")
         val backup = JSON.decodeFromString<Backup>(json)
-        require(backup.version == Backup.CURRENT_VERSION) {
+        require(backup.version in SUPPORTED_VERSIONS) {
             "Backup version ${backup.version} is not supported by this app version " +
                 "(expected ${Backup.CURRENT_VERSION})."
         }
@@ -55,6 +55,9 @@ class BackupImporter @Inject constructor(
 
     companion object {
         val JSON: Json = Json { ignoreUnknownKeys = true }
+
+        /** Versions this app can import. v5 is forward-compat: missing fields default cleanly. */
+        val SUPPORTED_VERSIONS = 5..Backup.CURRENT_VERSION
     }
 }
 

@@ -3,7 +3,9 @@ package cy.txtracker.export
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import cy.txtracker.data.TrackedCurrencyDao
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.data.TripWindowDao
 import cy.txtracker.domain.MalaysiaTimeZone
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -33,6 +35,8 @@ import kotlinx.serialization.json.Json
 class BackupExporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: TransactionRepository,
+    private val trackedCurrencyDao: TrackedCurrencyDao,
+    private val tripWindowDao: TripWindowDao,
 ) {
     suspend fun export(): Uri {
         val json = exportToJsonString(transactionCutoff = null)
@@ -128,6 +132,23 @@ class BackupExporter @Inject constructor(
                     createdAt = tx.createdAt,
                     notificationDedupeKey = tx.notificationDedupeKey,
                     needsVerification = tx.needsVerification,
+                    needsCurrencyConfirmation = tx.needsCurrencyConfirmation,
+                )
+            },
+            trackedCurrencies = trackedCurrencyDao.observeAll().first().map {
+                BackupTrackedCurrency(
+                    code = it.code,
+                    displaySymbol = it.displaySymbol,
+                    isDefaultForSymbol = it.isDefaultForSymbol,
+                    addedAt = it.addedAt,
+                )
+            },
+            tripWindows = tripWindowDao.observeAll().first().map {
+                BackupTripWindow(
+                    currency = it.currency,
+                    startAt = it.startAt,
+                    endAt = it.endAt,
+                    createdAt = it.createdAt,
                 )
             },
         )
