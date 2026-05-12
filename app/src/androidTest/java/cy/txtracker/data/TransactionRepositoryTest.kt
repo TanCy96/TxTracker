@@ -157,6 +157,78 @@ class TransactionRepositoryTest {
     }
 
     @Test
+    fun setMerchant_renames_row_and_regenerates_dedupe_key() = runTest {
+        val repo = repo()
+        val txId = repo.insert(txAt(now, merchant = "CIMB (review)", dedupeKey = "old-key"))!!
+        val before = repo.getTransaction(txId)!!
+
+        val ok = repo.setMerchant(txId, "TAOBAO")
+
+        assertThat(ok).isTrue()
+        val after = repo.getTransaction(txId)!!
+        assertThat(after.merchantRaw).isEqualTo("TAOBAO")
+        assertThat(after.merchantNormalized).isEqualTo("TAOBAO")
+        // Dedupe key was regenerated against the new normalized merchant so a future
+        // re-capture of the same notification with the corrected merchant will dedupe
+        // against this row instead of creating a duplicate.
+        assertThat(after.notificationDedupeKey).isNotEqualTo(before.notificationDedupeKey)
+        assertThat(after.notificationDedupeKey).isEqualTo(
+            computeDedupeKey(
+                amountMinor = after.amountMinor,
+                merchantNormalized = "TAOBAO",
+                occurredAt = after.occurredAt,
+            ),
+        )
+    }
+
+    @Test
+    fun setMerchant_trims_and_normalizes() = runTest {
+        val repo = repo()
+        val txId = repo.insert(txAt(now, merchant = "CIMB (review)", dedupeKey = "k"))!!
+
+        repo.setMerchant(txId, "  taobao  ")
+
+        val after = repo.getTransaction(txId)!!
+        assertThat(after.merchantRaw).isEqualTo("taobao")
+        assertThat(after.merchantNormalized).isEqualTo("TAOBAO")
+    }
+
+    @Test
+    fun setMerchant_rejects_blank() = runTest {
+        val repo = repo()
+        val txId = repo.insert(txAt(now, merchant = "ORIGINAL", dedupeKey = "k"))!!
+
+        assertThat(repo.setMerchant(txId, "   ")).isFalse()
+        assertThat(repo.getTransaction(txId)?.merchantRaw).isEqualTo("ORIGINAL")
+    }
+
+    @Test
+    fun setMerchant_returns_false_on_dedupe_collision() = runTest {
+        // Two rows already exist with the SAME amount + 5-min bucket. The first owns the
+        // dedupe key for ("TAOBAO", amount, bucket). Renaming the second to "TAOBAO"
+        // would regenerate the same key and collide; the repo must refuse the rename and
+        // leave both rows untouched.
+        val repo = repo()
+        val taobaoKey = computeDedupeKey(
+            amountMinor = 1250,
+            merchantNormalized = "TAOBAO",
+            occurredAt = now,
+        )
+        val existing = repo.insert(
+            txAt(now, merchant = "TAOBAO", dedupeKey = taobaoKey),
+        )!!
+        val renaming = repo.insert(
+            txAt(now, merchant = "CIMB (review)", dedupeKey = "renaming-key"),
+        )!!
+
+        val ok = repo.setMerchant(renaming, "TAOBAO")
+
+        assertThat(ok).isFalse()
+        assertThat(repo.getTransaction(renaming)?.merchantRaw).isEqualTo("CIMB (review)")
+        assertThat(repo.getTransaction(existing)?.merchantRaw).isEqualTo("TAOBAO")
+    }
+
+    @Test
     fun computeDedupeKey_collapses_across_source_apps() {
         // Same payment seen by GWallet and by the bank app must produce the same dedupe key,
         // so the second insertion is dropped.

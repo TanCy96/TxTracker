@@ -109,6 +109,29 @@ class EditTransactionViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Renames the transaction's merchant. Useful when the parser captured the wrong
+     * merchant (e.g. a `(review)` placeholder from the permissive extractor). On success,
+     * refreshes the sheet's local state so the new name (and any newly-applicable
+     * merchant note) is visible. On collision the repository returns false and we leave
+     * state untouched — the field reverts on the next recomposition.
+     */
+    fun setMerchant(transactionId: Long, merchantRaw: String) {
+        viewModelScope.launch {
+            val ok = repository.setMerchant(transactionId, merchantRaw)
+            if (!ok) return@launch
+            val refreshed = repository.getTransaction(transactionId) ?: return@launch
+            val refreshedNote = repository.getMerchantNote(refreshed.merchantNormalized)?.note
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                _state.value = current.copy(
+                    transaction = refreshed,
+                    merchantNote = refreshedNote,
+                )
+            }
+        }
+    }
+
     /** Clears the `needsVerification` flag — user confirmed the heuristic-captured row is real. */
     fun confirmVerification(transactionId: Long, onDone: () -> Unit) {
         viewModelScope.launch {

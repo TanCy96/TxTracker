@@ -146,6 +146,22 @@ interface TransactionDao {
         timeBucket: TimeBucket,
     )
 
+    @Query(
+        """
+        UPDATE transactions
+        SET merchantRaw = :merchantRaw,
+            merchantNormalized = :merchantNormalized,
+            notificationDedupeKey = :notificationDedupeKey
+        WHERE id = :id
+        """
+    )
+    suspend fun updateMerchant(
+        id: Long,
+        merchantRaw: String,
+        merchantNormalized: String,
+        notificationDedupeKey: String,
+    )
+
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun delete(id: Long)
 }

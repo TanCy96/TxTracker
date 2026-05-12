@@ -230,6 +230,39 @@ class TransactionRepository @Inject constructor(
         }
     }
 
+    /**
+     * Renames a single transaction's merchant. Re-normalizes and regenerates the
+     * `notificationDedupeKey` so future captures of the same payment (amount + 5-min
+     * bucket + new merchant) will dedupe against this row rather than re-inserting.
+     *
+     * Returns true on success, false when the regenerated dedupe key collides with
+     * another existing row (rare — happens only if the user renames into a key that
+     * an existing row already owns). Caller leaves the row unchanged on false.
+     *
+     * Does NOT touch merchant-level mappings (category, description, note) — those
+     * stay attached to the OLD `merchantNormalized` until the user re-saves them on
+     * the renamed row.
+     */
+    suspend fun setMerchant(txId: Long, merchantRaw: String): Boolean {
+        val cleaned = merchantRaw.trim()
+        if (cleaned.isEmpty()) return false
+        val tx = transactionDao.getById(txId) ?: return false
+        val newNormalized = normalizeMerchant(cleaned)
+        if (newNormalized == tx.merchantNormalized && cleaned == tx.merchantRaw) return true
+        val newDedupeKey = computeDedupeKey(tx.amountMinor, newNormalized, tx.occurredAt)
+        return try {
+            transactionDao.updateMerchant(
+                id = txId,
+                merchantRaw = cleaned,
+                merchantNormalized = newNormalized,
+                notificationDedupeKey = newDedupeKey,
+            )
+            true
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            false
+        }
+    }
+
     suspend fun updateCoreFields(
         txId: Long,
         amountMinor: Long,

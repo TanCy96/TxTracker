@@ -78,6 +78,9 @@ fun EditTransactionSheet(
                 onMerchantNoteChange = { note ->
                     viewModel.setMerchantNote(transactionId, note)
                 },
+                onMerchantChange = { merchantRaw ->
+                    viewModel.setMerchant(transactionId, merchantRaw)
+                },
                 onConfirmVerification = {
                     viewModel.confirmVerification(transactionId, onDone = onDismiss)
                 },
@@ -113,6 +116,7 @@ private fun EditingContent(
     onCategoryChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
     onMerchantNoteChange: (String?) -> Unit,
+    onMerchantChange: (String) -> Unit,
     onConfirmVerification: () -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
@@ -131,8 +135,18 @@ private fun EditingContent(
     }
     val initialMerchantNote = state.merchantNote.orEmpty()
 
+    // Merchant rename — same flush-on-dispose pattern. Saving is intentionally first
+    // in the dispose block so the note save (keyed on merchantNormalized) sees the
+    // updated row if the user changed both.
+    var merchant by remember(tx.id) { mutableStateOf(tx.merchantRaw) }
+    val initialMerchant = tx.merchantRaw
+
     DisposableEffect(tx.id) {
         onDispose {
+            val cleanedMerchant = merchant.trim()
+            if (cleanedMerchant.isNotEmpty() && cleanedMerchant != initialMerchant.trim()) {
+                onMerchantChange(cleanedMerchant)
+            }
             val cleanedDescription = description.trim()
             if (cleanedDescription != initialDescription.trim()) {
                 onDescriptionChange(cleanedDescription.ifEmpty { null })
@@ -152,32 +166,36 @@ private fun EditingContent(
             Spacer(Modifier.height(12.dp))
         }
 
-        // Header: merchant + amount.
+        // Header: amount + occurred-at. Merchant is editable below so the user can fix
+        // a wrong/placeholder merchant name (e.g., "CIMB (review)" → "TAOBAO").
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = tx.merchantRaw,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                val date = tx.occurredAt.toLocalDateTime(MalaysiaTimeZone).date
-                Text(
-                    text = "${formatDayHeader(date)} • ${formatTimeOfDay(tx.occurredAt)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            val date = tx.occurredAt.toLocalDateTime(MalaysiaTimeZone).date
+            Text(
+                text = "${formatDayHeader(date)} • ${formatTimeOfDay(tx.occurredAt)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 text = formatMyr(tx.amountMinor),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
         }
+        Spacer(Modifier.height(12.dp))
+        Text(text = "Merchant", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = merchant,
+            onValueChange = { merchant = it },
+            placeholder = { Text("Merchant name") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
