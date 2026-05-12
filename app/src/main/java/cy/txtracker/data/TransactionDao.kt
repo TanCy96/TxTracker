@@ -209,6 +209,15 @@ interface TransactionDao {
         endExclusive: Instant,
     ): Flow<List<Transaction>>
 
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE needsCurrencyConfirmation = 1
+        ORDER BY occurredAt DESC
+        """
+    )
+    fun observeCurrencyReview(): Flow<List<Transaction>>
+
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun delete(id: Long)
 }

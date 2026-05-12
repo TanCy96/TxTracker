@@ -46,6 +46,9 @@ class TransactionRepository @Inject constructor(
     ): Flow<List<Transaction>> =
         transactionDao.observeForeignBetween(startInclusive, endExclusive)
 
+    fun observeCurrencyReviewTransactions(): Flow<List<Transaction>> =
+        transactionDao.observeCurrencyReview()
+
     fun observeTrackedCurrencies(): Flow<List<TrackedCurrency>> =
         trackedCurrencyDao.observeAll()
 

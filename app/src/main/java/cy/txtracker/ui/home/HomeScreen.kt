@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -34,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,12 +50,17 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.data.Transaction
+import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.ui.currency.TripCreationDialog
 import cy.txtracker.ui.edit.EditTransactionSheet
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
 import cy.txtracker.ui.format.formatYearMonth
 import cy.txtracker.ui.manual.AddManualSheet
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
+import kotlinx.datetime.plus
 
 @Composable
 fun HomeRoute(
@@ -63,6 +70,7 @@ fun HomeRoute(
     val state by viewModel.state.collectAsState()
     var editingTxId by remember { mutableStateOf<Long?>(null) }
     var showAddSheet by remember { mutableStateOf(false) }
+    var tripDialogOffer by remember { mutableStateOf<BannerOffer?>(null) }
 
     HomeScreen(
         state = state,
@@ -72,6 +80,8 @@ fun HomeRoute(
         onTransactionClick = { tx -> editingTxId = tx.id },
         onAddClick = { showAddSheet = true },
         onSettingsClick = onSettingsClick,
+        onDismissBanner = { currency -> viewModel.dismissBanner(currency) },
+        onStartTrip = { offer -> tripDialogOffer = offer },
     )
 
     editingTxId?.let { id ->
@@ -82,6 +92,18 @@ fun HomeRoute(
     }
     if (showAddSheet) {
         AddManualSheet(onDismiss = { showAddSheet = false })
+    }
+    tripDialogOffer?.let { offer ->
+        TripCreationDialog(
+            currency = offer.currency,
+            defaultStartAt = offer.earliestOccurredAt,
+            defaultEndAt = offer.earliestOccurredAt.plus(14, DateTimeUnit.DAY, MalaysiaTimeZone),
+            onConfirm = { startAt, endAt ->
+                viewModel.openTrip(offer.currency, startAt, endAt)
+                tripDialogOffer = null
+            },
+            onDismiss = { tripDialogOffer = null },
+        )
     }
 }
 
@@ -95,6 +117,8 @@ fun HomeScreen(
     onTransactionClick: (Transaction) -> Unit,
     onAddClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onDismissBanner: (String) -> Unit = {},
+    onStartTrip: (BannerOffer) -> Unit = {},
 ) {
     Scaffold(
         floatingActionButton = {
@@ -130,6 +154,13 @@ fun HomeScreen(
             MonthTotalHeader(totalMinor = state.totalMinor, transactionCount = state.transactionCount)
             CategoryBreakdownRow(breakdown = state.breakdown)
             HorizontalDivider()
+            state.bannerCurrency?.let { offer ->
+                CurrencyReviewBanner(
+                    offer = offer,
+                    onStart = { onStartTrip(offer) },
+                    onDismiss = { onDismissBanner(offer.currency) },
+                )
+            }
             FilterRow(
                 filter = state.filter,
                 categories = state.categories,
@@ -148,6 +179,35 @@ fun HomeScreen(
                     onTransactionClick = onTransactionClick,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CurrencyReviewBanner(
+    offer: BannerOffer,
+    onStart: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Detected ${offer.currency} transactions outside a trip. Start tracking?",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onStart) { Text("Start") }
+            TextButton(onClick = onDismiss) { Text("Dismiss") }
         }
     }
 }
@@ -234,6 +294,13 @@ private fun FilterRow(
                     label = { Text("Unverified") },
                 )
             }
+        }
+        item {
+            FilterChip(
+                selected = filter == HomeFilter.CurrencyReview,
+                onClick = { onFilterChange(HomeFilter.CurrencyReview) },
+                label = { Text("Currency review") },
+            )
         }
         items(categories, key = { it.id }) { c ->
             FilterChip(
@@ -449,6 +516,7 @@ private fun emptyStateCopy(state: HomeUiState): Pair<String, String?> {
         HomeFilter.All -> null
         HomeFilter.Unverified -> "Unverified"
         HomeFilter.Pending -> "Pending"
+        HomeFilter.CurrencyReview -> "Currency review"
         is HomeFilter.Category -> state.categories.firstOrNull { it.id == f.id }?.name
     }
     return if (filterLabel != null) {
@@ -457,4 +525,3 @@ private fun emptyStateCopy(state: HomeUiState): Pair<String, String?> {
         "No transactions to show." to null
     }
 }
-
