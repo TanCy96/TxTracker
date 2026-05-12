@@ -51,6 +51,7 @@ class TxIngestor @Inject constructor(
             amountMinor = parsed.amountMinor,
             merchantNormalized = merchantNormalized,
             occurredAt = parsed.occurredAt,
+            currency = parsed.currency,
         )
 
         return database.withTransaction {

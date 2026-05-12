@@ -11,10 +11,10 @@ internal fun txAt(
     description: String? = null,
     bucket: TimeBucket = TimeBucket.MIDDAY,
     sourceApp: String = "com.google.android.apps.nbu.paisa.user",
-    dedupeKey: String = "k-${occurredAt.toEpochMilliseconds()}-$merchant-$amountMinor",
+    currency: String = "MYR",
+    dedupeKey: String = "k-${occurredAt.toEpochMilliseconds()}-$merchant-$amountMinor-$currency",
     direction: Direction = Direction.OUT,
     rawText: String? = "RM 12.50 paid to $merchant",
-    currency: String = "MYR",
 ): Transaction = Transaction(
     amountMinor = amountMinor,
     currency = currency,

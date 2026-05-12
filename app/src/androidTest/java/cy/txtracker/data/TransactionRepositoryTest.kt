@@ -141,16 +141,19 @@ class TransactionRepositoryTest {
             amountMinor = 1250,
             merchantNormalized = "MCDONALDS",
             occurredAt = Instant.parse("2026-05-09T12:30:00Z"),
+            currency = "MYR",
         )
         val sameWindow = computeDedupeKey(
             amountMinor = 1250,
             merchantNormalized = "MCDONALDS",
             occurredAt = Instant.parse("2026-05-09T12:33:59Z"),
+            currency = "MYR",
         )
         val nextWindow = computeDedupeKey(
             amountMinor = 1250,
             merchantNormalized = "MCDONALDS",
             occurredAt = Instant.parse("2026-05-09T12:36:00Z"),
+            currency = "MYR",
         )
         assertThat(a).isEqualTo(sameWindow)
         assertThat(a).isNotEqualTo(nextWindow)
@@ -177,6 +180,7 @@ class TransactionRepositoryTest {
                 amountMinor = after.amountMinor,
                 merchantNormalized = "TAOBAO",
                 occurredAt = after.occurredAt,
+                currency = after.currency,
             ),
         )
     }
@@ -213,6 +217,7 @@ class TransactionRepositoryTest {
             amountMinor = 1250,
             merchantNormalized = "TAOBAO",
             occurredAt = now,
+            currency = "MYR",
         )
         val existing = repo.insert(
             txAt(now, merchant = "TAOBAO", dedupeKey = taobaoKey),
@@ -236,11 +241,13 @@ class TransactionRepositoryTest {
             amountMinor = 53000,
             merchantNormalized = "CHONG TYRE AUTO",
             occurredAt = Instant.parse("2026-05-09T12:30:00Z"),
+            currency = "MYR",
         )
         val bank = computeDedupeKey(
             amountMinor = 53000,
             merchantNormalized = "CHONG TYRE AUTO",
             occurredAt = Instant.parse("2026-05-09T12:31:30Z"),
+            currency = "MYR",
         )
         assertThat(gwallet).isEqualTo(bank)
     }

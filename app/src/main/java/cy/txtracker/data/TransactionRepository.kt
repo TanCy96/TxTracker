@@ -249,7 +249,7 @@ class TransactionRepository @Inject constructor(
         val tx = transactionDao.getById(txId) ?: return false
         val newNormalized = normalizeMerchant(cleaned)
         if (newNormalized == tx.merchantNormalized && cleaned == tx.merchantRaw) return true
-        val newDedupeKey = computeDedupeKey(tx.amountMinor, newNormalized, tx.occurredAt)
+        val newDedupeKey = computeDedupeKey(tx.amountMinor, newNormalized, tx.occurredAt, tx.currency)
         return try {
             transactionDao.updateMerchant(
                 id = txId,
@@ -552,9 +552,10 @@ fun computeDedupeKey(
     amountMinor: Long,
     merchantNormalized: String,
     occurredAt: Instant,
+    currency: String,
 ): String {
     val bucketMs = occurredAt.toEpochMilliseconds() / FIVE_MINUTES_MS
-    val payload = "$amountMinor|$merchantNormalized|$bucketMs"
+    val payload = "$amountMinor|$merchantNormalized|$bucketMs|$currency"
     return sha1Hex(payload)
 }
 
