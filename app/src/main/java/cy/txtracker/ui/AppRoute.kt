@@ -13,7 +13,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,6 +26,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import cy.txtracker.notify.DeeplinkBus
+import cy.txtracker.ui.MainActivity.Deeplink
 import cy.txtracker.ui.foreign.ForeignRoute
 import cy.txtracker.ui.home.HomeRoute
 import cy.txtracker.ui.lock.LockScreen
@@ -36,7 +40,12 @@ import cy.txtracker.ui.settings.currencies.CurrenciesScreen
 import cy.txtracker.ui.settings.currencies.TripHistoryScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
+import cy.txtracker.ui.settings.notifications.NotificationsScreen
 import cy.txtracker.ui.settings.sources.NotificationPriorityScreen
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 
 /** Navigation animation duration. 300ms matches the Android platform default. */
 private const val NAV_ANIMATION_MS = 300
@@ -51,9 +60,27 @@ private object Routes {
     const val SETTINGS_SOURCES = "settings/sources"
     const val SETTINGS_CURRENCIES = "settings/currencies"
     const val SETTINGS_CURRENCIES_TRIPS = "settings/currencies/trips/{code}"
+    const val SETTINGS_NOTIFICATIONS = "settings/notifications"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface DeeplinkBusEntryPoint {
+    fun deeplinkBus(): DeeplinkBus
+}
+
+@Composable
+private fun rememberDeeplinkBus(): DeeplinkBus {
+    val context = LocalContext.current
+    return remember(context) {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            DeeplinkBusEntryPoint::class.java,
+        ).deeplinkBus()
+    }
+}
 
 /**
  * Top-level routing.
@@ -92,6 +119,18 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
+
+    // Deep-link bus: navigates to the appropriate top-level route when a notification
+    // tap (or other intent) emits a Deeplink. HomeViewModel also collects from the bus
+    // independently to update its filter state.
+    val deeplinkBus = rememberDeeplinkBus()
+    LaunchedEffect(deeplinkBus, nav) {
+        deeplinkBus.forAppRoute.collect { deeplink ->
+            when (deeplink) {
+                Deeplink.PendingFilter -> navigateTopLevel(nav, Routes.HOME)
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -156,6 +195,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                     onDescriptionMappingsClick = { nav.navigate(Routes.SETTINGS_DESCRIPTIONS) },
                     onNotificationPriorityClick = { nav.navigate(Routes.SETTINGS_SOURCES) },
                     onForeignCurrenciesClick = { nav.navigate(Routes.SETTINGS_CURRENCIES) },
+                    onNotificationsClick = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
                 )
             }
             composable(Routes.SETTINGS_CATEGORIES) {
@@ -179,6 +219,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             composable(Routes.SETTINGS_CURRENCIES_TRIPS) { entry ->
                 val code = entry.arguments?.getString("code") ?: return@composable
                 TripHistoryScreen(currency = code, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_NOTIFICATIONS) {
+                NotificationsScreen(onBack = { nav.popBackStack() })
             }
         }
     }

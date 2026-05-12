@@ -57,6 +57,7 @@ fun SettingsScreen(
     onDescriptionMappingsClick: () -> Unit,
     onNotificationPriorityClick: () -> Unit,
     onForeignCurrenciesClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -207,6 +208,12 @@ fun SettingsScreen(
                     Text("Manage tracked currencies and trip windows.")
                 },
                 modifier = Modifier.fillMaxWidth().clickableRow(onForeignCurrenciesClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Notifications") },
+                supportingContent = { Text("Pending reminders, spending summaries") },
+                modifier = Modifier.fillMaxWidth().clickableRow(onNotificationsClick),
             )
 
             SectionHeader("Backup & export")

@@ -18,6 +18,11 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getById(id: Long): Transaction?
 
+    @Query(
+        "SELECT COUNT(*) FROM transactions WHERE needsVerification = 1 AND createdAt < :cutoff"
+    )
+    suspend fun countPendingOlderThan(cutoff: Instant): Int
+
     @Query("SELECT * FROM transactions ORDER BY occurredAt DESC")
     fun observeAll(): Flow<List<Transaction>>
 
@@ -41,6 +46,11 @@ interface TransactionDao {
         """
     )
     fun observeBetween(startInclusive: Instant, endExclusive: Instant): Flow<List<Transaction>>
+
+    @Query(
+        "SELECT * FROM transactions WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive ORDER BY occurredAt ASC"
+    )
+    suspend fun getAllBetween(startInclusive: Instant, endExclusive: Instant): List<Transaction>
 
     @Query(
         """

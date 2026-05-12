@@ -8,7 +8,9 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.YearMonth
+import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.service.CurrencyPrefs
+import cy.txtracker.ui.MainActivity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,7 +19,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ import kotlinx.datetime.toLocalDateTime
 class HomeViewModel @Inject constructor(
     private val repository: TransactionRepository,
     private val currencyPrefs: CurrencyPrefs,
+    private val deeplinkBus: DeeplinkBus,
 ) : ViewModel() {
 
     private val _yearMonth = MutableStateFlow(YearMonth.current())
@@ -45,6 +47,20 @@ class HomeViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = null,
         )
+
+    init {
+        // Deep-link arrives via DeeplinkBus from MainActivity intent extras (e.g. user
+        // taps a pending-row notification). Each Deeplink maps to a Home filter switch.
+        viewModelScope.launch {
+            deeplinkBus.forHome.collect { deeplink ->
+                when (deeplink) {
+                    MainActivity.Deeplink.PendingFilter -> {
+                        _filter.value = HomeFilter.Pending
+                    }
+                }
+            }
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<HomeUiState> =
