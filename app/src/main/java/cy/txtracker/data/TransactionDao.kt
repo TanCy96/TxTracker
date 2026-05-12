@@ -162,6 +162,38 @@ interface TransactionDao {
         notificationDedupeKey: String,
     )
 
+    @Query(
+        """
+        UPDATE transactions
+        SET needsCurrencyConfirmation = 0
+        WHERE currency = :currency
+          AND needsCurrencyConfirmation = 1
+          AND occurredAt >= :startAt
+          AND occurredAt < :endAtExclusive
+        """
+    )
+    suspend fun clearCurrencyConfirmationForRange(
+        currency: String,
+        startAt: Instant,
+        endAtExclusive: Instant,
+    )
+
+    @Query(
+        """
+        UPDATE transactions
+        SET currency = :currency,
+            notificationDedupeKey = :notificationDedupeKey,
+            needsCurrencyConfirmation = :needsCurrencyConfirmation
+        WHERE id = :id
+        """
+    )
+    suspend fun updateCurrency(
+        id: Long,
+        currency: String,
+        notificationDedupeKey: String,
+        needsCurrencyConfirmation: Boolean,
+    )
+
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun delete(id: Long)
 }

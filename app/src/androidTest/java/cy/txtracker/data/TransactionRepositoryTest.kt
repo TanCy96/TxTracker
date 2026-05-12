@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import cy.txtracker.domain.TimeBucket
+import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import org.junit.Rule
@@ -252,5 +253,138 @@ class TransactionRepositoryTest {
             currency = "MYR",
         )
         assertThat(gwallet).isEqualTo(bank)
+    }
+
+    @Test
+    fun openTrip_clears_needsCurrencyConfirmation_for_rows_in_range() = runTest {
+        val repo = repo()
+        val parked = repo.insert(
+            txAt(now, merchant = "WISE", currency = "GBP", dedupeKey = "k1")
+                .copy(needsCurrencyConfirmation = true),
+        )!!
+
+        repo.openTrip(
+            currency = "GBP",
+            startAt = now - 1.hours,
+            endAt = now + 1.hours,
+            now = now,
+        )
+
+        val after = repo.getTransaction(parked)!!
+        assertThat(after.needsCurrencyConfirmation).isFalse()
+    }
+
+    @Test
+    fun openTrip_leaves_rows_outside_window_parked() = runTest {
+        val repo = repo()
+        val outsideWindow = now - 24.hours
+        val parked = repo.insert(
+            txAt(outsideWindow, merchant = "WISE", currency = "GBP", dedupeKey = "k1")
+                .copy(needsCurrencyConfirmation = true),
+        )!!
+
+        repo.openTrip(
+            currency = "GBP",
+            startAt = now - 1.hours,
+            endAt = now + 1.hours,
+            now = now,
+        )
+
+        val after = repo.getTransaction(parked)!!
+        assertThat(after.needsCurrencyConfirmation).isTrue()
+    }
+
+    @Test
+    fun openTrip_open_ended_clears_far_future_rows() = runTest {
+        val repo = repo()
+        val far = now + (365 * 24).hours
+        val parked = repo.insert(
+            txAt(far, merchant = "WISE", currency = "SGD", dedupeKey = "k1")
+                .copy(needsCurrencyConfirmation = true),
+        )!!
+
+        repo.openTrip(currency = "SGD", startAt = now, endAt = null, now = now)
+
+        assertThat(repo.getTransaction(parked)!!.needsCurrencyConfirmation).isFalse()
+    }
+
+    @Test
+    fun setCurrency_to_currency_without_active_trip_parks_the_row() = runTest {
+        val repo = repo()
+        val txId = repo.insert(txAt(now, merchant = "MAYBE_GBP", currency = "MYR", dedupeKey = "k1"))!!
+
+        val ok = repo.setCurrency(txId, "GBP")
+
+        assertThat(ok).isTrue()
+        val after = repo.getTransaction(txId)!!
+        assertThat(after.currency).isEqualTo("GBP")
+        assertThat(after.needsCurrencyConfirmation).isTrue()
+    }
+
+    @Test
+    fun setCurrency_with_active_trip_promotes_the_row() = runTest {
+        val repo = repo()
+        repo.openTrip("GBP", startAt = now - 1.hours, endAt = now + 1.hours, now = now)
+        val txId = repo.insert(txAt(now, merchant = "MAYBE_GBP", currency = "MYR", dedupeKey = "k1"))!!
+
+        repo.setCurrency(txId, "GBP")
+
+        val after = repo.getTransaction(txId)!!
+        assertThat(after.currency).isEqualTo("GBP")
+        assertThat(after.needsCurrencyConfirmation).isFalse()
+    }
+
+    @Test
+    fun setCurrency_regenerates_dedupe_key() = runTest {
+        val repo = repo()
+        val txId = repo.insert(txAt(now, currency = "MYR", dedupeKey = "old"))!!
+        val before = repo.getTransaction(txId)!!.notificationDedupeKey
+
+        repo.setCurrency(txId, "GBP")
+
+        val after = repo.getTransaction(txId)!!.notificationDedupeKey
+        assertThat(after).isNotEqualTo(before)
+    }
+
+    @Test
+    fun setCurrency_returns_false_on_dedupe_collision() = runTest {
+        val repo = repo()
+        // Pre-seed a row owning the dedupe key that "MAYBE_GBP" → GBP would generate.
+        val gbpKey = computeDedupeKey(
+            amountMinor = 1250,
+            merchantNormalized = "MAYBE_GBP",
+            occurredAt = now,
+            currency = "GBP",
+        )
+        val existing = repo.insert(
+            txAt(now, merchant = "MAYBE_GBP", currency = "GBP", dedupeKey = gbpKey),
+        )!!
+        val renaming = repo.insert(
+            txAt(now, merchant = "MAYBE_GBP", currency = "MYR", dedupeKey = "renaming"),
+        )!!
+
+        val ok = repo.setCurrency(renaming, "GBP")
+
+        assertThat(ok).isFalse()
+        assertThat(repo.getTransaction(renaming)?.currency).isEqualTo("MYR")
+        assertThat(repo.getTransaction(existing)?.currency).isEqualTo("GBP")
+    }
+
+    @Test
+    fun closeTrip_sets_endAt_without_re_flagging_promoted_rows() = runTest {
+        val repo = repo()
+        val tripId = repo.openTrip("GBP", startAt = now - 1.hours, endAt = null, now = now)
+        val txId = repo.insert(
+            txAt(now, merchant = "WISE", currency = "GBP", dedupeKey = "k1")
+                .copy(needsCurrencyConfirmation = false),
+        )!!
+
+        repo.closeTrip(tripId, endAt = now + 1.hours)
+
+        // Trip endAt updated.
+        val trip = dbRule.tripWindowDao.get(tripId)
+        assertThat(trip?.endAt).isEqualTo(now + 1.hours)
+        // Row stays promoted.
+        assertThat(repo.getTransaction(txId)!!.needsCurrencyConfirmation).isFalse()
     }
 }

@@ -11,6 +11,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Instant.Companion.DISTANT_FUTURE
 
 /**
  * Single entry point for the UI and the notification listener to read and write
@@ -350,6 +351,88 @@ class TransactionRepository @Inject constructor(
 
     suspend fun findActiveTrip(currency: String, at: Instant): TripWindow? =
         tripWindowDao.findActiveAt(currency, at)
+
+    /**
+     * Creates a [TripWindow] and retroactively promotes all parked transactions in
+     * the window's currency that fall inside `[startAt, endAt)`. Atomic — uses a
+     * Room transaction.
+     *
+     * `endAt = null` means "open-ended"; the in-range clear uses
+     * [DISTANT_FUTURE] as the upper bound so future captures in that
+     * currency keep promoting.
+     *
+     * Returns the new trip's id.
+     */
+    suspend fun openTrip(
+        currency: String,
+        startAt: Instant,
+        endAt: Instant?,
+        now: Instant = Clock.System.now(),
+    ): Long = database.withTransaction {
+        val tripId = tripWindowDao.insert(
+            TripWindow(
+                currency = currency,
+                startAt = startAt,
+                endAt = endAt,
+                createdAt = now,
+            ),
+        )
+        transactionDao.clearCurrencyConfirmationForRange(
+            currency = currency,
+            startAt = startAt,
+            endAtExclusive = endAt ?: DISTANT_FUTURE,
+        )
+        tripId
+    }
+
+    /**
+     * Sets a trip's `endAt`. Used by the "End trip" action in Currencies
+     * settings. Does NOT re-flag any transactions — once promoted, rows stay
+     * promoted. The trip is the artifact, not a live gate.
+     */
+    suspend fun closeTrip(tripId: Long, endAt: Instant) {
+        tripWindowDao.setEnd(tripId, endAt)
+    }
+
+    /**
+     * Renames a single transaction's currency. Mirrors [setMerchant]: regenerates
+     * the dedupe key, returns `false` on uniqueness collision, leaves the row
+     * untouched on collision.
+     *
+     * `needsCurrencyConfirmation` is re-evaluated atomically: if any active trip
+     * for the new currency covers `occurredAt`, the row promotes (false);
+     * otherwise it parks (true). Picking MYR always promotes (false).
+     *
+     * Callers in the edit-sheet flow follow up with [openTrip] when the user
+     * accepts a trip-creation prompt for a parked row.
+     */
+    suspend fun setCurrency(txId: Long, currency: String): Boolean {
+        val tx = transactionDao.getById(txId) ?: return false
+        if (tx.currency == currency) return true
+
+        val parked = if (currency == "MYR") {
+            false
+        } else {
+            tripWindowDao.findActiveAt(currency, tx.occurredAt) == null
+        }
+        val newDedupeKey = computeDedupeKey(
+            amountMinor = tx.amountMinor,
+            merchantNormalized = tx.merchantNormalized,
+            occurredAt = tx.occurredAt,
+            currency = currency,
+        )
+        return try {
+            transactionDao.updateCurrency(
+                id = txId,
+                currency = currency,
+                notificationDedupeKey = newDedupeKey,
+                needsCurrencyConfirmation = parked,
+            )
+            true
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            false
+        }
+    }
 
     suspend fun promoteSourceFields(
         id: Long,
