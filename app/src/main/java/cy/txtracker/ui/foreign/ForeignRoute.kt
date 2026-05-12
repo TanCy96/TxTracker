@@ -43,9 +43,16 @@ private fun ForeignContent(state: ForeignUiState.Loaded) {
                 .padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
+            val message = if (state.activeTripCurrencies.isNotEmpty()) {
+                val codes = state.activeTripCurrencies.sorted().joinToString(", ")
+                "Trip active for $codes. Waiting for a transaction to arrive — " +
+                    "captures will appear here automatically."
+            } else {
                 "No foreign transactions yet. Open Settings → Foreign currencies " +
-                    "to plan a trip, or wait for a foreign notification to arrive.",
+                    "to plan a trip, or wait for a foreign notification to arrive."
+            }
+            Text(
+                message,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

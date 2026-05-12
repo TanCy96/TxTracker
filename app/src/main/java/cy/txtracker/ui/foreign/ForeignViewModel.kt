@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.data.TripWindow
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.YearMonth
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.datetime.Clock
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -32,7 +34,8 @@ class ForeignViewModel @Inject constructor(
             combine(
                 repository.observeForeignTransactionsBetween(start, end),
                 repository.observeTrackedCurrencies(),
-            ) { txs, currencies -> buildState(txs, currencies) }
+                repository.observeAllTrips(),
+            ) { txs, currencies, trips -> buildState(txs, currencies, trips) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ForeignUiState.Loading)
 
@@ -41,6 +44,7 @@ class ForeignViewModel @Inject constructor(
     private fun buildState(
         txs: List<Transaction>,
         currencies: List<TrackedCurrency>,
+        trips: List<TripWindow>,
     ): ForeignUiState.Loaded {
         val symbolByCode = currencies.associateBy({ it.code }, { it.displaySymbol })
         val grouped = txs.groupBy { it.currency }.mapValues { (code, rows) ->
@@ -53,6 +57,14 @@ class ForeignViewModel @Inject constructor(
                     .mapValues { (_, r) -> r.sumOf { it.amountMinor } },
             )
         }
-        return ForeignUiState.Loaded(byCurrency = grouped)
+        val now = Clock.System.now()
+        val activeTripCurrencies = trips
+            .filter { it.startAt <= now && (it.endAt == null || it.endAt > now) }
+            .map { it.currency }
+            .toSet()
+        return ForeignUiState.Loaded(
+            byCurrency = grouped,
+            activeTripCurrencies = activeTripCurrencies,
+        )
     }
 }

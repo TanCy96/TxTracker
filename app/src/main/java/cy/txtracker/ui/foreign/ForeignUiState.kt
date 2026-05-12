@@ -8,6 +8,10 @@ sealed interface ForeignUiState {
         /** Transactions grouped by currency code. Currencies with zero rows
          *  in the visible month are omitted. */
         val byCurrency: Map<String, CurrencyGroup>,
+        /** Currency codes that have at least one trip active right now. Used
+         *  by the empty-state copy to distinguish "no trip yet" from
+         *  "trip running, waiting for captures". */
+        val activeTripCurrencies: Set<String>,
     ) : ForeignUiState
 }
 
