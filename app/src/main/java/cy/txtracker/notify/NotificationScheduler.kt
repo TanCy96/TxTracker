@@ -31,12 +31,16 @@ class NotificationScheduler @Inject constructor(
     fun start(scope: CoroutineScope) {
         combine(
             prefs.pendingEnabled,
+            prefs.foreignEnabled,
             prefs.summaryCadence,
             prefs.summaryHour,
-        ) { p, c, h -> Triple(p, c, h) }
-            .onEach { (pending, cadence, hour) ->
-                reconcilePending(pending)
-                reconcileSummary(cadence, hour)
+        ) { pending, foreign, cadence, hour ->
+            SchedulerSnapshot(pending, foreign, cadence, hour)
+        }
+            .onEach { snapshot ->
+                reconcilePending(snapshot.pendingEnabled)
+                reconcileForeign(snapshot.foreignEnabled)
+                reconcileSummary(snapshot.cadence, snapshot.hour)
             }
             .launchIn(scope)
     }
@@ -56,6 +60,24 @@ class NotificationScheduler @Inject constructor(
         } else {
             wm.cancelUniqueWork(PENDING_WORK_NAME)
             NotificationManagerCompat.from(context).cancel(NotificationIds.PENDING)
+        }
+    }
+
+    private fun reconcileForeign(enabled: Boolean) {
+        val wm = WorkManager.getInstance(context)
+        if (enabled) {
+            val request = PeriodicWorkRequestBuilder<ForeignCurrencyWorker>(
+                /* repeatInterval = */ 24, TimeUnit.HOURS,
+                /* flexInterval = */ 1, TimeUnit.HOURS,
+            ).build()
+            wm.enqueueUniquePeriodicWork(
+                FOREIGN_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request,
+            )
+        } else {
+            wm.cancelUniqueWork(FOREIGN_WORK_NAME)
+            NotificationManagerCompat.from(context).cancel(NotificationIds.FOREIGN)
         }
     }
 
@@ -85,8 +107,16 @@ class NotificationScheduler @Inject constructor(
         )
     }
 
+    private data class SchedulerSnapshot(
+        val pendingEnabled: Boolean,
+        val foreignEnabled: Boolean,
+        val cadence: SummaryCadence,
+        val hour: Int,
+    )
+
     private companion object {
         const val PENDING_WORK_NAME = "pending-reminder"
+        const val FOREIGN_WORK_NAME = "foreign-currency"
         const val SUMMARY_WORK_NAME = "summary"
     }
 }

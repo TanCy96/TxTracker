@@ -59,7 +59,7 @@ fun NotificationsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Notifications") },
+                title = { Text("Push notifications") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
@@ -94,6 +94,27 @@ fun NotificationsScreen(
                 Switch(
                     checked = state.pendingEnabled,
                     onCheckedChange = viewModel::setPendingEnabled,
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text("Foreign currency", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Get a notification when foreign-currency activity is captured " +
+                        "outside an active trip.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = state.foreignEnabled,
+                    onCheckedChange = viewModel::setForeignEnabled,
                 )
             }
 

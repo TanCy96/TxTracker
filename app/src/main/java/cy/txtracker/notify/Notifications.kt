@@ -11,6 +11,8 @@ import cy.txtracker.ui.MainActivity
 private const val REQ_PENDING_TAP = 100
 private const val REQ_PENDING_DISMISS = 101
 private const val REQ_SUMMARY_TAP = 102
+private const val REQ_FOREIGN_TAP = 103
+private const val REQ_FOREIGN_DISMISS = 104
 
 /**
  * Builds the aggregated pending-row notification. [count] is the number of
@@ -73,6 +75,38 @@ fun buildSummaryNotification(
         .setContentTitle(title)
         .setStyle(NotificationCompat.BigTextStyle().bigText(body))
         .setContentIntent(tapIntent)
+        .setAutoCancel(true)
+        .build()
+}
+
+/**
+ * Builds the foreign-currency notification. Surfaces a single currency at a
+ * time (the worker picks one if multiple have parked rows). Tap deep-links to
+ * Home with the Currency-review filter active — the in-app banner is visible
+ * there with a "Start" button that opens the trip-creation dialog.
+ */
+fun buildForeignNotification(context: Context, currency: String, count: Int): Notification {
+    val tapIntent = PendingIntent.getActivity(
+        context, REQ_FOREIGN_TAP,
+        Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_DEEPLINK, MainActivity.Deeplink.CurrencyReview.tag)
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val dismissIntent = PendingIntent.getBroadcast(
+        context, REQ_FOREIGN_DISMISS,
+        Intent(context, ForeignDismissReceiver::class.java),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val title = if (count == 1) "$currency transaction detected outside a trip"
+                else "$count $currency transactions detected outside a trip"
+    return NotificationCompat.Builder(context, NotificationChannels.FOREIGN)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setContentTitle(title)
+        .setContentText("Tap to review and start a trip.")
+        .setContentIntent(tapIntent)
+        .setDeleteIntent(dismissIntent)
         .setAutoCancel(true)
         .build()
 }

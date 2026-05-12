@@ -25,8 +25,14 @@ class NotificationPrefs @Inject constructor(
     private val _pendingEnabled = MutableStateFlow(prefs.getBoolean(KEY_PENDING_ENABLED, false))
     val pendingEnabled: StateFlow<Boolean> = _pendingEnabled.asStateFlow()
 
-    private val _pendingDismissedUntil = MutableStateFlow(readDismissedUntil())
+    private val _pendingDismissedUntil = MutableStateFlow(readInstant(KEY_PENDING_DISMISSED_UNTIL))
     val pendingDismissedUntil: StateFlow<Instant?> = _pendingDismissedUntil.asStateFlow()
+
+    private val _foreignEnabled = MutableStateFlow(prefs.getBoolean(KEY_FOREIGN_ENABLED, false))
+    val foreignEnabled: StateFlow<Boolean> = _foreignEnabled.asStateFlow()
+
+    private val _foreignDismissedUntil = MutableStateFlow(readInstant(KEY_FOREIGN_DISMISSED_UNTIL))
+    val foreignDismissedUntil: StateFlow<Instant?> = _foreignDismissedUntil.asStateFlow()
 
     private val _summaryCadence = MutableStateFlow(readCadence())
     val summaryCadence: StateFlow<SummaryCadence> = _summaryCadence.asStateFlow()
@@ -41,11 +47,19 @@ class NotificationPrefs @Inject constructor(
 
     /** null clears the cooldown. */
     fun setPendingDismissedUntil(at: Instant?) {
-        prefs.edit().apply {
-            if (at == null) remove(KEY_PENDING_DISMISSED_UNTIL)
-            else putLong(KEY_PENDING_DISMISSED_UNTIL, at.toEpochMilliseconds())
-        }.apply()
+        writeInstant(KEY_PENDING_DISMISSED_UNTIL, at)
         _pendingDismissedUntil.value = at
+    }
+
+    fun setForeignEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_FOREIGN_ENABLED, value).apply()
+        _foreignEnabled.value = value
+    }
+
+    /** null clears the cooldown. */
+    fun setForeignDismissedUntil(at: Instant?) {
+        writeInstant(KEY_FOREIGN_DISMISSED_UNTIL, at)
+        _foreignDismissedUntil.value = at
     }
 
     fun setSummaryCadence(cadence: SummaryCadence) {
@@ -60,10 +74,15 @@ class NotificationPrefs @Inject constructor(
         _summaryHour.value = hour
     }
 
-    private fun readDismissedUntil(): Instant? =
-        if (prefs.contains(KEY_PENDING_DISMISSED_UNTIL))
-            Instant.fromEpochMilliseconds(prefs.getLong(KEY_PENDING_DISMISSED_UNTIL, 0))
-        else null
+    private fun readInstant(key: String): Instant? =
+        if (prefs.contains(key)) Instant.fromEpochMilliseconds(prefs.getLong(key, 0)) else null
+
+    private fun writeInstant(key: String, at: Instant?) {
+        prefs.edit().apply {
+            if (at == null) remove(key)
+            else putLong(key, at.toEpochMilliseconds())
+        }.apply()
+    }
 
     private fun readCadence(): SummaryCadence = runCatching {
         SummaryCadence.valueOf(prefs.getString(KEY_SUMMARY_CADENCE, SummaryCadence.OFF.name)!!)
@@ -73,6 +92,8 @@ class NotificationPrefs @Inject constructor(
         const val FILE = "notifications"
         const val KEY_PENDING_ENABLED = "pending_enabled"
         const val KEY_PENDING_DISMISSED_UNTIL = "pending_dismissed_until"
+        const val KEY_FOREIGN_ENABLED = "foreign_enabled"
+        const val KEY_FOREIGN_DISMISSED_UNTIL = "foreign_dismissed_until"
         const val KEY_SUMMARY_CADENCE = "summary_cadence"
         const val KEY_SUMMARY_HOUR = "summary_hour"
         const val DEFAULT_SUMMARY_HOUR = 20  // 8pm MYT

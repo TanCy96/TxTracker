@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 
 data class NotificationsUiState(
     val pendingEnabled: Boolean,
+    val foreignEnabled: Boolean,
     val summaryCadence: SummaryCadence,
     val summaryHour: Int,
     val osNotificationsDisabled: Boolean,
@@ -38,12 +39,14 @@ class NotificationsViewModel @Inject constructor(
 
     val state: StateFlow<NotificationsUiState> = combine(
         prefs.pendingEnabled,
+        prefs.foreignEnabled,
         prefs.summaryCadence,
         prefs.summaryHour,
         osDisabledRefresh,
-    ) { p, c, h, osDisabled ->
+    ) { p, f, c, h, osDisabled ->
         NotificationsUiState(
             pendingEnabled = p,
+            foreignEnabled = f,
             summaryCadence = c,
             summaryHour = h,
             osNotificationsDisabled = osDisabled,
@@ -52,6 +55,7 @@ class NotificationsViewModel @Inject constructor(
         viewModelScope, SharingStarted.WhileSubscribed(5_000),
         NotificationsUiState(
             pendingEnabled = false,
+            foreignEnabled = false,
             summaryCadence = SummaryCadence.OFF,
             summaryHour = 20,
             osNotificationsDisabled = false,
@@ -67,6 +71,14 @@ class NotificationsViewModel @Inject constructor(
             requestPermissionThen { prefs.setPendingEnabled(true) }
         } else {
             prefs.setPendingEnabled(false)
+        }
+    }
+
+    fun setForeignEnabled(value: Boolean) {
+        if (value) {
+            requestPermissionThen { prefs.setForeignEnabled(true) }
+        } else {
+            prefs.setForeignEnabled(false)
         }
     }
 

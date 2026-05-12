@@ -57,6 +57,9 @@ class HomeViewModel @Inject constructor(
                     MainActivity.Deeplink.PendingFilter -> {
                         _filter.value = HomeFilter.Pending
                     }
+                    MainActivity.Deeplink.CurrencyReview -> {
+                        _filter.value = HomeFilter.CurrencyReview
+                    }
                 }
             }
         }

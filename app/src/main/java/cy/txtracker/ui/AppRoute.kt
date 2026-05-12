@@ -127,7 +127,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     LaunchedEffect(deeplinkBus, nav) {
         deeplinkBus.forAppRoute.collect { deeplink ->
             when (deeplink) {
-                Deeplink.PendingFilter -> navigateTopLevel(nav, Routes.HOME)
+                Deeplink.PendingFilter,
+                Deeplink.CurrencyReview,
+                -> navigateTopLevel(nav, Routes.HOME)
             }
         }
     }

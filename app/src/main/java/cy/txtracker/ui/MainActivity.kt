@@ -70,9 +70,14 @@ class MainActivity : FragmentActivity() {
         Deeplink.fromTag(tag)?.let { deeplinkBus.emit(it) }
     }
 
-    // Existing enum + companion (added in Task 4.1) — keep unchanged.
+    /**
+     * Deep-link targets carried by notification tap intents. Each `tag` is the
+     * stable string written into the intent extra ([EXTRA_DEEPLINK]) by the
+     * notification builders.
+     */
     enum class Deeplink(val tag: String) {
-        PendingFilter("pending");
+        PendingFilter("pending"),
+        CurrencyReview("currency-review");
 
         companion object {
             fun fromTag(tag: String?): Deeplink? = entries.firstOrNull { it.tag == tag }

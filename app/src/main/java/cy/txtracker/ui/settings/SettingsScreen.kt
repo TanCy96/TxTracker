@@ -211,8 +211,10 @@ fun SettingsScreen(
             )
             HorizontalDivider()
             ListItem(
-                headlineContent = { Text("Notifications") },
-                supportingContent = { Text("Pending reminders, spending summaries") },
+                headlineContent = { Text("Push notifications") },
+                supportingContent = {
+                    Text("Pending reminders, foreign-currency alerts, spending summaries.")
+                },
                 modifier = Modifier.fillMaxWidth().clickableRow(onNotificationsClick),
             )
 
