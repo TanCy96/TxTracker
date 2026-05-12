@@ -30,16 +30,29 @@ import kotlinx.datetime.Instant
 @Singleton
 class HeuristicExtractor @Inject constructor() {
 
-    fun extract(text: String, sourceApp: String, postedAt: Instant): ParsedTransaction? {
+    fun extract(
+        text: String,
+        sourceApp: String,
+        postedAt: Instant,
+        symbolDefaults: Map<String, String> = emptyMap(),
+    ): ParsedTransaction? {
         if (text.isBlank()) return null
         val trimmed = text.trim()
         val amountMatch = AMOUNT.find(trimmed) ?: return null
 
+        val amountStr = amountMatch.groups["amtA"]?.value
+            ?: amountMatch.groups["amtB"]?.value
+            ?: return null
+        val prefixToken = amountMatch.groups["prefix"]?.value
+        val suffixToken = amountMatch.groups["suffix"]?.value
+
+        val currency = Currencies.resolve(prefixToken, suffixToken, symbolDefaults)
+
         val merchant = resolveMerchant(trimmed)?.takeIf { it.isNotBlank() } ?: return null
 
         return ParsedTransaction(
-            amountMinor = parseRinggitAmountMinor(amountMatch.groups["amount"]!!.value),
-            currency = "MYR",
+            amountMinor = parseAmountMinor(amountStr),
+            currency = currency,
             merchantRaw = merchant,
             occurredAt = postedAt,
             sourceApp = sourceApp,
@@ -68,9 +81,17 @@ class HeuristicExtractor @Inject constructor() {
     }
 
     companion object {
-        // Amount: RM 1.00, RM1.00, MYR 1.00, MYR1.00, RM 1,234.56
+        // Three shapes in one alternation; decimals optional. The verb-gate (OUT_VERB)
+        // continues to fence off promo / noise text from triggering on amount alone.
+        //   Prefix form:  "RM 12.50", "MYR1.00", "£20", "$5", "€1,000.50"
+        //   Suffix form:  "1 MYR", "100 GBP", "25.50 USD"
         private val AMOUNT = Regex(
-            """\b(?:RM|MYR)\s*(?<amount>[\d,]+\.\d{2})\b""",
+            """(?:""" +
+            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>\d{1,3}(?:,\d{3})*(?:\.\d+)?)""" +
+            """|""" +
+            """(?<amtB>\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?<suffix>[A-Z]{3})""" +
+            """)""",
+            RegexOption.IGNORE_CASE,
         )
 
         // Verbs that imply outgoing money. Refunds / credits / cashback all use different
@@ -95,6 +116,11 @@ class HeuristicExtractor @Inject constructor() {
         // "via <X>", etc.) and at sentence-ending punctuation. Order matters — we try the most
         // specific shapes first.
         private val RECIPIENT_PATTERNS = listOf(
+            // Wise-style P2P: "is now in <NAME>'s account" — possessive form.
+            Regex(
+                """\bin\s+(?<merchant>[^\.\n,]+?)'s\s+account\b""",
+                RegexOption.IGNORE_CASE,
+            ),
             // "@MERCHANT on <date>" (bank-style)
             Regex(
                 """@(?<merchant>[^\.\n,]+?)(?=\s+on\s+\d{2}/\d{2}|[\.\n,]|\s*$)""",

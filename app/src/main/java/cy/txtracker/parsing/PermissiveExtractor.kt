@@ -45,7 +45,7 @@ class PermissiveExtractor @Inject constructor() {
         val match = AMOUNT.find(text) ?: return null
 
         return ParsedTransaction(
-            amountMinor = parseRinggitAmountMinor(match.groups["amount"]!!.value),
+            amountMinor = parseAmountMinor(match.groups["amount"]!!.value),
             currency = "MYR",
             merchantRaw = merchantFor(sourceApp, text),
             occurredAt = postedAt,

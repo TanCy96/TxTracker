@@ -37,8 +37,18 @@ internal fun StatusBarNotification.extractText(): String? {
 }
 
 /**
- * "16.00" → 1600, "1,234.56" → 123456. Caller's regex must guarantee exactly two decimal places
- * and at least one digit before the dot.
+ * "16.00" → 1600, "1,234.56" → 123456, "1" → 100 (no decimals → assume two-decimal
+ * minor unit, common in foreign-currency-without-cents bank notifications).
  */
-internal fun parseRinggitAmountMinor(raw: String): Long =
-    raw.replace(",", "").replace(".", "").toLong()
+internal fun parseAmountMinor(raw: String): Long {
+    val cleaned = raw.replace(",", "")
+    val dotIdx = cleaned.indexOf('.')
+    return if (dotIdx == -1) {
+        // No decimals — multiply by 100 to land in minor units.
+        cleaned.toLong() * 100
+    } else {
+        val whole = cleaned.substring(0, dotIdx)
+        val fraction = cleaned.substring(dotIdx + 1).padEnd(2, '0').take(2)
+        whole.toLong() * 100 + fraction.toLong()
+    }
+}
