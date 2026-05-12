@@ -12,6 +12,8 @@ import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import cy.txtracker.data.ApprovedSourceDao
 import cy.txtracker.data.UserFacingSourceDao
+import cy.txtracker.data.TrackedCurrencyDao
+import cy.txtracker.data.TripWindowDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -52,7 +54,7 @@ object DatabaseModule {
             // (adds the merchant_notes table). Preserves all captured transactions and
             // learned mappings rather than wiping them. fallbackToDestructiveMigration
             // stays as a safety net for any unforeseen mismatch.
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -79,6 +81,12 @@ object DatabaseModule {
     @Provides
     fun provideApprovedSourceDao(db: TxDatabase): ApprovedSourceDao =
         db.approvedSourceDao()
+
+    @Provides
+    fun provideTrackedCurrencyDao(db: TxDatabase): TrackedCurrencyDao = db.trackedCurrencyDao()
+
+    @Provides
+    fun provideTripWindowDao(db: TxDatabase): TripWindowDao = db.tripWindowDao()
 }
 
 /**
@@ -148,6 +156,50 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
             WHERE `needsVerification` = 0
               AND sourceApp != 'manual'
             GROUP BY sourceApp
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * Adds `tracked_currencies` and `trip_windows` tables introduced in v6, and the
+ * `needsCurrencyConfirmation` column on `transactions`. Schema mirrors what Room
+ * would generate for [cy.txtracker.data.TrackedCurrency], [cy.txtracker.data.TripWindow],
+ * and the augmented Transaction so the resulting DB matches a fresh install on v6.
+ */
+private val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `tracked_currencies` (
+                `code` TEXT NOT NULL,
+                `displaySymbol` TEXT NOT NULL,
+                `isDefaultForSymbol` INTEGER NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`code`)
+            )
+            """.trimIndent(),
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `trip_windows` (
+                `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                `currency` TEXT NOT NULL,
+                `startAt` INTEGER NOT NULL,
+                `endAt` INTEGER,
+                `createdAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_currency` ON `trip_windows`(`currency`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_startAt`  ON `trip_windows`(`startAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_windows_endAt`    ON `trip_windows`(`endAt`)")
+
+        db.execSQL(
+            """
+            ALTER TABLE `transactions`
+            ADD COLUMN `needsCurrencyConfirmation` INTEGER NOT NULL DEFAULT 0
             """.trimIndent(),
         )
     }
