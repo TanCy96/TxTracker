@@ -8,6 +8,8 @@ import androidx.work.WorkManager
 import cy.txtracker.cloud.CloudSyncScheduler
 import cy.txtracker.cloud.DriveClient
 import cy.txtracker.cloud.GoogleSignInStateProvider
+import cy.txtracker.data.TrackedCurrency
+import cy.txtracker.data.TransactionRepository
 import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
@@ -43,8 +45,18 @@ class SettingsViewModel @Inject constructor(
     private val cloudSyncScheduler: CloudSyncScheduler,
     private val driveClient: DriveClient,
     private val signInState: GoogleSignInStateProvider,
+    private val repository: TransactionRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
+
+    /** Tracked currencies for the CSV export chooser sheet. */
+    val trackedCurrencies: StateFlow<List<TrackedCurrency>> =
+        repository.observeTrackedCurrencies()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000L),
+                initialValue = emptyList(),
+            )
 
     val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
 
@@ -78,6 +90,34 @@ class SettingsViewModel @Inject constructor(
             try {
                 val uri = csvExporter.export()
                 _exportStatus.value = ExportStatus.Ready(uri.toString())
+            } catch (t: Throwable) {
+                _exportStatus.value = ExportStatus.Error(t.message ?: "Export failed")
+            }
+        }
+    }
+
+    /** Export transactions for [currency] as a CSV file and share via ACTION_SEND. */
+    fun exportCsv(currency: String) {
+        if (_exportStatus.value is ExportStatus.Running) return
+        _exportStatus.value = ExportStatus.Running
+        viewModelScope.launch {
+            try {
+                val uri = csvExporter.exportCsv(currency)
+                _exportStatus.value = ExportStatus.Ready(uri.toString())
+            } catch (t: Throwable) {
+                _exportStatus.value = ExportStatus.Error(t.message ?: "Export failed")
+            }
+        }
+    }
+
+    /** Export all currencies as a zip of per-currency CSVs and share via ACTION_SEND. */
+    fun exportAllZip() {
+        if (_exportStatus.value is ExportStatus.Running) return
+        _exportStatus.value = ExportStatus.Running
+        viewModelScope.launch {
+            try {
+                val uri = csvExporter.exportAllCurrenciesZip()
+                _exportStatus.value = ExportStatus.ZipReady(uri.toString())
             } catch (t: Throwable) {
                 _exportStatus.value = ExportStatus.Error(t.message ?: "Export failed")
             }
@@ -230,8 +270,10 @@ class SettingsViewModel @Inject constructor(
     sealed interface ExportStatus {
         data object Idle : ExportStatus
         data object Running : ExportStatus
-        /** Stringified [Uri] of the exported file ready to be shared via ACTION_SEND. */
+        /** Stringified [Uri] of the exported CSV ready to be shared via ACTION_SEND. */
         data class Ready(val uri: String) : ExportStatus
+        /** Stringified [Uri] of the exported zip file ready to be shared via ACTION_SEND. */
+        data class ZipReady(val uri: String) : ExportStatus
         data class Error(val message: String) : ExportStatus
     }
 

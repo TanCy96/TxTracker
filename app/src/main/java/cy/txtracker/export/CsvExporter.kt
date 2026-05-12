@@ -9,8 +9,10 @@ import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.toLocalDateTime
 
@@ -28,27 +30,65 @@ class CsvExporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: TransactionRepository,
 ) {
-    /** Builds the CSV, writes to cacheDir, and returns a content URI sharable via Intent. */
-    suspend fun export(): Uri {
-        val transactions = repository.getAllTransactionsOnce()
+    /**
+     * Exports transactions for [currency] as a CSV, writes to cacheDir, and returns a
+     * content URI sharable via Intent.
+     */
+    suspend fun exportCsv(currency: String): Uri {
+        val transactions = repository.getAllTransactionsOnceForCurrency(currency)
         val categories = repository.getAllCategoriesOnce()
-        val csv = buildCsv(transactions, categories)
-        val file = writeToCache(csv)
-        return FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file,
-        )
+        val dir = exportDir()
+        val file = File(dir, "transactions-$currency-${System.currentTimeMillis()}.csv")
+        file.outputStream().use { writeCsv(transactions, categories, it) }
+        return uriFor(file)
     }
 
-    private fun writeToCache(csv: String): File {
-        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-        // Fresh-stamped filename so the share sheet shows a recognizable export.
-        val filename = "transactions-${System.currentTimeMillis()}.csv"
-        val file = File(dir, filename)
-        file.writeText(csv, Charsets.UTF_8)
-        return file
+    /**
+     * Exports one CSV per currency (MYR + every tracked currency that has rows) into a
+     * single zip file. Returns a content URI sharable via Intent.
+     * Currencies with zero rows are skipped so the zip contains no empty CSVs.
+     */
+    suspend fun exportAllCurrenciesZip(): Uri {
+        val categories = repository.getAllCategoriesOnce()
+        val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
+        val codes = (listOf("MYR") + trackedCodes).distinct()
+
+        val dir = exportDir()
+        val zipFile = File(dir, "transactions-all-${System.currentTimeMillis()}.zip")
+        java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zip ->
+            for (code in codes) {
+                val rows = repository.getAllTransactionsOnceForCurrency(code)
+                if (rows.isEmpty()) continue
+                zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
+                writeCsv(rows, categories, zip)
+                zip.closeEntry()
+            }
+        }
+        return uriFor(zipFile)
     }
+
+    /** Legacy single-file export (all transactions, no currency filter). Kept for call-site
+     *  compatibility during the transition. */
+    suspend fun export(): Uri = exportCsv("MYR")
+
+    private fun exportDir(): File =
+        File(context.cacheDir, "exports").apply { mkdirs() }
+
+    private fun uriFor(file: File): Uri =
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers — separated from file I/O for unit-testability
+// ---------------------------------------------------------------------------
+
+/**
+ * Writes CSV bytes for [transactions] / [categories] to [output].
+ * The stream is NOT closed here — callers own the lifecycle.
+ */
+fun writeCsv(transactions: List<Transaction>, categories: List<Category>, output: OutputStream) {
+    val csv = buildCsv(transactions, categories)
+    output.write(csv.toByteArray(Charsets.UTF_8))
 }
 
 /**

@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.BuildConfig
+import cy.txtracker.data.TrackedCurrency
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,9 +72,11 @@ fun SettingsScreen(
     val cloudTransactionCutoff by viewModel.cloudTransactionCutoff.collectAsState()
     val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
     val cloudSyncInFlight by viewModel.cloudSyncInFlight.collectAsState()
+    val trackedCurrencies by viewModel.trackedCurrencies.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showCutoffDialog by remember { mutableStateOf(false) }
+    var showExportChooser by remember { mutableStateOf(false) }
 
     val pickBackup = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -98,6 +102,15 @@ fun SettingsScreen(
             is SettingsViewModel.ExportStatus.Ready -> {
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, Uri.parse(s.uri))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, "Export transactions"))
+                viewModel.consumeStatus()
+            }
+            is SettingsViewModel.ExportStatus.ZipReady -> {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
                     putExtra(Intent.EXTRA_STREAM, Uri.parse(s.uri))
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
@@ -211,7 +224,7 @@ fun SettingsScreen(
                 },
                 modifier = Modifier.fillMaxWidth().clickableRow(
                     enabled = !isExporting,
-                    onClick = viewModel::export,
+                    onClick = { showExportChooser = true },
                 ),
             )
             HorizontalDivider()
@@ -346,6 +359,21 @@ fun SettingsScreen(
             )
         }
 
+        if (showExportChooser) {
+            ExportCsvChooserSheet(
+                trackedCurrencies = trackedCurrencies,
+                onExportCurrency = { currency ->
+                    showExportChooser = false
+                    viewModel.exportCsv(currency)
+                },
+                onExportAllZip = {
+                    showExportChooser = false
+                    viewModel.exportAllZip()
+                },
+                onDismiss = { showExportChooser = false },
+            )
+        }
+
         when (val s = cloudSyncStatus) {
             is SettingsViewModel.CloudSyncStatus.RestorePrompt -> {
                 AlertDialog(
@@ -406,3 +434,46 @@ private fun Modifier.clickableRow(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ): Modifier = this.clickable(enabled = enabled, onClick = onClick)
+
+/**
+ * Bottom-sheet chooser for the CSV export action. Shows:
+ *  - "Export MYR" (always)
+ *  - "Export <code>" for each tracked currency
+ *  - "Export all currencies (zip)" when more than one currency is available
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportCsvChooserSheet(
+    trackedCurrencies: List<TrackedCurrency>,
+    onExportCurrency: (String) -> Unit,
+    onExportAllZip: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+            Text(
+                text = "Export to CSV",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            ListItem(
+                headlineContent = { Text("Export MYR") },
+                modifier = Modifier.fillMaxWidth().clickable { onExportCurrency("MYR") },
+            )
+            for (tc in trackedCurrencies) {
+                ListItem(
+                    headlineContent = { Text("Export ${tc.code}") },
+                    modifier = Modifier.fillMaxWidth().clickable { onExportCurrency(tc.code) },
+                )
+            }
+            if (trackedCurrencies.isNotEmpty()) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                ListItem(
+                    headlineContent = { Text("Export all currencies (zip)") },
+                    supportingContent = { Text("One CSV per currency in a single zip file.") },
+                    modifier = Modifier.fillMaxWidth().clickable { onExportAllZip() },
+                )
+            }
+        }
+    }
+}
