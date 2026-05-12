@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,10 +48,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.data.Transaction
+import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.ui.currency.AddCurrencyDialog
+import cy.txtracker.ui.currency.CurrencyPickerSheet
+import cy.txtracker.ui.currency.TripCreationDialog
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
-import cy.txtracker.domain.MalaysiaTimeZone
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,6 +80,8 @@ fun EditTransactionSheet(
             EditUiState.Missing -> MissingContent(onClose = onDismiss)
             is EditUiState.Editing -> EditingContent(
                 state = s,
+                transactionId = transactionId,
+                viewModel = viewModel,
                 onCategoryChange = { categoryId ->
                     viewModel.setCategory(transactionId, categoryId, learn = true)
                 },
@@ -116,6 +126,8 @@ private fun MissingContent(onClose: () -> Unit) {
 @Composable
 private fun EditingContent(
     state: EditUiState.Editing,
+    transactionId: Long,
+    viewModel: EditTransactionViewModel,
     onCategoryChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
     onMerchantNoteChange: (String?) -> Unit,
@@ -206,6 +218,78 @@ private fun EditingContent(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+        Text(text = "Currency", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+
+        var showPicker by remember { mutableStateOf(false) }
+        var pendingCurrency by remember { mutableStateOf<String?>(null) }
+        var showAddDialog by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+
+        AssistChip(
+            onClick = { showPicker = true },
+            label = { Text(tx.currency) },
+        )
+
+        if (showPicker) {
+            CurrencyPickerSheet(
+                tracked = state.trackedCurrencies,
+                onPick = { picked ->
+                    showPicker = false
+                    if (picked == tx.currency) return@CurrencyPickerSheet
+                    if (picked == "MYR") {
+                        viewModel.setCurrency(transactionId, picked)
+                    } else {
+                        scope.launch {
+                            val active = viewModel.findActiveTrip(picked, tx.occurredAt)
+                            if (active != null) {
+                                viewModel.setCurrency(transactionId, picked)
+                            } else {
+                                pendingCurrency = picked
+                            }
+                        }
+                    }
+                },
+                onAddNew = {
+                    showPicker = false
+                    showAddDialog = true
+                },
+                onDismiss = { showPicker = false },
+            )
+        }
+
+        if (showAddDialog) {
+            AddCurrencyDialog(
+                alreadyTracked = state.trackedCurrencies.map { it.code }.toSet() + "MYR",
+                onPick = { code ->
+                    showAddDialog = false
+                    viewModel.addCurrency(code)
+                    pendingCurrency = code
+                },
+                onDismiss = { showAddDialog = false },
+            )
+        }
+
+        val pending = pendingCurrency
+        if (pending != null) {
+            TripCreationDialog(
+                currency = pending,
+                defaultStartAt = tx.occurredAt,
+                defaultEndAt = tx.occurredAt.plus(14, DateTimeUnit.DAY, MalaysiaTimeZone),
+                onConfirm = { startAt, endAt ->
+                    pendingCurrency = null
+                    scope.launch {
+                        viewModel.setCurrency(transactionId, pending)
+                        viewModel.openTrip(pending, startAt, endAt) { }
+                    }
+                },
+                onDismiss = { pendingCurrency = null },
+            )
+        }
+
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))

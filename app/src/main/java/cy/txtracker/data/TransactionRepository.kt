@@ -146,11 +146,18 @@ class TransactionRepository @Inject constructor(
         categoryId: Long?,
         description: String?,
         occurredAt: Instant,
+        currency: String = "MYR",
         now: Instant = Clock.System.now(),
     ): Long? {
+        val needsCurrencyConfirmation = if (currency == "MYR") {
+            false
+        } else {
+            ensureTrackedCurrency(currency)
+            findActiveTrip(currency, occurredAt) == null
+        }
         val tx = Transaction(
             amountMinor = amountMinor,
-            currency = "MYR",
+            currency = currency,
             merchantRaw = merchantRaw,
             merchantNormalized = normalizeMerchant(merchantRaw),
             categoryId = categoryId,
@@ -163,6 +170,7 @@ class TransactionRepository @Inject constructor(
             createdAt = now,
             notificationDedupeKey = "manual:${UUID.randomUUID()}",
             needsVerification = false,
+            needsCurrencyConfirmation = needsCurrencyConfirmation,
         )
         return insert(tx)
     }

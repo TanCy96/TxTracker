@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -47,6 +48,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
+import cy.txtracker.ui.currency.AddCurrencyDialog
+import cy.txtracker.ui.currency.CurrencyPickerSheet
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
@@ -76,6 +79,8 @@ fun AddManualSheet(
             onDescriptionChange = viewModel::setDescription,
             onDateChange = viewModel::setDate,
             onTimeChange = viewModel::setTime,
+            onCurrencyChange = viewModel::setCurrency,
+            onAddCurrency = viewModel::addCurrency,
             onSave = { viewModel.save(onSaved = onDismiss) },
             onCancel = onDismiss,
         )
@@ -92,11 +97,15 @@ private fun Content(
     onDescriptionChange: (String) -> Unit,
     onDateChange: (LocalDate) -> Unit,
     onTimeChange: (LocalTime) -> Unit,
+    onCurrencyChange: (String) -> Unit,
+    onAddCurrency: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var showCurrencyPicker by remember { mutableStateOf(false) }
+    var showAddCurrencyDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -132,6 +141,14 @@ private fun Content(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(16.dp))
+
+        Text("Currency", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        AssistChip(
+            onClick = { showCurrencyPicker = true },
+            label = { Text(state.currency) },
+        )
+        Spacer(Modifier.height(8.dp))
 
         Text("Category", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))
@@ -201,6 +218,31 @@ private fun Content(
                 onTimeChange(it)
                 showTimePicker = false
             },
+        )
+    }
+    if (showCurrencyPicker) {
+        CurrencyPickerSheet(
+            tracked = state.trackedCurrencies,
+            onPick = { picked ->
+                showCurrencyPicker = false
+                onCurrencyChange(picked)
+            },
+            onAddNew = {
+                showCurrencyPicker = false
+                showAddCurrencyDialog = true
+            },
+            onDismiss = { showCurrencyPicker = false },
+        )
+    }
+    if (showAddCurrencyDialog) {
+        AddCurrencyDialog(
+            alreadyTracked = state.trackedCurrencies.map { it.code }.toSet() + "MYR",
+            onPick = { code ->
+                showAddCurrencyDialog = false
+                onAddCurrency(code)
+                onCurrencyChange(code)
+            },
+            onDismiss = { showAddCurrencyDialog = false },
         )
     }
 }

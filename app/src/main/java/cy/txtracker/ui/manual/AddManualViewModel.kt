@@ -3,6 +3,7 @@ package cy.txtracker.ui.manual
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
+import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,8 @@ data class AddManualUiState(
     val date: LocalDate = LocalDate(2000, 1, 1),
     val time: LocalTime = LocalTime(0, 0),
     val categories: List<Category> = emptyList(),
+    val currency: String = "MYR",
+    val trackedCurrencies: List<TrackedCurrency> = emptyList(),
     val isSaving: Boolean = false,
 ) {
     val amountMinor: Long? get() = parseAmountMinor(amountText)
@@ -54,11 +57,23 @@ class AddManualViewModel @Inject constructor(
         viewModelScope.launch {
             val now = Clock.System.now().toLocalDateTime(MalaysiaTimeZone)
             val categories = repository.observeAllCategories().first()
+            val trackedCurrencies = repository.observeTrackedCurrencies().first()
             _state.value = AddManualUiState(
                 date = now.date,
                 time = LocalTime(now.hour, now.minute),
                 categories = categories,
+                trackedCurrencies = trackedCurrencies,
             )
+        }
+    }
+
+    fun setCurrency(currency: String) = _state.update { it.copy(currency = currency) }
+
+    fun addCurrency(code: String) {
+        viewModelScope.launch {
+            repository.ensureTrackedCurrency(code)
+            val refreshed = repository.observeTrackedCurrencies().first()
+            _state.update { it.copy(trackedCurrencies = refreshed) }
         }
     }
 
@@ -94,6 +109,7 @@ class AddManualViewModel @Inject constructor(
                 categoryId = s.categoryId,
                 description = s.descriptionText.takeIf { it.isNotBlank() },
                 occurredAt = occurredAt,
+                currency = s.currency,
             )
             _state.update { it.copy(isSaving = false) }
             onSaved()

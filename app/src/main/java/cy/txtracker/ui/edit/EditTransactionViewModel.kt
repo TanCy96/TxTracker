@@ -3,6 +3,7 @@ package cy.txtracker.ui.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
+import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 sealed interface EditUiState {
     data object Loading : EditUiState
@@ -22,6 +24,7 @@ sealed interface EditUiState {
         val categories: List<Category>,
         /** Existing note for this transaction's merchant, or null when none. */
         val merchantNote: String?,
+        val trackedCurrencies: List<TrackedCurrency>,
     ) : EditUiState
 }
 
@@ -43,6 +46,7 @@ class EditTransactionViewModel @Inject constructor(
                     transaction = tx,
                     categories = repository.observeAllCategories().first(),
                     merchantNote = repository.getMerchantNote(tx.merchantNormalized)?.note,
+                    trackedCurrencies = repository.observeTrackedCurrencies().first(),
                 )
             }
         }
@@ -145,5 +149,38 @@ class EditTransactionViewModel @Inject constructor(
             repository.delete(transactionId)
             onDone()
         }
+    }
+
+    fun setCurrency(transactionId: Long, currency: String, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val ok = repository.setCurrency(transactionId, currency)
+            if (ok) {
+                val refreshed = repository.getTransaction(transactionId) ?: return@launch
+                val current = _state.value
+                if (current is EditUiState.Editing) {
+                    _state.value = current.copy(transaction = refreshed)
+                }
+            }
+            onResult(ok)
+        }
+    }
+
+    fun openTrip(currency: String, startAt: Instant, endAt: Instant?, onDone: () -> Unit) {
+        viewModelScope.launch {
+            repository.openTrip(currency, startAt, endAt)
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                val refreshed = repository.getTransaction(current.transaction.id) ?: return@launch
+                _state.value = current.copy(transaction = refreshed)
+            }
+            onDone()
+        }
+    }
+
+    suspend fun findActiveTrip(currency: String, at: Instant) =
+        repository.findActiveTrip(currency, at)
+
+    fun addCurrency(code: String) {
+        viewModelScope.launch { repository.ensureTrackedCurrency(code) }
     }
 }
