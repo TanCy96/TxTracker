@@ -38,4 +38,8 @@ class TripHistoryViewModel @Inject constructor(
     fun endTrip(tripId: Long) {
         viewModelScope.launch { repository.closeTrip(tripId, Clock.System.now()) }
     }
+
+    fun deleteTrip(tripId: Long) {
+        viewModelScope.launch { repository.deleteTrip(tripId) }
+    }
 }

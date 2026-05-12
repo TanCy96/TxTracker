@@ -399,6 +399,13 @@ class TransactionRepository @Inject constructor(
         endAt: Instant?,
         now: Instant = Clock.System.now(),
     ): Long = database.withTransaction {
+        // Defensive: callers that pick a currency outside the existing
+        // tracked_currencies list (notably the proactive "Start a trip" flow
+        // in Currencies settings) would otherwise create a TripWindow row that
+        // the Currencies screen renders against, but the row is invisible
+        // because the screen iterates tracked_currencies first. Ensure the
+        // parent row exists so the trip surfaces in the list.
+        ensureTrackedCurrency(currency, now)
         val tripId = tripWindowDao.insert(
             TripWindow(
                 currency = currency,
@@ -422,6 +429,16 @@ class TransactionRepository @Inject constructor(
      */
     suspend fun closeTrip(tripId: Long, endAt: Instant) {
         tripWindowDao.setEnd(tripId, endAt)
+    }
+
+    /**
+     * Deletes a trip outright. Like [closeTrip], does NOT re-flag any
+     * transactions — rows promoted by this trip stay promoted. Used for
+     * Upcoming trips the user changed their mind about, or for cleaning up
+     * stale historical trips.
+     */
+    suspend fun deleteTrip(tripId: Long) {
+        tripWindowDao.delete(tripId)
     }
 
     /**
