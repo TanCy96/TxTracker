@@ -191,4 +191,74 @@ class HeuristicExtractorTest {
         assertThat(r.merchantRaw).isEqualTo("MERCHANT")
         assertThat(r.amountMinor).isEqualTo(1200L)
     }
+
+    @Test
+    fun handles_wise_p2p_myr_possessive_recipient() {
+        // Real Wise sample: "Your transfer of 1 MYR is now in <Person>'s account"
+        val text = "Your transfer of 1 MYR is now in TAN CHI YANG's account"
+        val r = extractor.extract(text, "com.transferwise.android", now)!!
+        assertThat(r.amountMinor).isEqualTo(100L)        // 1 MYR = 100 minor units
+        assertThat(r.currency).isEqualTo("MYR")
+        assertThat(r.merchantRaw).isEqualTo("TAN CHI YANG")
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
+
+    @Test
+    fun handles_suffix_code_form_gbp() {
+        val text = "Your transfer of 100 GBP is now in JANE's account"
+        val r = extractor.extract(text, "com.transferwise.android", now)!!
+        assertThat(r.amountMinor).isEqualTo(10000L)
+        assertThat(r.currency).isEqualTo("GBP")
+        assertThat(r.merchantRaw).isEqualTo("JANE")
+    }
+
+    @Test
+    fun handles_symbol_prefix_unambiguous_gbp() {
+        // £ unambiguously maps to GBP without any user default.
+        val text = "paid £20.00 to JOHN"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.amountMinor).isEqualTo(2000L)
+        assertThat(r.currency).isEqualTo("GBP")
+        assertThat(r.merchantRaw).isEqualTo("JOHN")
+    }
+
+    @Test
+    fun handles_symbol_prefix_ambiguous_with_default() {
+        // $ requires a user default. Test passes one in.
+        val text = "paid $15.99 to COFFEE BEAN"
+        val r = extractor.extract(
+            text = text,
+            sourceApp = "anything",
+            postedAt = now,
+            symbolDefaults = mapOf("$" to "USD"),
+        )!!
+        assertThat(r.currency).isEqualTo("USD")
+        assertThat(r.amountMinor).isEqualTo(1599L)
+    }
+
+    @Test
+    fun handles_symbol_prefix_ambiguous_without_default_falls_through_to_unknown() {
+        val text = "paid $15.99 to MERCH"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.currency).isEqualTo("UNKNOWN")
+        assertThat(r.amountMinor).isEqualTo(1599L)
+    }
+
+    @Test
+    fun handles_integer_amount_no_decimals() {
+        // "1 MYR" — no `.00`. Previously required two decimals; the widened regex
+        // makes them optional.
+        val text = "transferred 1 MYR to FRIEND"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.amountMinor).isEqualTo(100L)
+        assertThat(r.currency).isEqualTo("MYR")
+    }
+
+    @Test
+    fun thousands_separator_works_for_suffix_form() {
+        val text = "transferred 1,234.56 GBP to FRIEND"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.amountMinor).isEqualTo(123456L)
+        assertThat(r.currency).isEqualTo("GBP")
+    }
 }
