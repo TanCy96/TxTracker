@@ -120,7 +120,7 @@ private fun Content(
         OutlinedTextField(
             value = state.amountText,
             onValueChange = onAmountChange,
-            label = { Text("Amount (RM)") },
+            label = { Text("Amount (${state.currency})") },
             placeholder = { Text("0.00") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(

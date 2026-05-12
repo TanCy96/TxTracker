@@ -227,10 +227,10 @@ class HomeViewModel @Inject constructor(
         dismissed: Set<String>,
     ): BannerOffer? {
         if (parkedRows.isEmpty()) return null
-        // Group by currency, find first non-dismissed currency
+        // Group by currency, find first non-dismissed currency (skip UNKNOWN)
         val byCurrency = parkedRows.groupBy { it.currency }
         for ((currency, rows) in byCurrency) {
-            if (currency in dismissed) continue
+            if (currency == "UNKNOWN" || currency in dismissed) continue
             // Find the earliest occurred-at for this currency
             val earliest = rows.minByOrNull { it.occurredAt } ?: continue
             return BannerOffer(currency = currency, earliestOccurredAt = earliest.occurredAt)

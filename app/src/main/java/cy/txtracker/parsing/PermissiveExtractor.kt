@@ -12,7 +12,8 @@ import kotlinx.datetime.Instant
  * Triggers when:
  *   - The source app is in [SourcePackages.PERMISSIVE_PACKAGES] (or [bypassAllowlist]
  *     is true), AND
- *   - The notification text contains *any* `RM` or `MYR` amount.
+ *   - The notification text contains *any* supported currency amount (see [Currencies.KNOWN_CODES]
+ *     and [Currencies.SYMBOL_TO_CODE]).
  *
  * Doesn't try to extract a generic merchant. The captured row uses a source-app label
  * as the merchant ("GWallet (review)", "CIMB (review)", …) and stores the full notification
@@ -22,13 +23,14 @@ import kotlinx.datetime.Instant
  * notification refers to "Grab" as the counterparty, so we commit to `"GRAB"` directly.
  *
  * Keeping the amount requirement matters — without it, a "Welcome to Wallet" notification
- * would create a phantom RM 0.00 row.
+ * would create a phantom 0.00 row for an unsupported currency.
  */
 @Singleton
 class PermissiveExtractor @Inject constructor() {
 
     /**
-     * Builds a `ParsedTransaction` from any text with an RM/MYR amount.
+     * Builds a `ParsedTransaction` from any text with a supported currency amount
+     * (see [Currencies.KNOWN_CODES] and [Currencies.SYMBOL_TO_CODE]).
      *
      * @param bypassAllowlist when true, skips the [SourcePackages.PERMISSIVE_PACKAGES]
      *   check so unknown packages can be processed. The listener passes the user's
