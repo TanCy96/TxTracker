@@ -53,4 +53,16 @@ class MainActivity : FragmentActivity() {
             notificationPermissionBridge.onResult(true)
         }
     }
+
+    enum class Deeplink(val tag: String) {
+        PendingFilter("pending");
+
+        companion object {
+            fun fromTag(tag: String?): Deeplink? = entries.firstOrNull { it.tag == tag }
+        }
+    }
+
+    companion object {
+        const val EXTRA_DEEPLINK = "deeplink"
+    }
 }
