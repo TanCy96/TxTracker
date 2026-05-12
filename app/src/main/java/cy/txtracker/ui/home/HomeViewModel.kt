@@ -8,9 +8,12 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.YearMonth
+import cy.txtracker.notify.DeeplinkBus
+import cy.txtracker.ui.MainActivity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,10 +26,23 @@ import kotlinx.datetime.toLocalDateTime
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: TransactionRepository,
+    private val deeplinkBus: DeeplinkBus,
 ) : ViewModel() {
 
     private val _yearMonth = MutableStateFlow(YearMonth.current())
     private val _filter = MutableStateFlow<HomeFilter>(HomeFilter.All)
+
+    init {
+        viewModelScope.launch {
+            deeplinkBus.forHome.collect { deeplink ->
+                when (deeplink) {
+                    MainActivity.Deeplink.PendingFilter -> {
+                        _filter.value = HomeFilter.Pending
+                    }
+                }
+            }
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<HomeUiState> =

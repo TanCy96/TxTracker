@@ -5,8 +5,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import cy.txtracker.notify.DeeplinkBus
+import cy.txtracker.ui.MainActivity.Deeplink
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,6 +39,23 @@ private object Routes {
     const val SETTINGS_MERCHANTS = "settings/merchants"
     const val SETTINGS_DESCRIPTIONS = "settings/descriptions"
     const val SETTINGS_SOURCES = "settings/sources"
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface DeeplinkBusEntryPoint {
+    fun deeplinkBus(): DeeplinkBus
+}
+
+@androidx.compose.runtime.Composable
+private fun rememberDeeplinkBus(): DeeplinkBus {
+    val context = LocalContext.current
+    return remember(context) {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            DeeplinkBusEntryPoint::class.java,
+        ).deeplinkBus()
+    }
 }
 
 /**
@@ -69,6 +93,18 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     }
 
     val nav = rememberNavController()
+    val deeplinkBus = rememberDeeplinkBus()
+    LaunchedEffect(deeplinkBus, nav) {
+        deeplinkBus.forAppRoute.collect { deeplink ->
+            when (deeplink) {
+                Deeplink.PendingFilter -> {
+                    nav.navigate(Routes.HOME) {
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
+    }
     NavHost(
         navController = nav,
         startDestination = Routes.HOME,

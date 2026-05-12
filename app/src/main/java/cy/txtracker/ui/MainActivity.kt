@@ -1,6 +1,7 @@
 package cy.txtracker.ui
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -8,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.notify.NotificationPermissionBridge
 import cy.txtracker.ui.theme.TxTrackerTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,6 +26,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
 
     @Inject lateinit var notificationPermissionBridge: NotificationPermissionBridge
+    @Inject lateinit var deeplinkBus: DeeplinkBus
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -39,11 +42,19 @@ class MainActivity : FragmentActivity() {
             notificationPermissionBridge.requests.collect { launchPermissionRequest() }
         }
 
+        dispatchDeeplink(intent)
+
         setContent {
             TxTrackerTheme {
                 AppRoute()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        dispatchDeeplink(intent)
     }
 
     private fun launchPermissionRequest() {
@@ -54,6 +65,12 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun dispatchDeeplink(intent: Intent?) {
+        val tag = intent?.getStringExtra(EXTRA_DEEPLINK) ?: return
+        Deeplink.fromTag(tag)?.let { deeplinkBus.emit(it) }
+    }
+
+    // Existing enum + companion (added in Task 4.1) — keep unchanged.
     enum class Deeplink(val tag: String) {
         PendingFilter("pending");
 
