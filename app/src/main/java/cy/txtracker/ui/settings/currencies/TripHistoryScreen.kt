@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.ui.currency.TripCreationDialog
 import kotlinx.datetime.Clock
 import kotlinx.datetime.toLocalDateTime
 
@@ -45,8 +47,8 @@ fun TripHistoryScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val now = Clock.System.now()
-    // Trip id pending delete-confirmation, or null when no dialog is open.
     var pendingDelete by remember { mutableStateOf<Long?>(null) }
+    var pendingEdit by remember { mutableStateOf<TripWithCount?>(null) }
 
     Scaffold(
         topBar = {
@@ -61,7 +63,8 @@ fun TripHistoryScreen(
         },
     ) { padding ->
         LazyColumn(Modifier.padding(padding)) {
-            items(state.trips, key = { it.id }) { trip ->
+            items(state.trips, key = { it.trip.id }) { row ->
+                val trip = row.trip
                 val status = when {
                     trip.startAt > now -> TripStatus.Upcoming
                     trip.endAt != null && trip.endAt <= now -> TripStatus.Ended
@@ -74,7 +77,9 @@ fun TripHistoryScreen(
                             ?.toLocalDateTime(MalaysiaTimeZone)?.date?.toString() ?: "open"
                         Text("$startStr → $endStr")
                     },
-                    supportingContent = { Text(status.label) },
+                    supportingContent = {
+                        Text("${status.label} • ${pluralizeTx(row.transactionCount)}")
+                    },
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             // "End now" only makes sense for currently-running
@@ -85,9 +90,12 @@ fun TripHistoryScreen(
                                     Text("End now")
                                 }
                             }
-                            // Delete is available for every status. Promoted
-                            // transactions stay promoted — the trip record is
-                            // the audit trail, not a live gate.
+                            IconButton(onClick = { pendingEdit = row }) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = "Edit trip dates",
+                                )
+                            }
                             IconButton(onClick = { pendingDelete = trip.id }) {
                                 Icon(
                                     Icons.Outlined.Delete,
@@ -125,4 +133,22 @@ fun TripHistoryScreen(
             },
         )
     }
+
+    val rowToEdit = pendingEdit
+    if (rowToEdit != null) {
+        TripCreationDialog(
+            currency = state.currency,
+            defaultStartAt = rowToEdit.trip.startAt,
+            defaultEndAt = rowToEdit.trip.endAt,
+            isEditing = true,
+            onConfirm = { startAt, endAt ->
+                viewModel.editTrip(rowToEdit.trip.id, startAt, endAt)
+                pendingEdit = null
+            },
+            onDismiss = { pendingEdit = null },
+        )
+    }
 }
+
+private fun pluralizeTx(count: Int): String =
+    if (count == 1) "1 transaction" else "$count transactions"

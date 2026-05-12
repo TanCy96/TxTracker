@@ -163,7 +163,11 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
         NavHost(
             navController = nav,
             startDestination = Routes.HOME,
-            modifier = Modifier.padding(padding),
+            // Only consume the bottom inset (NavigationBar height). Each
+            // destination has its own TopAppBar that owns the status-bar
+            // inset — applying the full Scaffold padding here would double
+            // up the top spacing.
+            modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
             // Native-style horizontal slide: forward push moves both screens to the left
             // (incoming from the right, outgoing off the left), back pop reverses both.
             // Applied at NavHost level so every destination inherits without per-route boilerplate.

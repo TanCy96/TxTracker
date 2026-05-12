@@ -49,6 +49,9 @@ interface TripWindowDao {
     @Query("UPDATE trip_windows SET endAt = :endAt WHERE id = :id")
     suspend fun setEnd(id: Long, endAt: Instant?)
 
+    @Query("UPDATE trip_windows SET startAt = :startAt, endAt = :endAt WHERE id = :id")
+    suspend fun updateDates(id: Long, startAt: Instant, endAt: Instant?)
+
     @Query("DELETE FROM trip_windows WHERE id = :id")
     suspend fun delete(id: Long)
 }

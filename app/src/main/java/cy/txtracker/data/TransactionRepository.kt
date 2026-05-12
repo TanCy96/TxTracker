@@ -57,6 +57,11 @@ class TransactionRepository @Inject constructor(
     fun observeTripsForCurrency(currency: String): Flow<List<TripWindow>> =
         tripWindowDao.observeForCurrency(currency)
 
+    /** All transactions for [currency], ordered occurredAt DESC. Used by the
+     *  Trip-history screen to count transactions per trip window. */
+    fun observeTransactionsForCurrency(currency: String): Flow<List<Transaction>> =
+        transactionDao.observeAllForCurrency(currency)
+
     fun observeTotalBetween(startInclusive: Instant, endExclusive: Instant): Flow<Long> =
         transactionDao.observeTotalBetween(startInclusive, endExclusive)
 
@@ -445,6 +450,34 @@ class TransactionRepository @Inject constructor(
      */
     suspend fun deleteTrip(tripId: Long) {
         tripWindowDao.delete(tripId)
+    }
+
+    /**
+     * Updates an existing trip's date range. Atomically:
+     *   1. Writes the new [startAt] and [endAt] on the trip row.
+     *   2. Re-runs [clearCurrencyConfirmationForRange] for the NEW range so
+     *      any rows newly covered by the trip get promoted retroactively.
+     *
+     * Rows that were promoted by this trip's OLD range but fall outside the
+     * new range stay promoted — same philosophy as [closeTrip]: the trip is
+     * an audit trail, not a live gate. Re-parking previously-promoted rows
+     * would also be ambiguous if multiple trips overlap.
+     *
+     * Returns false when the trip id is unknown.
+     */
+    suspend fun editTrip(
+        tripId: Long,
+        startAt: Instant,
+        endAt: Instant?,
+    ): Boolean = database.withTransaction {
+        val trip = tripWindowDao.get(tripId) ?: return@withTransaction false
+        tripWindowDao.updateDates(tripId, startAt, endAt)
+        transactionDao.clearCurrencyConfirmationForRange(
+            currency = trip.currency,
+            startAt = startAt,
+            endAtExclusive = endAt ?: DISTANT_FUTURE,
+        )
+        true
     }
 
     /**

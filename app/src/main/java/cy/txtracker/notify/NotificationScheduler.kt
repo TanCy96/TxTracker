@@ -48,10 +48,20 @@ class NotificationScheduler @Inject constructor(
     private fun reconcilePending(enabled: Boolean) {
         val wm = WorkManager.getInstance(context)
         if (enabled) {
+            // Initial delay targets the next 8pm MYT so the first reminder lands
+            // in the evening rather than at whichever hour WorkManager happens to
+            // pick within the 1h flex window of the periodic schedule.
+            val initialDelayMs = millisUntilNextFiring(
+                cadence = SummaryCadence.DAILY,
+                hour = EVENING_HOUR,
+                now = Clock.System.now(),
+            )
             val request = PeriodicWorkRequestBuilder<PendingReminderWorker>(
                 /* repeatInterval = */ 24, TimeUnit.HOURS,
                 /* flexInterval = */ 1, TimeUnit.HOURS,
-            ).build()
+            )
+                .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
+                .build()
             wm.enqueueUniquePeriodicWork(
                 PENDING_WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
@@ -66,10 +76,18 @@ class NotificationScheduler @Inject constructor(
     private fun reconcileForeign(enabled: Boolean) {
         val wm = WorkManager.getInstance(context)
         if (enabled) {
+            // Same evening-anchor as the pending reminder.
+            val initialDelayMs = millisUntilNextFiring(
+                cadence = SummaryCadence.DAILY,
+                hour = EVENING_HOUR,
+                now = Clock.System.now(),
+            )
             val request = PeriodicWorkRequestBuilder<ForeignCurrencyWorker>(
                 /* repeatInterval = */ 24, TimeUnit.HOURS,
                 /* flexInterval = */ 1, TimeUnit.HOURS,
-            ).build()
+            )
+                .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
+                .build()
             wm.enqueueUniquePeriodicWork(
                 FOREIGN_WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
@@ -118,5 +136,7 @@ class NotificationScheduler @Inject constructor(
         const val PENDING_WORK_NAME = "pending-reminder"
         const val FOREIGN_WORK_NAME = "foreign-currency"
         const val SUMMARY_WORK_NAME = "summary"
+        /** 8pm MYT — evening anchor for pending and foreign reminders. */
+        const val EVENING_HOUR = 20
     }
 }

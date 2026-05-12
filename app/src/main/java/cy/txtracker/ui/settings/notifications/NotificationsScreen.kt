@@ -2,6 +2,7 @@ package cy.txtracker.ui.settings.notifications
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -167,16 +168,22 @@ private fun CadenceRow(cadence: SummaryCadence, onChange: (SummaryCadence) -> Un
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Frequency", style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = { expanded = true }) { Text(cadenceLabel(cadence)) }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            SummaryCadence.entries.forEach { c ->
-                DropdownMenuItem(
-                    text = { Text(cadenceLabel(c)) },
-                    onClick = {
-                        onChange(c)
-                        expanded = false
-                    },
-                )
+        // Wrap the button + dropdown in a Box so the DropdownMenu anchors to
+        // the button without taking a layout slot in the surrounding
+        // SpaceBetween Row — otherwise the button visibly shifts toward the
+        // centre while the menu is open and back to the end on dismiss.
+        Box {
+            OutlinedButton(onClick = { expanded = true }) { Text(cadenceLabel(cadence)) }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                SummaryCadence.entries.forEach { c ->
+                    DropdownMenuItem(
+                        text = { Text(cadenceLabel(c)) },
+                        onClick = {
+                            onChange(c)
+                            expanded = false
+                        },
+                    )
+                }
             }
         }
     }

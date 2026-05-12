@@ -52,6 +52,7 @@ fun TripCreationDialog(
     defaultEndAt: Instant?,
     onConfirm: (Instant, Instant?) -> Unit,
     onDismiss: () -> Unit,
+    isEditing: Boolean = false,
 ) {
     var startAt by remember { mutableStateOf(defaultStartAt) }
     var endAt by remember { mutableStateOf(defaultEndAt) }
@@ -61,17 +62,26 @@ fun TripCreationDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = { onConfirm(startAt, if (openEnded) null else endAt) }) {
-                Text("Start trip")
+                Text(if (isEditing) "Save" else "Start trip")
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Start a trip for $currency?") },
+        title = {
+            Text(if (isEditing) "Edit $currency trip" else "Start a trip for $currency?")
+        },
         text = {
             Column {
                 Text(
-                    "Captures in $currency between these dates will land in " +
-                        "the Foreign tab. Earlier-captured rows in this currency " +
-                        "within the range will be promoted retroactively.",
+                    if (isEditing) {
+                        "Adjust the date range. Captures newly in the range will " +
+                            "be promoted retroactively; rows previously promoted by " +
+                            "this trip stay promoted even if they're now outside the " +
+                            "new range."
+                    } else {
+                        "Captures in $currency between these dates will land in " +
+                            "the Foreign tab. Earlier-captured rows in this currency " +
+                            "within the range will be promoted retroactively."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(12.dp))

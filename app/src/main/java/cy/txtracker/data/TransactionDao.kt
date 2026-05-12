@@ -35,6 +35,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE currency = :currency ORDER BY occurredAt ASC")
     suspend fun getAllForCurrency(currency: String): List<Transaction>
 
+    @Query("SELECT * FROM transactions WHERE currency = :currency ORDER BY occurredAt DESC")
+    fun observeAllForCurrency(currency: String): Flow<List<Transaction>>
+
     @Query("SELECT * FROM transactions WHERE occurredAt >= :cutoffStart ORDER BY occurredAt ASC")
     suspend fun getAllFrom(cutoffStart: Instant): List<Transaction>
 
