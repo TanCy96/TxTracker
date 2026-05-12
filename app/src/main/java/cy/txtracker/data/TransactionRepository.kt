@@ -52,6 +52,11 @@ class TransactionRepository @Inject constructor(
     fun observeTrackedCurrencies(): Flow<List<TrackedCurrency>> =
         trackedCurrencyDao.observeAll()
 
+    fun observeAllTrips(): Flow<List<TripWindow>> = tripWindowDao.observeAll()
+
+    fun observeTripsForCurrency(currency: String): Flow<List<TripWindow>> =
+        tripWindowDao.observeForCurrency(currency)
+
     fun observeTotalBetween(startInclusive: Instant, endExclusive: Instant): Flow<Long> =
         transactionDao.observeTotalBetween(startInclusive, endExclusive)
 

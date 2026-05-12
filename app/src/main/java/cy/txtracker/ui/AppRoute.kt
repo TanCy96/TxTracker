@@ -32,6 +32,8 @@ import cy.txtracker.ui.onboarding.openListenerSettings
 import cy.txtracker.ui.onboarding.rememberListenerGrantState
 import cy.txtracker.ui.settings.SettingsScreen
 import cy.txtracker.ui.settings.categories.CategoriesScreen
+import cy.txtracker.ui.settings.currencies.CurrenciesScreen
+import cy.txtracker.ui.settings.currencies.TripHistoryScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
 import cy.txtracker.ui.settings.sources.NotificationPriorityScreen
@@ -47,6 +49,8 @@ private object Routes {
     const val SETTINGS_MERCHANTS = "settings/merchants"
     const val SETTINGS_DESCRIPTIONS = "settings/descriptions"
     const val SETTINGS_SOURCES = "settings/sources"
+    const val SETTINGS_CURRENCIES = "settings/currencies"
+    const val SETTINGS_CURRENCIES_TRIPS = "settings/currencies/trips/{code}"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
@@ -151,6 +155,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                     onMerchantMappingsClick = { nav.navigate(Routes.SETTINGS_MERCHANTS) },
                     onDescriptionMappingsClick = { nav.navigate(Routes.SETTINGS_DESCRIPTIONS) },
                     onNotificationPriorityClick = { nav.navigate(Routes.SETTINGS_SOURCES) },
+                    onForeignCurrenciesClick = { nav.navigate(Routes.SETTINGS_CURRENCIES) },
                 )
             }
             composable(Routes.SETTINGS_CATEGORIES) {
@@ -164,6 +169,16 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             }
             composable(Routes.SETTINGS_SOURCES) {
                 NotificationPriorityScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_CURRENCIES) {
+                CurrenciesScreen(
+                    onBack = { nav.popBackStack() },
+                    onTripHistory = { code -> nav.navigate("settings/currencies/trips/$code") },
+                )
+            }
+            composable(Routes.SETTINGS_CURRENCIES_TRIPS) { entry ->
+                val code = entry.arguments?.getString("code") ?: return@composable
+                TripHistoryScreen(currency = code, onBack = { nav.popBackStack() })
             }
         }
     }
