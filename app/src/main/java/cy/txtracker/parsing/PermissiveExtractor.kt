@@ -39,14 +39,22 @@ class PermissiveExtractor @Inject constructor() {
         sourceApp: String,
         postedAt: Instant,
         bypassAllowlist: Boolean = false,
+        symbolDefaults: Map<String, String> = emptyMap(),
     ): ParsedTransaction? {
         if (!bypassAllowlist && sourceApp !in SourcePackages.PERMISSIVE_PACKAGES) return null
         if (text.isBlank()) return null
         val match = AMOUNT.find(text) ?: return null
 
+        val amountStr = match.groups["amtA"]?.value
+            ?: match.groups["amtB"]?.value
+            ?: return null
+        val prefixToken = match.groups["prefix"]?.value
+        val suffixToken = match.groups["suffix"]?.value
+        val currency = Currencies.resolve(prefixToken, suffixToken, symbolDefaults)
+
         return ParsedTransaction(
-            amountMinor = parseAmountMinor(match.groups["amount"]!!.value),
-            currency = "MYR",
+            amountMinor = parseAmountMinor(amountStr),
+            currency = currency,
             merchantRaw = merchantFor(sourceApp, text),
             occurredAt = postedAt,
             sourceApp = sourceApp,
@@ -116,7 +124,12 @@ class PermissiveExtractor @Inject constructor() {
         // permissive layer's contract is "amount alone is enough" and we don't want a
         // future change to the heuristic to silently widen this layer too.
         private val AMOUNT = Regex(
-            """\b(?:RM|MYR)\s*(?<amount>[\d,]+\.\d{2})\b""",
+            """(?:""" +
+            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>\d{1,3}(?:,\d{3})*(?:\.\d+)?)""" +
+            """|""" +
+            """(?<amtB>\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?<suffix>[A-Z]{3})""" +
+            """)""",
+            RegexOption.IGNORE_CASE,
         )
 
         // "for booking <id>" anchored to a whitespace-delimited token. Greedy `\S+` so the
