@@ -100,6 +100,12 @@ class TransactionRepository @Inject constructor(
 
     suspend fun getTransaction(id: Long): Transaction? = transactionDao.getById(id)
 
+    suspend fun countPendingOlderThan(cutoff: Instant): Int =
+        transactionDao.countPendingOlderThan(cutoff)
+
+    suspend fun getAllTransactionsBetween(start: Instant, endExclusive: Instant): List<Transaction> =
+        transactionDao.getAllBetween(start, endExclusive)
+
     suspend fun getCategory(id: Long): Category? = categoryDao.getById(id)
 
     /** All transactions sorted by occurredAt ASC. Used by CSV export. */
