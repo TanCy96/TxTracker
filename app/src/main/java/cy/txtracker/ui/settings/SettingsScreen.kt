@@ -54,6 +54,7 @@ fun SettingsScreen(
     onMerchantMappingsClick: () -> Unit,
     onDescriptionMappingsClick: () -> Unit,
     onNotificationPriorityClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -185,6 +186,12 @@ fun SettingsScreen(
                     Text("Pick which apps win when two notify about the same payment.")
                 },
                 modifier = Modifier.fillMaxWidth().clickableRow(onNotificationPriorityClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Notifications") },
+                supportingContent = { Text("Pending reminders, spending summaries") },
+                modifier = Modifier.fillMaxWidth().clickableRow(onNotificationsClick),
             )
 
             SectionHeader("Backup & export")

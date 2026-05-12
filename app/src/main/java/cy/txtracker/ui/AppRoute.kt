@@ -27,6 +27,7 @@ import cy.txtracker.ui.settings.SettingsScreen
 import cy.txtracker.ui.settings.categories.CategoriesScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
+import cy.txtracker.ui.settings.notifications.NotificationsScreen
 import cy.txtracker.ui.settings.sources.NotificationPriorityScreen
 
 /** Navigation animation duration. 300ms matches the Android platform default. */
@@ -39,6 +40,7 @@ private object Routes {
     const val SETTINGS_MERCHANTS = "settings/merchants"
     const val SETTINGS_DESCRIPTIONS = "settings/descriptions"
     const val SETTINGS_SOURCES = "settings/sources"
+    const val SETTINGS_NOTIFICATIONS = "settings/notifications"
 }
 
 @EntryPoint
@@ -134,6 +136,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                 onMerchantMappingsClick = { nav.navigate(Routes.SETTINGS_MERCHANTS) },
                 onDescriptionMappingsClick = { nav.navigate(Routes.SETTINGS_DESCRIPTIONS) },
                 onNotificationPriorityClick = { nav.navigate(Routes.SETTINGS_SOURCES) },
+                onNotificationsClick = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
             )
         }
         composable(Routes.SETTINGS_CATEGORIES) {
@@ -147,6 +150,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
         }
         composable(Routes.SETTINGS_SOURCES) {
             NotificationPriorityScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.SETTINGS_NOTIFICATIONS) {
+            NotificationsScreen(onBack = { nav.popBackStack() })
         }
     }
 }
