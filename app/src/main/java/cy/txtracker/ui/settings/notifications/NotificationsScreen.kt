@@ -148,7 +148,7 @@ private fun CadenceRow(cadence: SummaryCadence, onChange: (SummaryCadence) -> Un
         Text("Frequency", style = MaterialTheme.typography.bodyMedium)
         OutlinedButton(onClick = { expanded = true }) { Text(cadenceLabel(cadence)) }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            SummaryCadence.values().forEach { c ->
+            SummaryCadence.entries.forEach { c ->
                 DropdownMenuItem(
                     text = { Text(cadenceLabel(c)) },
                     onClick = {
