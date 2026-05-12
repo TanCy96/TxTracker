@@ -58,6 +58,13 @@ data class Transaction(
      * default to false.
      */
     val needsVerification: Boolean = false,
+    /**
+     * True when this row was captured in a non-MYR currency outside any active
+     * TripWindow for that currency. The Foreign tab hides such rows; they
+     * appear in the Home "Currency review" filter until the user opens a trip
+     * (which retroactively flips this to false for rows in range).
+     */
+    val needsCurrencyConfirmation: Boolean = false,
 )
 
 @Entity(
@@ -162,4 +169,36 @@ data class UserFacingSource(
 data class ApprovedSource(
     @PrimaryKey val packageName: String,
     val firstApprovedAt: Instant,
+)
+
+@Entity(
+    tableName = "tracked_currencies",
+)
+data class TrackedCurrency(
+    @PrimaryKey val code: String,
+    val displaySymbol: String,
+    /**
+     * True when this row is the user's chosen interpretation of an ambiguous
+     * symbol (`$`, `¥`). At most one row may have isDefaultForSymbol = true per
+     * symbol value — enforced by the repository, not the schema.
+     */
+    val isDefaultForSymbol: Boolean,
+    val addedAt: Instant,
+)
+
+@Entity(
+    tableName = "trip_windows",
+    indices = [
+        Index("currency"),
+        Index("startAt"),
+        Index("endAt"),
+    ],
+)
+data class TripWindow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val currency: String,
+    val startAt: Instant,
+    /** null = open-ended ("until the user ends it"). */
+    val endAt: Instant?,
+    val createdAt: Instant,
 )
