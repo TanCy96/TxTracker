@@ -67,6 +67,11 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <receiver
+            android:name=".notify.PendingDismissReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>
