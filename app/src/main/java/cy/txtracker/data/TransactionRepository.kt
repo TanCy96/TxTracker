@@ -40,6 +40,15 @@ class TransactionRepository @Inject constructor(
     ): Flow<List<Transaction>> =
         transactionDao.observeBetween(startInclusive, endExclusive)
 
+    fun observeForeignTransactionsBetween(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>> =
+        transactionDao.observeForeignBetween(startInclusive, endExclusive)
+
+    fun observeTrackedCurrencies(): Flow<List<TrackedCurrency>> =
+        trackedCurrencyDao.observeAll()
+
     fun observeTotalBetween(startInclusive: Instant, endExclusive: Instant): Flow<Long> =
         transactionDao.observeTotalBetween(startInclusive, endExclusive)
 

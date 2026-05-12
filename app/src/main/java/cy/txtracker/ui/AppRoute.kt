@@ -2,15 +2,29 @@ package cy.txtracker.ui
 
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import cy.txtracker.ui.foreign.ForeignRoute
 import cy.txtracker.ui.home.HomeRoute
 import cy.txtracker.ui.lock.LockScreen
 import cy.txtracker.ui.onboarding.OnboardingScreen
@@ -27,12 +41,15 @@ private const val NAV_ANIMATION_MS = 300
 
 private object Routes {
     const val HOME = "home"
+    const val FOREIGN = "foreign"
     const val SETTINGS = "settings"
     const val SETTINGS_CATEGORIES = "settings/categories"
     const val SETTINGS_MERCHANTS = "settings/merchants"
     const val SETTINGS_DESCRIPTIONS = "settings/descriptions"
     const val SETTINGS_SOURCES = "settings/sources"
 }
+
+private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
 
 /**
  * Top-level routing.
@@ -69,48 +86,94 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     }
 
     val nav = rememberNavController()
-    NavHost(
-        navController = nav,
-        startDestination = Routes.HOME,
-        // Native-style horizontal slide: forward push moves both screens to the left
-        // (incoming from the right, outgoing off the left), back pop reverses both.
-        // Applied at NavHost level so every destination inherits without per-route boilerplate.
-        enterTransition = {
-            slideIntoContainer(SlideDirection.Left, animationSpec = tween(NAV_ANIMATION_MS))
+    val backStack by nav.currentBackStackEntryAsState()
+    val currentRoute = backStack?.destination?.route
+
+    Scaffold(
+        bottomBar = {
+            if (currentRoute in TOP_LEVEL_ROUTES) {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.HOME,
+                        onClick = { navigateTopLevel(nav, Routes.HOME) },
+                        icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                        label = { Text("Home") },
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.FOREIGN,
+                        onClick = { navigateTopLevel(nav, Routes.FOREIGN) },
+                        icon = { Icon(Icons.Outlined.Language, contentDescription = null) },
+                        label = { Text("Foreign") },
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.SETTINGS,
+                        onClick = { navigateTopLevel(nav, Routes.SETTINGS) },
+                        icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                        label = { Text("Settings") },
+                    )
+                }
+            }
         },
-        exitTransition = {
-            slideOutOfContainer(SlideDirection.Left, animationSpec = tween(NAV_ANIMATION_MS))
-        },
-        popEnterTransition = {
-            slideIntoContainer(SlideDirection.Right, animationSpec = tween(NAV_ANIMATION_MS))
-        },
-        popExitTransition = {
-            slideOutOfContainer(SlideDirection.Right, animationSpec = tween(NAV_ANIMATION_MS))
-        },
-    ) {
-        composable(Routes.HOME) {
-            HomeRoute(onSettingsClick = { nav.navigate(Routes.SETTINGS) })
+    ) { padding ->
+        NavHost(
+            navController = nav,
+            startDestination = Routes.HOME,
+            modifier = Modifier.padding(padding),
+            // Native-style horizontal slide: forward push moves both screens to the left
+            // (incoming from the right, outgoing off the left), back pop reverses both.
+            // Applied at NavHost level so every destination inherits without per-route boilerplate.
+            enterTransition = {
+                slideIntoContainer(SlideDirection.Left, animationSpec = tween(NAV_ANIMATION_MS))
+            },
+            exitTransition = {
+                slideOutOfContainer(SlideDirection.Left, animationSpec = tween(NAV_ANIMATION_MS))
+            },
+            popEnterTransition = {
+                slideIntoContainer(SlideDirection.Right, animationSpec = tween(NAV_ANIMATION_MS))
+            },
+            popExitTransition = {
+                slideOutOfContainer(SlideDirection.Right, animationSpec = tween(NAV_ANIMATION_MS))
+            },
+        ) {
+            composable(Routes.HOME) {
+                HomeRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
+            }
+            composable(Routes.FOREIGN) {
+                ForeignRoute()
+            }
+            composable(Routes.SETTINGS) {
+                SettingsScreen(
+                    // With Settings as a top-level tab, popBackStack() here returns to whichever
+                    // tab was previously active (saveState/restoreState mechanic). This is
+                    // acceptable for v1 — revisit if a dedicated back-arrow feels wrong.
+                    onBack = { nav.popBackStack() },
+                    onCategoriesClick = { nav.navigate(Routes.SETTINGS_CATEGORIES) },
+                    onMerchantMappingsClick = { nav.navigate(Routes.SETTINGS_MERCHANTS) },
+                    onDescriptionMappingsClick = { nav.navigate(Routes.SETTINGS_DESCRIPTIONS) },
+                    onNotificationPriorityClick = { nav.navigate(Routes.SETTINGS_SOURCES) },
+                )
+            }
+            composable(Routes.SETTINGS_CATEGORIES) {
+                CategoriesScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_MERCHANTS) {
+                MerchantMappingsScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_DESCRIPTIONS) {
+                DescriptionMappingsScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_SOURCES) {
+                NotificationPriorityScreen(onBack = { nav.popBackStack() })
+            }
         }
-        composable(Routes.SETTINGS) {
-            SettingsScreen(
-                onBack = { nav.popBackStack() },
-                onCategoriesClick = { nav.navigate(Routes.SETTINGS_CATEGORIES) },
-                onMerchantMappingsClick = { nav.navigate(Routes.SETTINGS_MERCHANTS) },
-                onDescriptionMappingsClick = { nav.navigate(Routes.SETTINGS_DESCRIPTIONS) },
-                onNotificationPriorityClick = { nav.navigate(Routes.SETTINGS_SOURCES) },
-            )
-        }
-        composable(Routes.SETTINGS_CATEGORIES) {
-            CategoriesScreen(onBack = { nav.popBackStack() })
-        }
-        composable(Routes.SETTINGS_MERCHANTS) {
-            MerchantMappingsScreen(onBack = { nav.popBackStack() })
-        }
-        composable(Routes.SETTINGS_DESCRIPTIONS) {
-            DescriptionMappingsScreen(onBack = { nav.popBackStack() })
-        }
-        composable(Routes.SETTINGS_SOURCES) {
-            NotificationPriorityScreen(onBack = { nav.popBackStack() })
-        }
+    }
+}
+
+/** Navigate to a top-level tab without accumulating back-stack entries. */
+private fun navigateTopLevel(nav: NavHostController, route: String) {
+    nav.navigate(route) {
+        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }

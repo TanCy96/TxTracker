@@ -194,6 +194,21 @@ interface TransactionDao {
         needsCurrencyConfirmation: Boolean,
     )
 
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE currency != 'MYR'
+          AND needsCurrencyConfirmation = 0
+          AND occurredAt >= :startInclusive
+          AND occurredAt < :endExclusive
+        ORDER BY occurredAt DESC
+        """
+    )
+    fun observeForeignBetween(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>>
+
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun delete(id: Long)
 }
