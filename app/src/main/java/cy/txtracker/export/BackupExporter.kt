@@ -74,6 +74,7 @@ class BackupExporter @Inject constructor(
                     color = it.color,
                     sortOrder = it.sortOrder,
                     isCustom = it.isCustom,
+                    keywordPattern = it.keywordPattern,
                 )
             },
             merchantMappings = repository.observeMerchantMappings().first().mapNotNull { m ->

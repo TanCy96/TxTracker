@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(6)
+        assertThat(parsed.version).isEqualTo(7)
     }
 
     @Test
@@ -147,7 +147,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.approvedSources).hasSize(1)
         assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
-        assertThat(parsed.version).isEqualTo(6)
+        assertThat(parsed.version).isEqualTo(7)
     }
 
     @Test
@@ -195,7 +195,7 @@ class BackupSerializationTest {
         assertThat(note.merchant).isEqualTo("WARUNG UNCLE")
         assertThat(note.note).isEqualTo("SS15 kopitiam, only takes cash")
         assertThat(note.updatedAt).isEqualTo(Instant.parse("2026-05-10T10:00:00Z"))
-        assertThat(parsed.version).isEqualTo(6)
+        assertThat(parsed.version).isEqualTo(7)
     }
 
     @Test
@@ -250,7 +250,7 @@ class BackupSerializationTest {
         val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
 
-        assertThat(parsed.version).isEqualTo(6)
+        assertThat(parsed.version).isEqualTo(7)
         assertThat(parsed.transactions).hasSize(1)
         val tx = parsed.transactions.single()
         assertThat(tx.merchantRaw).isEqualTo("GRAB")

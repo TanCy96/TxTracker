@@ -32,7 +32,7 @@ data class Backup(
     val tripWindows: List<BackupTripWindow> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 6
+        const val CURRENT_VERSION = 7
     }
 }
 
@@ -42,6 +42,7 @@ data class BackupCategory(
     val color: Int,
     val sortOrder: Int,
     val isCustom: Boolean,
+    val keywordPattern: String? = null,
 )
 
 @Serializable

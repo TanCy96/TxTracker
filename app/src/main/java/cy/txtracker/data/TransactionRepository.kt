@@ -605,6 +605,7 @@ class TransactionRepository @Inject constructor(
                     color = bc.color,
                     isCustom = bc.isCustom,
                     sortOrder = nextSortOrder++,
+                    keywordPattern = bc.keywordPattern,
                 ),
             )
             categoriesCreated++
