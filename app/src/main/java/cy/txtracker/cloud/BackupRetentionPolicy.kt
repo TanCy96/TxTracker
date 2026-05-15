@@ -25,10 +25,6 @@ data class BackupFile(
  *
  * A file is **deleted** iff both conditions fail: rank > 20 AND age ≥ 30 days.
  *
- * The "OR" gives complementary guarantees:
- *   - Light users get long history (last 20 backups regardless of age — could span months).
- *   - Heavy users get fresh history (all uploads from the last 30 days regardless of count).
- *
  * Pure function — caller is responsible for invoking [DriveClient.delete] on each returned id.
  */
 object BackupRetentionPolicy {
@@ -43,8 +39,6 @@ object BackupRetentionPolicy {
             .withIndex()
             .filter { (rankZeroBased, file) ->
                 val rank = rankZeroBased + 1
-                // Delete iff rank > MAX_KEEP_COUNT AND age >= MAX_KEEP_AGE_DAYS.
-                // Equivalently: NOT (rank <= MAX_KEEP_COUNT OR modifiedAt > cutoffInstant).
                 rank > MAX_KEEP_COUNT && file.modifiedAt <= cutoffInstant
             }
             .map { it.value.id }

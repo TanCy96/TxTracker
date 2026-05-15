@@ -54,4 +54,16 @@ class BackupRetentionPolicyTest {
     fun empty_input_returns_empty() {
         assertThat(BackupRetentionPolicy.selectToDelete(emptyList(), now)).isEmpty()
     }
+
+    @Test
+    fun deletes_files_at_exactly_30_days_old_when_beyond_top_20() {
+        // Pins the boundary: a file with age == 30 days exactly (cutoffInstant equality)
+        // is treated as "not kept by age" — only kept by rank. With 25 files at exactly 30
+        // days old, the oldest 5 (rank 21-25) get deleted.
+        val files = (1..25).map { file("id-$it", daysAgo = 30L) }
+        val ids = BackupRetentionPolicy.selectToDelete(files, now)
+        // sortedByDescending is stable: with equal modifiedAt, input order is preserved,
+        // so rank order = input order. id-21..id-25 are the last 5 inputs → rank 21..25.
+        assertThat(ids).containsExactly("id-21", "id-22", "id-23", "id-24", "id-25")
+    }
 }
