@@ -73,6 +73,7 @@ fun SettingsScreen(
     val cloudTransactionCutoff by viewModel.cloudTransactionCutoff.collectAsState()
     val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
     val cloudSyncInFlight by viewModel.cloudSyncInFlight.collectAsState()
+    val cloudSyncBlockedReason by viewModel.syncBlockedReason.collectAsState()
     val trackedCurrencies by viewModel.trackedCurrencies.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -335,12 +336,14 @@ fun SettingsScreen(
                 lastSyncError = cloudLastSyncError,
                 transactionCutoff = cloudTransactionCutoff,
                 syncInFlight = cloudSyncInFlight,
+                syncBlockedReason = cloudSyncBlockedReason,
                 onSignInClick = { signInLauncher.launch(viewModel.signInIntent()) },
                 onSignOutClick = { deleteCloud -> viewModel.cloudSignOut(deleteCloud) },
                 onSyncNowClick = { viewModel.cloudSyncNow() },
                 onPausedChange = { viewModel.setCloudPaused(it) },
                 onCutoffClick = { showCutoffDialog = true },
                 onRestoreClick = { viewModel.restoreFromCloud() },
+                onResumeSyncClick = { viewModel.resumeBlockedSync() },
             )
 
             SectionHeader("About")

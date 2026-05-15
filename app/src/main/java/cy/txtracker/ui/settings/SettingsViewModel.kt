@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
+import cy.txtracker.cloud.CloudSyncGuard
 import cy.txtracker.cloud.CloudSyncScheduler
 import cy.txtracker.cloud.DriveClient
 import cy.txtracker.cloud.GoogleSignInStateProvider
@@ -166,6 +167,15 @@ class SettingsViewModel @Inject constructor(
     val cloudLastSyncAt: StateFlow<Instant?> = cloudSyncPrefs.lastSyncAt
     val cloudLastSyncError: StateFlow<String?> = cloudSyncPrefs.lastSyncError
     val cloudTransactionCutoff: StateFlow<YearMonth?> = cloudSyncPrefs.transactionCutoff
+    val syncBlockedReason: StateFlow<String?> = cloudSyncPrefs.syncBlockedReason
+
+    /** Clears the block and triggers an immediate upload. Wipes the baseline so the guard
+     *  proceeds on the next run, then sets a new baseline from current local state. */
+    fun resumeBlockedSync() {
+        cloudSyncPrefs.setSyncBlockedReason(null)
+        cloudSyncPrefs.setLastUploadedRowCount(CloudSyncGuard.UNKNOWN_BASELINE)
+        cloudSyncScheduler.enqueueImmediateUpload()
+    }
 
     /** True when a cloud-sync WorkManager job is enqueued OR running. Drives the
      *  "Sync now" row's spinner so the user gets visible feedback when uploads are

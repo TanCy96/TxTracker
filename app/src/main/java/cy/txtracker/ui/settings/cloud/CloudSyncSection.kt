@@ -43,6 +43,8 @@ fun CloudSyncSection(
     lastSyncError: String?,
     transactionCutoff: YearMonth?,
     syncInFlight: Boolean,
+    syncBlockedReason: String?,
+    onResumeSyncClick: () -> Unit,
     onSignInClick: () -> Unit,
     onSignOutClick: (deleteCloudBackup: Boolean) -> Unit,
     onSyncNowClick: () -> Unit,
@@ -61,6 +63,31 @@ fun CloudSyncSection(
     }
 
     var showSignOutDialog by remember { mutableStateOf(false) }
+
+    if (syncBlockedReason != null) {
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    text = "Cloud sync paused",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = syncBlockedReason,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onResumeSyncClick) {
+                    Text("Resume sync (use current local data)")
+                }
+            }
+        }
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
