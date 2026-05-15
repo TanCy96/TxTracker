@@ -42,12 +42,13 @@ abstract class TxDatabase : RoomDatabase() {
          */
         fun seedCategories(db: SupportSQLiteDatabase) {
             DefaultCategories.seed.forEach { seed ->
+                val pattern = cy.txtracker.domain.DefaultKeywordPatterns.byCategoryName[seed.name]
                 db.execSQL(
                     """
-                    INSERT INTO categories (name, color, isCustom, sortOrder)
-                    VALUES (?, ?, 0, ?)
+                    INSERT INTO categories (name, color, isCustom, sortOrder, keywordPattern)
+                    VALUES (?, ?, 0, ?, ?)
                     """.trimIndent(),
-                    arrayOf<Any>(seed.name, seed.color, seed.sortOrder),
+                    arrayOf<Any?>(seed.name, seed.color, seed.sortOrder, pattern),
                 )
             }
         }
