@@ -103,6 +103,7 @@ class NotificationScheduler @Inject constructor(
         val wm = WorkManager.getInstance(context)
         if (cadence == SummaryCadence.OFF) {
             wm.cancelUniqueWork(SUMMARY_WORK_NAME)
+            lastSummarySignature = null
             return
         }
         val (intervalHours, flexHours) = when (cadence) {
@@ -118,12 +119,18 @@ class NotificationScheduler @Inject constructor(
         )
             .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
             .build()
+        val current = SummarySignature(cadence, hour)
         wm.enqueueUniquePeriodicWork(
             SUMMARY_WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            decideSummaryPolicy(lastSummarySignature, current),
             request,
         )
+        lastSummarySignature = current
     }
+
+    private var lastSummarySignature: SummarySignature? = null
+
+    internal data class SummarySignature(val cadence: SummaryCadence, val hour: Int)
 
     private data class SchedulerSnapshot(
         val pendingEnabled: Boolean,
@@ -132,11 +139,25 @@ class NotificationScheduler @Inject constructor(
         val hour: Int,
     )
 
-    private companion object {
+    internal companion object {
         const val PENDING_WORK_NAME = "pending-reminder"
         const val FOREIGN_WORK_NAME = "foreign-currency"
         const val SUMMARY_WORK_NAME = "summary"
         /** 8pm MYT — evening anchor for pending and foreign reminders. */
         const val EVENING_HOUR = 20
+
+        /**
+         * `UPDATE` keeps the existing periodic anchor; `CANCEL_AND_REENQUEUE` resets it.
+         * When the user changes the summary cadence or hour, we must re-anchor so the new
+         * `setInitialDelay` actually takes effect — otherwise WorkManager silently keeps
+         * the old schedule (root cause of ISSUE.md #2). On first emission or unchanged
+         * repeats, UPDATE is correct (no-op for the schedule).
+         */
+        internal fun decideSummaryPolicy(
+            last: SummarySignature?,
+            current: SummarySignature,
+        ): ExistingPeriodicWorkPolicy =
+            if (last != null && last != current) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+            else ExistingPeriodicWorkPolicy.UPDATE
     }
 }
