@@ -73,7 +73,7 @@ fun SettingsScreen(
     val cloudTransactionCutoff by viewModel.cloudTransactionCutoff.collectAsState()
     val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
     val cloudSyncInFlight by viewModel.cloudSyncInFlight.collectAsState()
-    val cloudSyncBlockedReason by viewModel.syncBlockedReason.collectAsState()
+    val cloudSyncBlockedReason by viewModel.cloudSyncBlockedReason.collectAsState()
     val trackedCurrencies by viewModel.trackedCurrencies.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

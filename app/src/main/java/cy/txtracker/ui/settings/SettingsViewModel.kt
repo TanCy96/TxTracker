@@ -167,10 +167,11 @@ class SettingsViewModel @Inject constructor(
     val cloudLastSyncAt: StateFlow<Instant?> = cloudSyncPrefs.lastSyncAt
     val cloudLastSyncError: StateFlow<String?> = cloudSyncPrefs.lastSyncError
     val cloudTransactionCutoff: StateFlow<YearMonth?> = cloudSyncPrefs.transactionCutoff
-    val syncBlockedReason: StateFlow<String?> = cloudSyncPrefs.syncBlockedReason
+    val cloudSyncBlockedReason: StateFlow<String?> = cloudSyncPrefs.syncBlockedReason
 
-    /** Clears the block and triggers an immediate upload. Wipes the baseline so the guard
-     *  proceeds on the next run, then sets a new baseline from current local state. */
+    /** Clears the block and wipes the baseline (sets UNKNOWN_BASELINE) so the guard skips
+     *  the row-count check on the next run rather than blocking again. The worker writes a
+     *  new baseline after its next successful upload. */
     fun resumeBlockedSync() {
         cloudSyncPrefs.setSyncBlockedReason(null)
         cloudSyncPrefs.setLastUploadedRowCount(CloudSyncGuard.UNKNOWN_BASELINE)
