@@ -6,14 +6,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -29,12 +35,14 @@ import androidx.compose.ui.unit.dp
 import cy.txtracker.export.YearMonth
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.toLocalDateTime
 
 /**
  * Settings "Cloud sync" section. One row when signed out, six when signed in.
  * Stateful UI is owned by the caller (SettingsScreen → ViewModel); this composable
  * is purely presentation + click callbacks.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CloudSyncSection(
     enabled: Boolean,
@@ -52,6 +60,10 @@ fun CloudSyncSection(
     onPausedChange: (Boolean) -> Unit,
     onCutoffClick: () -> Unit,
     onRestoreClick: () -> Unit,
+    pickerState: cy.txtracker.ui.settings.SettingsViewModel.CloudRestorePickerState,
+    onChooseBackupClick: () -> Unit,
+    onPickerDismiss: () -> Unit,
+    onPickerFileSelected: (fileId: String) -> Unit,
 ) {
     SectionHeader("Cloud sync")
     if (!enabled) {
@@ -173,6 +185,13 @@ fun CloudSyncSection(
     HorizontalDivider()
 
     ListItem(
+        headlineContent = { Text("Choose backup…") },
+        supportingContent = { Text("Pick a specific dated backup to restore") },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onChooseBackupClick),
+    )
+    HorizontalDivider()
+
+    ListItem(
         headlineContent = { Text("Sign out") },
         supportingContent = { Text("Stop syncing. Your cloud backup remains on Drive.") },
         modifier = Modifier.fillMaxWidth().clickable { showSignOutDialog = true },
@@ -216,6 +235,47 @@ fun CloudSyncSection(
             },
         )
     }
+
+    if (pickerState !is cy.txtracker.ui.settings.SettingsViewModel.CloudRestorePickerState.Hidden) {
+        ModalBottomSheet(onDismissRequest = onPickerDismiss) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(
+                    text = "Choose backup to restore",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                when (val s = pickerState) {
+                    is cy.txtracker.ui.settings.SettingsViewModel.CloudRestorePickerState.Loading -> {
+                        CircularProgressIndicator()
+                    }
+                    is cy.txtracker.ui.settings.SettingsViewModel.CloudRestorePickerState.Error -> {
+                        Text(s.message, color = MaterialTheme.colorScheme.error)
+                    }
+                    is cy.txtracker.ui.settings.SettingsViewModel.CloudRestorePickerState.Loaded -> {
+                        if (s.files.isEmpty()) {
+                            Text("No cloud backups found.")
+                        } else {
+                            LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
+                                items(s.files) { file ->
+                                    ListItem(
+                                        headlineContent = {
+                                            Text(formatBackupTimestamp(file.modifiedAt))
+                                        },
+                                        supportingContent = { Text(file.name) },
+                                        modifier = Modifier.clickable {
+                                            onPickerFileSelected(file.id)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    cy.txtracker.ui.settings.SettingsViewModel.CloudRestorePickerState.Hidden -> {}
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
 }
 
 @Composable
@@ -256,4 +316,11 @@ private fun relativeTime(instant: Instant): String {
         minutes < 24 * 60 -> "${minutes / 60}h ago"
         else -> "${minutes / (24 * 60)}d ago"
     }
+}
+
+private fun formatBackupTimestamp(at: kotlinx.datetime.Instant): String {
+    val local = at.toLocalDateTime(cy.txtracker.domain.MalaysiaTimeZone)
+    return "%04d-%02d-%02d %02d:%02d".format(
+        local.year, local.monthNumber, local.dayOfMonth, local.hour, local.minute,
+    )
 }

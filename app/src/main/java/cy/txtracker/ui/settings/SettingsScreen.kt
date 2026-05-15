@@ -74,6 +74,7 @@ fun SettingsScreen(
     val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
     val cloudSyncInFlight by viewModel.cloudSyncInFlight.collectAsState()
     val cloudSyncBlockedReason by viewModel.cloudSyncBlockedReason.collectAsState()
+    val cloudRestorePickerState by viewModel.cloudRestorePickerState.collectAsState()
     val trackedCurrencies by viewModel.trackedCurrencies.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -344,6 +345,10 @@ fun SettingsScreen(
                 onCutoffClick = { showCutoffDialog = true },
                 onRestoreClick = { viewModel.restoreFromCloud() },
                 onResumeSyncClick = { viewModel.resumeBlockedSync() },
+                pickerState = cloudRestorePickerState,
+                onChooseBackupClick = { viewModel.openCloudRestorePicker() },
+                onPickerDismiss = { viewModel.dismissCloudRestorePicker() },
+                onPickerFileSelected = { id -> viewModel.restoreFromCloudById(id) },
             )
 
             SectionHeader("About")

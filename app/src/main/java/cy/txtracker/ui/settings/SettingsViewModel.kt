@@ -194,6 +194,11 @@ class SettingsViewModel @Inject constructor(
     private val _cloudSyncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Idle)
     val cloudSyncStatus: StateFlow<CloudSyncStatus> = _cloudSyncStatus.asStateFlow()
 
+    private val _cloudRestorePickerState =
+        MutableStateFlow<CloudRestorePickerState>(CloudRestorePickerState.Hidden)
+    val cloudRestorePickerState: StateFlow<CloudRestorePickerState> =
+        _cloudRestorePickerState.asStateFlow()
+
     /** Called after a successful Google Sign-In activity result. */
     fun completeSignIn(email: String?) {
         cloudSyncPrefs.setEnabled(true)
@@ -237,6 +242,43 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Opens the cloud-restore picker and starts fetching the list of backups. */
+    fun openCloudRestorePicker() {
+        _cloudRestorePickerState.value = CloudRestorePickerState.Loading
+        viewModelScope.launch {
+            val result = driveClient.listAll()
+            _cloudRestorePickerState.value = result.fold(
+                onSuccess = { files ->
+                    CloudRestorePickerState.Loaded(files.sortedByDescending { it.modifiedAt })
+                },
+                onFailure = { e ->
+                    CloudRestorePickerState.Error(e.message ?: "Failed to list backups")
+                },
+            )
+        }
+    }
+
+    fun dismissCloudRestorePicker() {
+        _cloudRestorePickerState.value = CloudRestorePickerState.Hidden
+    }
+
+    /** Restore a specific backup file by Drive id. Snapshots local state first. */
+    fun restoreFromCloudById(fileId: String) {
+        _cloudSyncStatus.value = CloudSyncStatus.Restoring
+        _cloudRestorePickerState.value = CloudRestorePickerState.Hidden
+        viewModelScope.launch {
+            try {
+                backupExporter.saveLocalRollbackSnapshot("pre-cloud-restore")
+                val json = driveClient.download(fileId).getOrThrow()
+                val result = backupImporter.importFromJsonString(json)
+                _cloudSyncStatus.value = CloudSyncStatus.RestoreSuccess(result)
+            } catch (t: Throwable) {
+                _cloudSyncStatus.value =
+                    CloudSyncStatus.Error(t.message ?: "Restore failed")
+            }
+        }
+    }
+
     /** Restore from cloud — explicit user action. Snapshots local state first. */
     fun restoreFromCloud() {
         _cloudSyncStatus.value = CloudSyncStatus.Restoring
@@ -268,6 +310,13 @@ class SettingsViewModel @Inject constructor(
 
     /** Intent used by the Settings screen's sign-in launcher. */
     fun signInIntent() = signInState.signInClient.signInIntent
+
+    sealed interface CloudRestorePickerState {
+        data object Hidden : CloudRestorePickerState
+        data object Loading : CloudRestorePickerState
+        data class Loaded(val files: List<cy.txtracker.cloud.BackupFile>) : CloudRestorePickerState
+        data class Error(val message: String) : CloudRestorePickerState
+    }
 
     sealed interface CloudSyncStatus {
         data object Idle : CloudSyncStatus
