@@ -21,6 +21,9 @@ interface MerchantMappingDao {
     @Query("SELECT * FROM merchant_mappings ORDER BY learnedAt DESC")
     fun observeAll(): Flow<List<MerchantMapping>>
 
+    @Query("SELECT * FROM merchant_mappings ORDER BY learnedAt DESC")
+    suspend fun getAllOrderedByRecency(): List<MerchantMapping>
+
     @Query("SELECT COUNT(*) FROM merchant_mappings WHERE categoryId = :categoryId")
     suspend fun countForCategory(categoryId: Long): Int
 }

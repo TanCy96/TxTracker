@@ -9,15 +9,17 @@ import javax.inject.Singleton
  * Resolves a category id for a normalized merchant string at ingestion time.
  *
  * Lookup order (most specific first):
- *   1. MerchantMapping table — explicit user-learned merchant→category. Survives reinstalls,
- *      survives keyword-rule changes. The user's voice is final.
- *   2. Built-in [KeywordRules] — regex over the merchant string mapping to a default category
- *      by name. Used only when no explicit mapping exists.
- *   3. Null — leave the transaction uncategorized; the user labels it via the edit sheet.
+ *   1. Exact `MerchantMapping` — the user's explicit voice for this merchant string.
+ *   2. Longest token-aligned prefix `MerchantMapping` — captured "STARBUCKS KLCC" matches
+ *      stored "STARBUCKS". Stored must be a prefix of captured (boundary on whitespace);
+ *      captured shorter than stored never matches. Ties on length resolve to most recently
+ *      learned (mapping list is ordered by `learnedAt DESC`).
+ *   3. User-defined per-category `keywordPattern` (regex, IGNORE_CASE), iterated by
+ *      category `sortOrder` ascending. First match wins.
+ *   4. Null — uncategorized; user labels via the edit sheet.
  *
- * Keyword-rule matches are NOT auto-saved as MerchantMappings: rules are deterministic so
- * caching adds no value, and any later user override should cleanly take precedence without
- * a stale mapping to clean up.
+ * Hardcoded built-in rules were retired; built-in seed patterns now live on the category
+ * rows themselves (set by `TxDatabase.seedCategories` on fresh install).
  */
 @Singleton
 class CategorizationEngine @Inject constructor(
@@ -27,9 +29,27 @@ class CategorizationEngine @Inject constructor(
     suspend fun categorize(merchantNormalized: String): Long? {
         if (merchantNormalized.isBlank()) return null
 
+        // 1. Exact.
         merchantMappingDao.get(merchantNormalized)?.let { return it.categoryId }
 
-        val keywordCategoryName = KeywordRules.match(merchantNormalized) ?: return null
-        return categoryDao.getAll().firstOrNull { it.name == keywordCategoryName }?.id
+        // 2. Longest token-aligned prefix.
+        val mappings = merchantMappingDao.getAllOrderedByRecency()
+        val storedKeys = mappings.map { it.merchantNormalized }
+        val prefixMatch = MerchantPrefixMatcher.longestPrefix(merchantNormalized, storedKeys)
+        if (prefixMatch != null) {
+            mappings.firstOrNull { it.merchantNormalized == prefixMatch }
+                ?.let { return it.categoryId }
+        }
+
+        // 3. User category keywordPattern.
+        val categories = categoryDao.getAll() // already ORDER BY sortOrder ASC, name ASC
+        for (c in categories) {
+            val pattern = c.keywordPattern?.takeIf { it.isNotBlank() } ?: continue
+            val regex = runCatching { Regex(pattern, RegexOption.IGNORE_CASE) }.getOrNull()
+                ?: continue // Malformed user pattern — skip rather than crash ingest.
+            if (regex.containsMatchIn(merchantNormalized)) return c.id
+        }
+
+        return null
     }
 }
