@@ -104,6 +104,22 @@ class DriveClientTest {
     }
 
     @Test
+    fun uploadDated_returns_transient_on_5xx() = runTest {
+        server.enqueue(MockResponse().setResponseCode(503))
+        val result = client.uploadDated("x", kotlinx.datetime.Instant.parse("2026-05-15T10:30:45Z"))
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()).isInstanceOf(TransientNetworkException::class.java)
+    }
+
+    @Test
+    fun uploadDated_returns_drive_api_on_4xx_other() = runTest {
+        server.enqueue(MockResponse().setResponseCode(400).setBody("bad"))
+        val result = client.uploadDated("x", kotlinx.datetime.Instant.parse("2026-05-15T10:30:45Z"))
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()).isInstanceOf(DriveApiException::class.java)
+    }
+
+    @Test
     fun download_returns_newest_files_content() = runTest {
         // listAll returns 2 files, the newer one (abc) wins.
         server.enqueue(
