@@ -61,7 +61,7 @@ class CloudSyncWorkerTest {
         every { prefs.paused } returns MutableStateFlow(false)
         every { prefs.transactionCutoff } returns MutableStateFlow(null)
         coEvery { exporter.exportToJsonString(null) } returns "{}"
-        coEvery { driveClient.upload("{}") } returns Result.success(Unit)
+        coEvery { driveClient.uploadDated("{}") } returns Result.success(Unit)
 
         val result = worker()
 
@@ -75,7 +75,7 @@ class CloudSyncWorkerTest {
         every { prefs.paused } returns MutableStateFlow(false)
         every { prefs.transactionCutoff } returns MutableStateFlow(null)
         coEvery { exporter.exportToJsonString(null) } returns "{}"
-        coEvery { driveClient.upload("{}") } returns Result.failure(
+        coEvery { driveClient.uploadDated("{}") } returns Result.failure(
             TransientNetworkException("503"),
         )
 
@@ -91,7 +91,7 @@ class CloudSyncWorkerTest {
         every { prefs.paused } returns MutableStateFlow(false)
         every { prefs.transactionCutoff } returns MutableStateFlow(null)
         coEvery { exporter.exportToJsonString(null) } returns "{}"
-        coEvery { driveClient.upload("{}") } returns Result.failure(AuthExpiredException())
+        coEvery { driveClient.uploadDated("{}") } returns Result.failure(AuthExpiredException())
 
         val result = worker()
 

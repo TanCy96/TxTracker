@@ -55,7 +55,8 @@ class CloudSyncWorker @AssistedInject constructor(
             }
 
             Log.i(TAG, "Uploading ${json.length} bytes (cutoff=${prefs.transactionCutoff.value})")
-            val uploadResult = driveClient.upload(json)
+            // TODO(Task 5): worker will be rewritten; uploadDated is a temporary stand-in.
+            val uploadResult = driveClient.uploadDated(json)
             return uploadResult.fold(
                 onSuccess = {
                     Log.i(TAG, "Upload succeeded")

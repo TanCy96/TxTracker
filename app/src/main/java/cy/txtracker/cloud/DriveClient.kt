@@ -4,6 +4,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -15,8 +17,8 @@ import okhttp3.Response
 import java.io.IOException
 
 /**
- * Minimal abstraction that supplies the OAuth token. Implemented by
- * [GoogleSignInStateProvider] in production and faked in tests.
+ * Supplies the OAuth token. Implemented by [GoogleSignInStateProvider] in production, faked
+ * in tests.
  */
 interface SignInTokenSource {
     suspend fun currentAccessToken(): String
@@ -24,67 +26,99 @@ interface SignInTokenSource {
 }
 
 /**
- * Drive REST client for the app-private AppData folder. Hits the endpoints needed for a
- * single-canonical-file backup workflow:
- *   - `GET drive/v3/files?spaces=appDataFolder&q=...` to find existing id
- *   - `POST upload/drive/v3/files?uploadType=multipart` to create
- *   - `PATCH upload/drive/v3/files/<id>?uploadType=media` to update
- *   - `GET drive/v3/files/<id>?alt=media` to download
- *   - `DELETE drive/v3/files/<id>` for sign-out-and-delete
+ * Drive REST client for the app-private AppData folder. Operates over multiple dated backup
+ * files (`txtracker-backup-<ISO>.json`), not a single canonical file. Filename pattern uses
+ * ISO 8601 basic form so lexicographic sort = chronological sort.
  *
- * Returns [Result] with typed exceptions from [CloudSyncException] so the worker can
- * decide retry vs failure.
+ * Endpoints:
+ *   - `GET drive/v3/files?spaces=appDataFolder&q=name contains 'txtracker-backup'` — list
+ *   - `POST upload/drive/v3/files?uploadType=multipart` — upload new dated file
+ *   - `GET drive/v3/files/<id>?alt=media` — download specific file
+ *   - `DELETE drive/v3/files/<id>` — delete specific file
+ *
+ * Legacy `txtracker-backup.json` (single-file model) is picked up by the prefix-based list
+ * query, so existing installs are backward-compatible without an explicit migration.
  */
 @Singleton
 class DriveClient @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val json: Json,
     private val signInState: SignInTokenSource,
-    /** Override for tests (MockWebServer). Production uses the real Google base URL. */
     private val baseUrl: String = "https://www.googleapis.com/",
 ) {
-    suspend fun upload(jsonContent: String): Result<Unit> = withContext(Dispatchers.IO) {
+
+    /** Lists every backup file in AppData (legacy `txtracker-backup.json` and dated form). */
+    suspend fun listAll(): Result<List<BackupFile>> = withContext(Dispatchers.IO) {
         runCatching {
             val token = signInState.currentAccessToken()
-            val existingId = findExistingFileId(token)
-            if (existingId != null) updateFile(token, existingId, jsonContent)
-            else createFile(token, jsonContent)
+            listAllImpl(token)
         }
     }
 
+    /**
+     * Creates a new dated backup file. Timestamp formatted as ISO 8601 basic:
+     * `txtracker-backup-20260515T103045Z.json` — lexicographic sort = chronological.
+     */
+    suspend fun uploadDated(content: String, at: Instant = Clock.System.now()): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val token = signInState.currentAccessToken()
+                val name = "$FILE_PREFIX-${formatBasicIso(at)}.json"
+                createFile(token, name, content)
+            }
+        }
+
+    /**
+     * Newest backup's content. Returns null if AppData has no backups. Used by Onboarding /
+     * Settings "Restore from cloud" (latest).
+     */
     suspend fun download(): Result<String?> = withContext(Dispatchers.IO) {
         runCatching {
             val token = signInState.currentAccessToken()
-            val fileId = findExistingFileId(token) ?: return@runCatching null
+            val newest = listAllImpl(token).maxByOrNull { it.modifiedAt }
+                ?: return@runCatching null
+            getFileContent(token, newest.id)
+        }
+    }
+
+    /** Downloads a specific file by id. Used by the Settings restore-picker. */
+    suspend fun download(fileId: String): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val token = signInState.currentAccessToken()
             getFileContent(token, fileId)
         }
     }
 
+    /** True iff at least one backup file is in AppData. */
     suspend fun exists(): Result<Boolean> = withContext(Dispatchers.IO) {
         runCatching {
             val token = signInState.currentAccessToken()
-            findExistingFileId(token) != null
+            listAllImpl(token).isNotEmpty()
         }
     }
 
+    /** Deletes every backup file in AppData. Used by sign-out-and-delete. */
     suspend fun delete(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val token = signInState.currentAccessToken()
-            val fileId = findExistingFileId(token) ?: return@runCatching
-            executeOrThrow(
-                Request.Builder()
-                    .url("${baseUrl}drive/v3/files/$fileId")
-                    .delete()
-                    .header("Authorization", "Bearer $token")
-                    .build(),
-            ).use { /* discard body */ }
+            listAllImpl(token).forEach { deleteFile(token, it.id) }
         }
     }
 
-    private fun findExistingFileId(token: String): String? {
+    /** Deletes a specific file by id. Used by the worker to prune older backups. */
+    suspend fun delete(fileId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val token = signInState.currentAccessToken()
+            deleteFile(token, fileId)
+        }
+    }
+
+    private fun listAllImpl(token: String): List<BackupFile> {
+        val q = "name contains '$FILE_PREFIX' and trashed = false"
         val url = "${baseUrl}drive/v3/files?spaces=appDataFolder" +
-            "&q=" + percentEncode("name='$FILE_NAME'") +
-            "&fields=files(id)"
+            "&q=" + percentEncode(q) +
+            "&fields=files(id,name,modifiedTime)" +
+            "&pageSize=1000"
         val req = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $token")
@@ -92,12 +126,18 @@ class DriveClient @Inject constructor(
         executeOrThrow(req).use { resp ->
             val body = resp.body?.string().orEmpty()
             val parsed = json.decodeFromString(FileListResponse.serializer(), body)
-            return parsed.files.firstOrNull()?.id
+            return parsed.files.map { f ->
+                BackupFile(
+                    id = f.id,
+                    name = f.name,
+                    modifiedAt = Instant.parse(f.modifiedTime),
+                )
+            }
         }
     }
 
-    private fun createFile(token: String, content: String) {
-        val metadata = """{"name":"$FILE_NAME","parents":["appDataFolder"]}"""
+    private fun createFile(token: String, name: String, content: String) {
+        val metadata = """{"name":"$name","parents":["appDataFolder"]}"""
         val body = MultipartBody.Builder()
             .setType(MULTIPART_RELATED)
             .addPart(
@@ -113,11 +153,10 @@ class DriveClient @Inject constructor(
         executeOrThrow(req).use { /* discard body */ }
     }
 
-    private fun updateFile(token: String, fileId: String, content: String) {
-        val body = content.toRequestBody("application/json; charset=UTF-8".toMediaType())
+    private fun deleteFile(token: String, fileId: String) {
         val req = Request.Builder()
-            .url("${baseUrl}upload/drive/v3/files/$fileId?uploadType=media")
-            .patch(body)
+            .url("${baseUrl}drive/v3/files/$fileId")
+            .delete()
             .header("Authorization", "Bearer $token")
             .build()
         executeOrThrow(req).use { /* discard body */ }
@@ -133,8 +172,6 @@ class DriveClient @Inject constructor(
         }
     }
 
-    /** Throws typed exceptions on HTTP errors. Returns the response on 2xx so the caller
-     *  can read the body. Caller must `.use { }` to close. */
     private fun executeOrThrow(request: Request): Response {
         val response = try {
             okHttpClient.newCall(request).execute()
@@ -163,14 +200,22 @@ class DriveClient @Inject constructor(
     private fun percentEncode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8")
 
+    /** ISO 8601 basic format: `yyyyMMddTHHmmssZ` — lexicographic == chronological. */
+    private fun formatBasicIso(at: Instant): String {
+        val s = at.toString() // e.g. 2026-05-15T10:30:45.123Z or 2026-05-15T10:30:45Z
+        val noFraction = s.substringBefore('.').let { if (it.endsWith("Z")) it else "${it}Z" }
+        // 2026-05-15T10:30:45Z → 20260515T103045Z
+        return noFraction.replace("-", "").replace(":", "")
+    }
+
     @Serializable
     private data class FileListResponse(val files: List<FileEntry> = emptyList())
 
     @Serializable
-    private data class FileEntry(val id: String)
+    private data class FileEntry(val id: String, val name: String, val modifiedTime: String)
 
     private companion object {
-        const val FILE_NAME = "txtracker-backup.json"
+        const val FILE_PREFIX = "txtracker-backup"
         val MULTIPART_RELATED = "multipart/related".toMediaType()
     }
 }
