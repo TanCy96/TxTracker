@@ -76,6 +76,7 @@ class CloudSyncWorkerTest {
         coVerify(exactly = 0) { exporter.exportToJsonString(any()) }
         coVerify(exactly = 0) { driveClient.uploadDated(any(), any()) }
         verify { prefs.setSyncBlockedReason(match { it.contains("empty") }) }
+        verify { prefs.setLastSync(success = false, error = match { it.contains("empty") }) }
         // Baseline NOT clobbered.
         verify(exactly = 0) { prefs.setLastUploadedRowCount(any()) }
     }
@@ -99,8 +100,9 @@ class CloudSyncWorkerTest {
 
     @Test
     fun prunes_older_files_per_retention_policy() = runTest {
-        // 22 old files + the newly-uploaded one. With 23 total all eligible (old ones >30d, new one rank 1),
-        // retention keeps rank ≤ 20 + new-id by age → deletes the 3 oldest (slots 21-23 after upload).
+        // 22 old files all tied at now-60d + the newly-uploaded one. Kotlin sortedByDescending
+        // is stable, so insertion order survives: new-id (rank 1) then old-1..old-22 (rank 2..23).
+        // Retention keeps rank ≤ 20 → deletes the three at rank 21-23 (old-20..old-22).
         val oldFiles = (1..22).map {
             BackupFile(
                 id = "old-$it",
