@@ -85,11 +85,13 @@ class HeuristicExtractor @Inject constructor() {
         // continues to fence off promo / noise text from triggering on amount alone.
         //   Prefix form:  "RM 12.50", "MYR1.00", "£20", "$5", "€1,000.50"
         //   Suffix form:  "1 MYR", "100 GBP", "25.50 USD"
+        // Leading-digit group accepts either properly comma-grouped thousands or a bare
+        // run of digits — some banks (CIMB observed) emit "1163.27" without separators.
         private val AMOUNT = Regex(
             """(?:""" +
-            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>\d{1,3}(?:,\d{3})*(?:\.\d+)?)""" +
+            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)""" +
             """|""" +
-            """(?<amtB>\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))""" +
+            """(?<amtB>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))""" +
             """)""",
             RegexOption.IGNORE_CASE,
         )

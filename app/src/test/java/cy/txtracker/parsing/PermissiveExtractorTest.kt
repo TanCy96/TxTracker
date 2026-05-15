@@ -120,4 +120,15 @@ class PermissiveExtractorTest {
         )!!
         assertThat(r.amountMinor).isEqualTo(123456L)
     }
+
+    @Test
+    fun captures_cimb_4_digit_amount_without_thousands_separator() {
+        // Real CIMB capture: the amount has 4 leading digits and no comma. The previous
+        // AMOUNT regex capped the leading group at 3 digits, so "1163.27" was matched as
+        // "116" → 11600 minor units → displayed RM 116.00 instead of RM 1163.27.
+        val text = "CIMB:MYR 1163.27 was charged on your card num..."
+        val r = extractor.extract(text, "com.cimb.octo", now)!!
+        assertThat(r.amountMinor).isEqualTo(116327L)
+        assertThat(r.currency).isEqualTo("MYR")
+    }
 }

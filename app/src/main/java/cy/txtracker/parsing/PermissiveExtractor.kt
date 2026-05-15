@@ -127,9 +127,9 @@ class PermissiveExtractor @Inject constructor() {
         // future change to the heuristic to silently widen this layer too.
         private val AMOUNT = Regex(
             """(?:""" +
-            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>\d{1,3}(?:,\d{3})*(?:\.\d+)?)""" +
+            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)""" +
             """|""" +
-            """(?<amtB>\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))""" +
+            """(?<amtB>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))""" +
             """)""",
             RegexOption.IGNORE_CASE,
         )

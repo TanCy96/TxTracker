@@ -261,4 +261,24 @@ class HeuristicExtractorTest {
         assertThat(r.amountMinor).isEqualTo(123456L)
         assertThat(r.currency).isEqualTo("GBP")
     }
+
+    @Test
+    fun handles_4_digit_amount_without_thousands_separator() {
+        // The previous AMOUNT regex required commas for 4+ digit amounts: it capped the
+        // leading group at `\d{1,3}` and only allowed extra digits via `(?:,\d{3})*`.
+        // Banks that omit the thousands separator (CIMB observed) were parsed wrong —
+        // "1163.27" matched as "116" → RM 116.00.
+        val text = "Paid RM 1163.27 to BIG STORE"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.amountMinor).isEqualTo(116327L)
+        assertThat(r.merchantRaw).isEqualTo("BIG STORE")
+    }
+
+    @Test
+    fun handles_4_digit_suffix_form_amount_without_thousands_separator() {
+        val text = "transferred 1163.27 GBP to FRIEND"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.amountMinor).isEqualTo(116327L)
+        assertThat(r.currency).isEqualTo("GBP")
+    }
 }
