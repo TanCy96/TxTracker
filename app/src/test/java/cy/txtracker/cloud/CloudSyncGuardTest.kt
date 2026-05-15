@@ -7,14 +7,12 @@ class CloudSyncGuardTest {
 
     @Test
     fun proceeds_when_no_baseline() {
-        // First-ever upload: baseline = UNKNOWN. We proceed because we have nothing to compare to.
         val decision = CloudSyncGuard.evaluate(currentRowCount = 0, baselineRowCount = CloudSyncGuard.UNKNOWN_BASELINE)
         assertThat(decision).isEqualTo(CloudSyncGuard.Decision.Proceed)
     }
 
     @Test
     fun proceeds_when_local_and_baseline_both_zero() {
-        // Long-time empty installs (e.g., user signed in but never captured anything).
         val decision = CloudSyncGuard.evaluate(currentRowCount = 0, baselineRowCount = 0)
         assertThat(decision).isEqualTo(CloudSyncGuard.Decision.Proceed)
     }
@@ -27,8 +25,16 @@ class CloudSyncGuardTest {
 
     @Test
     fun proceeds_when_local_shrank_within_threshold() {
-        // User legitimately deleted some rows. Within 50% shrink threshold — allow.
+        // 40% shrink — within the 50% allowance.
         val decision = CloudSyncGuard.evaluate(currentRowCount = 60, baselineRowCount = 100)
+        assertThat(decision).isEqualTo(CloudSyncGuard.Decision.Proceed)
+    }
+
+    @Test
+    fun proceeds_at_exactly_50_percent_ratio_boundary() {
+        // ratio == 0.5 exactly. Implementation uses `<` so this is Proceed; if it ever
+        // becomes `<=`, this test fails and forces a deliberate decision.
+        val decision = CloudSyncGuard.evaluate(currentRowCount = 50, baselineRowCount = 100)
         assertThat(decision).isEqualTo(CloudSyncGuard.Decision.Proceed)
     }
 

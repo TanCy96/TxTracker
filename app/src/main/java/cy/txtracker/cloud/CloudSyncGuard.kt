@@ -1,14 +1,11 @@
 package cy.txtracker.cloud
 
 /**
- * Pre-upload safety check. Compares the local DB's current transaction row count against the
- * last successfully-uploaded count (cached in [cy.txtracker.service.CloudSyncPrefs]).
+ * Pre-upload safety check on cloud sync. Compares the local transaction row count against
+ * the last successfully-uploaded count to refuse uploads when the local DB has shrunk
+ * suspiciously (e.g., a destructive Room migration wiped it).
  *
- * Refuses to upload when the local DB has suspiciously shrunk:
- *   - Hard skip: local is empty (`0`) and baseline had any rows.
- *   - Hard skip: local shrank by more than [SHRINK_THRESHOLD] (currently 50%) from baseline.
- *
- * Pure function — caller (the worker) handles side effects.
+ * Pure function — caller handles side effects (logging, prefs writes, surfacing a banner).
  */
 object CloudSyncGuard {
 

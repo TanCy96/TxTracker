@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :app:compileDebugKotlin *)",
+      "Bash(./gradlew :app:compileDebugAndroidTestKotlin)",
+      "Bash(./gradlew :app:compileDebugAndroidTestKotlin :app:compileDebugKotlin)",
+      "Bash(cd D:\\\\\\\\Projects\\\\\\\\TxTracker)",
+      "Bash(./gradlew compileDebugAndroidTestSources --no-daemon)",
+      "Bash(./gradlew compileDebugAndroidTestSources)",
+      "Bash(./gradlew compileDebugKotlin compileDebugAndroidTestSources)",
+      "Bash(./gradlew testDebugUnitTest)",
+      "Bash(./gradlew compileDebugKotlin compileDebugAndroidTestSources testDebugUnitTest)",
+      "Bash(./gradlew compileDebugKotlin compileDebugUnitTestKotlin)",
+      "Bash(./gradlew compileDebugAndroidTestSources testDebugUnitTest)",
+      "Bash(./gradlew compileDebugKotlin)",
+      "mcp__serena__get_symbols_overview",
+      "Skill(superpowers:systematic-debugging)",
+      "Skill(superpowers:subagent-driven-development)"
+    ]
+  }
+}
