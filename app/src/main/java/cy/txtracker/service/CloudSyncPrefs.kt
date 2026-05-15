@@ -1,6 +1,7 @@
 package cy.txtracker.service
 
 import android.content.Context
+import cy.txtracker.cloud.CloudSyncGuard
 import cy.txtracker.export.YearMonth
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -15,13 +16,17 @@ import kotlinx.datetime.Instant
  * upload worker stay in sync without a restart. Mirrors the pattern used by
  * [cy.txtracker.ui.lock.LockPrefs] and [CapturePrefs].
  *
- * Six fields:
+ * Eight fields:
  *   - [enabled]: signed-in to Google Drive (false default; opt-in).
  *   - [paused]: temporarily halt uploads/downloads while staying signed in.
  *   - [accountEmail]: display only.
  *   - [lastSyncAt] / [lastSyncError]: surfaced in Settings status line.
  *   - [transactionCutoff]: optional year-month floor; transactions older than this are
  *     excluded from cloud upload.
+ *   - [lastUploadedRowCount]: row count from the last successful upload. Used by
+ *     [cy.txtracker.cloud.CloudSyncGuard] to detect suspicious local shrinkage.
+ *   - [syncBlockedReason]: non-null while the guard is preventing uploads; surfaced as
+ *     a banner in Settings.
  */
 @Singleton
 class CloudSyncPrefs @Inject constructor(
@@ -50,6 +55,14 @@ class CloudSyncPrefs @Inject constructor(
     private val _transactionCutoff = MutableStateFlow(readCutoff())
     val transactionCutoff: StateFlow<YearMonth?> = _transactionCutoff.asStateFlow()
 
+    private val _lastUploadedRowCount = MutableStateFlow(
+        prefs.getLong(KEY_LAST_UPLOADED_ROW_COUNT, CloudSyncGuard.UNKNOWN_BASELINE),
+    )
+    val lastUploadedRowCount: StateFlow<Long> = _lastUploadedRowCount.asStateFlow()
+
+    private val _syncBlockedReason = MutableStateFlow(prefs.getString(KEY_SYNC_BLOCKED_REASON, null))
+    val syncBlockedReason: StateFlow<String?> = _syncBlockedReason.asStateFlow()
+
     fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, value).apply()
         _enabled.value = value
@@ -68,6 +81,16 @@ class CloudSyncPrefs @Inject constructor(
     fun setTransactionCutoff(value: YearMonth?) {
         prefs.edit().putString(KEY_TRANSACTION_CUTOFF, value?.format()).apply()
         _transactionCutoff.value = value
+    }
+
+    fun setLastUploadedRowCount(value: Long) {
+        prefs.edit().putLong(KEY_LAST_UPLOADED_ROW_COUNT, value).apply()
+        _lastUploadedRowCount.value = value
+    }
+
+    fun setSyncBlockedReason(value: String?) {
+        prefs.edit().putString(KEY_SYNC_BLOCKED_REASON, value).apply()
+        _syncBlockedReason.value = value
     }
 
     /** Updates last-sync state. Pass a non-null [error] to record a failure; null clears
@@ -94,12 +117,16 @@ class CloudSyncPrefs @Inject constructor(
             .remove(KEY_ACCOUNT_EMAIL)
             .remove(KEY_LAST_SYNC_AT)
             .remove(KEY_LAST_SYNC_ERROR)
+            .remove(KEY_LAST_UPLOADED_ROW_COUNT)
+            .remove(KEY_SYNC_BLOCKED_REASON)
             .apply()
         _enabled.value = false
         _paused.value = false
         _accountEmail.value = null
         _lastSyncAt.value = null
         _lastSyncError.value = null
+        _lastUploadedRowCount.value = CloudSyncGuard.UNKNOWN_BASELINE
+        _syncBlockedReason.value = null
     }
 
     private fun readCutoff(): YearMonth? =
@@ -114,5 +141,7 @@ class CloudSyncPrefs @Inject constructor(
         const val KEY_LAST_SYNC_AT = "last_sync_at"
         const val KEY_LAST_SYNC_ERROR = "last_sync_error"
         const val KEY_TRANSACTION_CUTOFF = "transaction_cutoff"
+        const val KEY_LAST_UPLOADED_ROW_COUNT = "last_uploaded_row_count"
+        const val KEY_SYNC_BLOCKED_REASON = "sync_blocked_reason"
     }
 }
