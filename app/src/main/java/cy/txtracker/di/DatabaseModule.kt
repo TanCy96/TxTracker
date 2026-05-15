@@ -54,7 +54,7 @@ object DatabaseModule {
             // (adds the merchant_notes table). Preserves all captured transactions and
             // learned mappings rather than wiping them. fallbackToDestructiveMigration
             // stays as a safety net for any unforeseen mismatch.
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -201,6 +201,19 @@ private val MIGRATION_5_6 = object : Migration(5, 6) {
             ALTER TABLE `transactions`
             ADD COLUMN `needsCurrencyConfirmation` INTEGER NOT NULL DEFAULT 0
             """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * Adds `keywordPattern` column to categories table introduced in v7.
+ * Schema mirrors what Room would generate for the augmented Category so the
+ * resulting DB matches a fresh install on v7.
+ */
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `categories` ADD COLUMN `keywordPattern` TEXT DEFAULT NULL"
         )
     }
 }

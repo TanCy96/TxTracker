@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    version = 6,
+    version = 7,
     exportSchema = true,
     entities = [
         Transaction::class,

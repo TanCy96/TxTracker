@@ -80,6 +80,7 @@ data class Category(
     val isCustom: Boolean,
     /** Smaller values render first in the home screen and CSV export. */
     val sortOrder: Int,
+    val keywordPattern: String? = null,
 )
 
 @Entity(
