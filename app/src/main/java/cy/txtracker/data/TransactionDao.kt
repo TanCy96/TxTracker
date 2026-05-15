@@ -29,6 +29,9 @@ interface TransactionDao {
     @Query("SELECT DISTINCT sourceApp FROM transactions WHERE sourceApp != 'manual'")
     fun observeDistinctSourceApps(): Flow<List<String>>
 
+    @Query("SELECT COUNT(*) FROM transactions")
+    suspend fun countAll(): Long
+
     @Query("SELECT * FROM transactions ORDER BY occurredAt ASC")
     suspend fun getAllOnce(): List<Transaction>
 

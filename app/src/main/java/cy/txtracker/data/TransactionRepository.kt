@@ -134,6 +134,9 @@ class TransactionRepository @Inject constructor(
 
     suspend fun getCategory(id: Long): Category? = categoryDao.getById(id)
 
+    /** Cheap row count without materializing all rows. Used by the cloud-sync guard. */
+    suspend fun countAllTransactions(): Long = transactionDao.countAll()
+
     /** All transactions sorted by occurredAt ASC. Used by CSV export. */
     suspend fun getAllTransactionsOnce(): List<Transaction> = transactionDao.getAllOnce()
 
