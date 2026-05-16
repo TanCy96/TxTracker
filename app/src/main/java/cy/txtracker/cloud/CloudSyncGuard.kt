@@ -21,14 +21,20 @@ object CloudSyncGuard {
     }
 
     fun evaluate(currentRowCount: Long, baselineRowCount: Long): Decision {
-        if (baselineRowCount == UNKNOWN_BASELINE) return Decision.Proceed
-        if (baselineRowCount == 0L) return Decision.Proceed
-        if (currentRowCount == 0L) {
+        // Empty local must never auto-overwrite cloud unless cloud is also known-empty.
+        // Covers both the destructive-migration / uninstall-reinstall case (baseline reset
+        // to UNKNOWN_BASELINE) and the runtime-wipe case (baseline still has rows). The
+        // only allowed empty-upload is when the last successful upload was also empty
+        // (baseline == 0), where another empty is a no-op.
+        if (currentRowCount == 0L && baselineRowCount != 0L) {
             return Decision.Skip(
-                "Local data is empty but cloud has $baselineRowCount transactions — " +
-                    "sync paused to prevent overwriting your cloud backup.",
+                "Local data is empty — sync paused to avoid overwriting any cloud backup. " +
+                    "Restore from cloud first, or sign out with 'also delete cloud backup' " +
+                    "if this empty state is intentional.",
             )
         }
+        if (baselineRowCount == UNKNOWN_BASELINE) return Decision.Proceed
+        if (baselineRowCount == 0L) return Decision.Proceed
         val ratio = currentRowCount.toDouble() / baselineRowCount.toDouble()
         if (ratio < SHRINK_THRESHOLD) {
             return Decision.Skip(

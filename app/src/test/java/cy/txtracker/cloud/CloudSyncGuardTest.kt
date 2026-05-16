@@ -6,13 +6,26 @@ import org.junit.Test
 class CloudSyncGuardTest {
 
     @Test
-    fun proceeds_when_no_baseline() {
-        val decision = CloudSyncGuard.evaluate(currentRowCount = 0, baselineRowCount = CloudSyncGuard.UNKNOWN_BASELINE)
+    fun proceeds_when_no_baseline_and_local_has_data() {
+        // First upload after sign-in with real data — nothing to compare against, allow.
+        val decision = CloudSyncGuard.evaluate(currentRowCount = 5, baselineRowCount = CloudSyncGuard.UNKNOWN_BASELINE)
         assertThat(decision).isEqualTo(CloudSyncGuard.Decision.Proceed)
     }
 
     @Test
+    fun skips_when_local_empty_and_no_baseline() {
+        // The fresh-install-after-wipe hole: prefs reset to UNKNOWN_BASELINE, local DB empty,
+        // worker tries to upload an empty backup that would mask older real cloud backups.
+        // Must refuse.
+        val decision = CloudSyncGuard.evaluate(currentRowCount = 0, baselineRowCount = CloudSyncGuard.UNKNOWN_BASELINE)
+        assertThat(decision).isInstanceOf(CloudSyncGuard.Decision.Skip::class.java)
+        val reason = (decision as CloudSyncGuard.Decision.Skip).reason
+        assertThat(reason).contains("empty")
+    }
+
+    @Test
     fun proceeds_when_local_and_baseline_both_zero() {
+        // Last successful upload was already empty — another empty is a no-op, not destructive.
         val decision = CloudSyncGuard.evaluate(currentRowCount = 0, baselineRowCount = 0)
         assertThat(decision).isEqualTo(CloudSyncGuard.Decision.Proceed)
     }
