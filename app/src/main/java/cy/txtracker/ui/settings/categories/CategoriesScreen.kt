@@ -6,6 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,9 +21,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
@@ -28,6 +36,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -35,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -208,12 +218,13 @@ private fun AddCategoryDialog(
 ) {
     var name by remember { mutableStateOf("") }
     var selectedColor by remember { mutableStateOf(DefaultCategoryColors.first()) }
-    var pattern by remember { mutableStateOf("") }
+    var chips by remember { mutableStateOf<List<String>>(emptyList()) }
     var showOverlapWarning by remember { mutableStateOf<OverlapInfo?>(null) }
 
     val nameClean = name.trim()
     val nameValid = nameClean.isNotEmpty() && nameClean !in existingNames
-    val patternError: String? = patternCompileError(pattern)
+    val joinedPattern = chips.joinToString("|")
+    val patternError: String? = patternCompileError(joinedPattern)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -225,16 +236,16 @@ private fun AddCategoryDialog(
                 nameDuplicate = nameClean.isNotEmpty() && nameClean in existingNames,
                 color = selectedColor,
                 onColorChange = { selectedColor = it },
-                pattern = pattern,
-                onPatternChange = { pattern = it },
+                chips = chips,
+                onChipsChange = { chips = it },
                 patternError = patternError,
             )
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    val patternToSave = pattern.trim().takeIf { it.isNotEmpty() }
-                    val overlap = detectOverlap(patternToSave, otherCategoryPatterns)
+                    val patternToSave = joinedPattern.takeIf { it.isNotEmpty() }
+                    val overlap = detectOverlap(chips, otherCategoryPatterns)
                     if (overlap != null) {
                         showOverlapWarning = overlap
                     } else {
@@ -252,7 +263,7 @@ private fun AddCategoryDialog(
             info = info,
             onSaveAnyway = {
                 showOverlapWarning = null
-                onAdd(nameClean, selectedColor, pattern.trim().takeIf { it.isNotEmpty() })
+                onAdd(nameClean, selectedColor, joinedPattern.takeIf { it.isNotEmpty() })
             },
             onCancel = { showOverlapWarning = null },
         )
@@ -269,12 +280,15 @@ private fun EditCategoryDialog(
 ) {
     var name by remember(category.id) { mutableStateOf(category.name) }
     var color by remember(category.id) { mutableStateOf(category.color) }
-    var pattern by remember(category.id) { mutableStateOf(category.keywordPattern.orEmpty()) }
+    var chips by remember(category.id) {
+        mutableStateOf(splitPatternToChips(category.keywordPattern))
+    }
     var showOverlapWarning by remember { mutableStateOf<OverlapInfo?>(null) }
 
     val nameClean = name.trim()
     val nameValid = nameClean.isNotEmpty() && nameClean !in existingNames
-    val patternError: String? = patternCompileError(pattern)
+    val joinedPattern = chips.joinToString("|")
+    val patternError: String? = patternCompileError(joinedPattern)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -286,16 +300,16 @@ private fun EditCategoryDialog(
                 nameDuplicate = nameClean.isNotEmpty() && nameClean in existingNames,
                 color = color,
                 onColorChange = { color = it },
-                pattern = pattern,
-                onPatternChange = { pattern = it },
+                chips = chips,
+                onChipsChange = { chips = it },
                 patternError = patternError,
             )
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    val patternToSave = pattern.trim().takeIf { it.isNotEmpty() }
-                    val overlap = detectOverlap(patternToSave, otherCategoryPatterns)
+                    val patternToSave = joinedPattern.takeIf { it.isNotEmpty() }
+                    val overlap = detectOverlap(chips, otherCategoryPatterns)
                     if (overlap != null) {
                         showOverlapWarning = overlap
                     } else {
@@ -313,7 +327,7 @@ private fun EditCategoryDialog(
             info = info,
             onSaveAnyway = {
                 showOverlapWarning = null
-                onSave(nameClean, color, pattern.trim().takeIf { it.isNotEmpty() })
+                onSave(nameClean, color, joinedPattern.takeIf { it.isNotEmpty() })
             },
             onCancel = { showOverlapWarning = null },
         )
@@ -327,11 +341,11 @@ private fun CategoryFormFields(
     nameDuplicate: Boolean,
     color: Int,
     onColorChange: (Int) -> Unit,
-    pattern: String,
-    onPatternChange: (String) -> Unit,
+    chips: List<String>,
+    onChipsChange: (List<String>) -> Unit,
     patternError: String?,
 ) {
-    Column {
+    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         OutlinedTextField(
             value = name,
             onValueChange = onNameChange,
@@ -348,22 +362,104 @@ private fun CategoryFormFields(
         Spacer(Modifier.size(8.dp))
         ColorPickerRow(selected = color, onSelect = onColorChange)
         Spacer(Modifier.size(16.dp))
+        KeywordChipInput(
+            chips = chips,
+            onChipsChange = onChipsChange,
+            patternError = patternError,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeywordChipInput(
+    chips: List<String>,
+    onChipsChange: (List<String>) -> Unit,
+    patternError: String?,
+) {
+    var buffer by remember { mutableStateOf("") }
+
+    fun commitBuffer() {
+        val trimmed = buffer.trim()
+        if (trimmed.isNotEmpty()) {
+            onChipsChange(chips + trimmed)
+            buffer = ""
+        }
+    }
+
+    val chipsScrollState = rememberScrollState()
+    Column {
+        if (chips.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 120.dp)
+                    .verticalScroll(chipsScrollState)
+                    .padding(bottom = 8.dp),
+            ) {
+                chips.forEachIndexed { index, chip ->
+                    InputChip(
+                        selected = false,
+                        onClick = {},
+                        label = { Text(chip) },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    onChipsChange(chips.toMutableList().apply { removeAt(index) })
+                                },
+                                modifier = Modifier.size(20.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Remove $chip",
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
         OutlinedTextField(
-            value = pattern,
-            onValueChange = onPatternChange,
+            value = buffer,
+            onValueChange = { new ->
+                // Comma is the commit gesture. Anything before a comma flushes as chip(s);
+                // text after the last comma stays in the buffer for the user to keep typing.
+                if (new.contains(',')) {
+                    val parts = new.split(',')
+                    val toAdd = parts.dropLast(1)
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                    if (toAdd.isNotEmpty()) onChipsChange(chips + toAdd)
+                    buffer = parts.last()
+                } else {
+                    buffer = new
+                }
+            },
             label = { Text("Auto-match keywords") },
-            placeholder = { Text("e.g. STARBUCKS|TEALIVE|MIXUE") },
+            placeholder = {
+                if (chips.isEmpty()) Text("e.g. STARBUCKS, TEALIVE")
+            },
             isError = patternError != null,
+            singleLine = true,
             supportingText = {
                 Text(
                     patternError
-                        ?: "Regex matched against captured merchant. Case-insensitive. " +
-                            "Merchants are uppercase with SDN BHD / ENT / SVC removed.",
+                        ?: "Type a keyword then press , or +. Case-insensitive, " +
+                            "matches anywhere in the captured merchant.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             },
+            trailingIcon = {
+                IconButton(onClick = { commitBuffer() }, enabled = buffer.isNotBlank()) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add keyword")
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { commitBuffer() }),
             modifier = Modifier.fillMaxWidth(),
-            maxLines = 4,
         )
     }
 }
@@ -412,9 +508,14 @@ private fun DeleteCategoryDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColorPickerRow(selected: Int, onSelect: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         DefaultCategoryColors.forEach { color ->
             val isSelected = color == selected
             val borderColor = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent
@@ -438,12 +539,23 @@ private fun patternCompileError(pattern: String): String? {
         .fold(onSuccess = { null }, onFailure = { "Invalid regex: ${it.message?.take(80)}" })
 }
 
+/**
+ * Splits a stored keywordPattern back into chip values for the editor. Existing patterns
+ * (including the seeded `DefaultKeywordPatterns`) are all flat `|`-joined tokens, so a
+ * simple split is lossless. Empty fragments and trim-only fragments are dropped.
+ */
+private fun splitPatternToChips(stored: String?): List<String> =
+    stored?.split('|')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?: emptyList()
+
 private fun detectOverlap(
-    pattern: String?,
+    chips: List<String>,
     otherCategoryPatterns: List<Pair<String, String?>>,
 ): OverlapInfo? {
-    if (pattern.isNullOrBlank()) return null
-    val newTokens = pattern.split("|").map { it.trim().uppercase() }
+    if (chips.isEmpty()) return null
+    val newTokens = chips.map { it.trim().uppercase() }
         .filter { it.isNotEmpty() }.toSet()
     if (newTokens.isEmpty()) return null
     for ((otherName, otherPattern) in otherCategoryPatterns) {
