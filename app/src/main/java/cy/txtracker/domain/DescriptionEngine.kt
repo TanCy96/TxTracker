@@ -5,18 +5,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Suggests a free-text description ("lunch", "petrol", "coffee") for a transaction at
- * ingestion time, based on what the user has labeled in the past.
+ * Suggests a free-text description for a transaction at ingestion time, based on what the
+ * user has labeled in the past.
  *
  * Lookup order (most specific first):
- *   1. `MerchantDescriptionMapping(merchant, bucket)` — same merchant, same time-of-day bucket.
- *   2. `MerchantDescriptionMapping(merchant, *)` — same merchant, any bucket; the most recently
- *      learned entry wins.
- *   3. `CategoryDescriptionMapping(category, bucket)` — same category, same bucket. This is the
- *      cross-merchant generalization that lets one labeling of `Food + MIDDAY = "lunch"` apply to
- *      any midday Food purchase from any merchant.
- *   4. Null — no suggestion; the user fills it in via the edit sheet, and saving dual-writes
- *      both mapping tables so future lookups have something to find.
+ *   1. (merchant, bucket) exact.
+ *   2. (merchant, any-bucket) — most recent wins.
+ *   3. Longest-prefix merchant — captured "STARBUCKS KLCC" falls back to stored
+ *      "STARBUCKS" mappings, re-running 1 and 2 against the matched stored merchant.
+ *   4. (category, bucket).
+ *   5. (category, any-bucket) — most recent wins.
+ *   6. Null.
  */
 @Singleton
 class DescriptionEngine @Inject constructor(
@@ -35,8 +34,19 @@ class DescriptionEngine @Inject constructor(
         descriptionMappingDao.getMerchantAny(merchantNormalized)
             ?.let { return it.description }
 
+        val storedKeys = descriptionMappingDao.getAllMerchantKeys()
+        val prefixMatch = MerchantPrefixMatcher.longestPrefix(merchantNormalized, storedKeys)
+        if (prefixMatch != null) {
+            descriptionMappingDao.getMerchantBucket(prefixMatch, bucket)
+                ?.let { return it.description }
+            descriptionMappingDao.getMerchantAny(prefixMatch)
+                ?.let { return it.description }
+        }
+
         if (categoryId != null) {
             descriptionMappingDao.getCategoryBucket(categoryId, bucket)
+                ?.let { return it.description }
+            descriptionMappingDao.getCategoryAnyBucket(categoryId)
                 ?.let { return it.description }
         }
 

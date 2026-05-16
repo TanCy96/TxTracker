@@ -48,6 +48,9 @@ interface DescriptionMappingDao {
     @Query("SELECT * FROM merchant_description_mappings ORDER BY learnedAt DESC")
     fun observeAllMerchant(): Flow<List<MerchantDescriptionMapping>>
 
+    @Query("SELECT DISTINCT merchantNormalized FROM merchant_description_mappings")
+    suspend fun getAllMerchantKeys(): List<String>
+
     // Category + time-bucket level
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -71,6 +74,17 @@ interface DescriptionMappingDao {
         """
     )
     suspend fun deleteCategoryBucket(categoryId: Long, bucket: TimeBucket)
+
+    /** Returns the most recently learned description for this category in any time bucket. */
+    @Query(
+        """
+        SELECT * FROM category_description_mappings
+        WHERE categoryId = :categoryId
+        ORDER BY learnedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getCategoryAnyBucket(categoryId: Long): CategoryDescriptionMapping?
 
     @Query("SELECT * FROM category_description_mappings ORDER BY learnedAt DESC")
     fun observeAllCategory(): Flow<List<CategoryDescriptionMapping>>
