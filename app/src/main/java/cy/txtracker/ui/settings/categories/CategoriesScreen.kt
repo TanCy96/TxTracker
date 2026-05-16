@@ -57,8 +57,9 @@ fun CategoriesScreen(
     viewModel: CategoriesViewModel = hiltViewModel(),
 ) {
     val categories by viewModel.categories.collectAsState()
+    val counts by viewModel.categoryCounts.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
-    var renameTarget by remember { mutableStateOf<Category?>(null) }
+    var editTarget by remember { mutableStateOf<Category?>(null) }
     var deleteTarget by remember { mutableStateOf<Category?>(null) }
 
     // Local list for live drag preview. Re-keyed off the DB-derived `categories` so any
@@ -95,7 +96,9 @@ fun CategoriesScreen(
                 ReorderableItem(reorderState, key = category.id) {
                     CategoryRow(
                         category = category,
-                        onRename = { renameTarget = category },
+                        counts = counts[category.id]
+                            ?: CategoriesViewModel.CategoryCounts(learned = 0, auto = 0),
+                        onEdit = { editTarget = category },
                         onDelete = { deleteTarget = category },
                         dragHandle = {
                             IconButton(
@@ -122,23 +125,26 @@ fun CategoriesScreen(
     if (showAddDialog) {
         AddCategoryDialog(
             existingNames = categories.map { it.name }.toSet(),
-            onAdd = { name, color ->
-                viewModel.add(name, color)
+            otherCategoryPatterns = categories.map { it.name to it.keywordPattern },
+            onAdd = { name, color, pattern ->
+                viewModel.add(name, color, pattern)
                 showAddDialog = false
             },
             onDismiss = { showAddDialog = false },
         )
     }
 
-    renameTarget?.let { target ->
-        RenameCategoryDialog(
+    editTarget?.let { target ->
+        EditCategoryDialog(
             category = target,
             existingNames = categories.map { it.name }.toSet() - target.name,
-            onRename = { newName ->
-                viewModel.rename(target, newName)
-                renameTarget = null
+            otherCategoryPatterns = categories.filter { it.id != target.id }
+                .map { it.name to it.keywordPattern },
+            onSave = { name, color, pattern ->
+                viewModel.editCategory(target, name, color, pattern)
+                editTarget = null
             },
-            onDismiss = { renameTarget = null },
+            onDismiss = { editTarget = null },
         )
     }
 
@@ -157,7 +163,8 @@ fun CategoriesScreen(
 @Composable
 private fun CategoryRow(
     category: Category,
-    onRename: () -> Unit,
+    counts: CategoriesViewModel.CategoryCounts,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     dragHandle: @Composable () -> Unit,
 ) {
@@ -166,10 +173,17 @@ private fun CategoryRow(
             Box(modifier = Modifier.size(20.dp).background(Color(category.color), CircleShape))
         },
         headlineContent = { Text(category.name) },
+        supportingContent = {
+            Text(
+                "learned: ${counts.learned} · auto: ${counts.auto}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
         trailingContent = {
-            Row {
-                IconButton(onClick = onRename) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Rename ${category.name}")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Edit ${category.name}")
                 }
                 IconButton(onClick = onDelete) {
                     Icon(
@@ -188,84 +202,189 @@ private fun CategoryRow(
 @Composable
 private fun AddCategoryDialog(
     existingNames: Set<String>,
-    onAdd: (name: String, color: Int) -> Unit,
+    otherCategoryPatterns: List<Pair<String, String?>>,
+    onAdd: (name: String, color: Int, keywordPattern: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var selectedColor by remember { mutableStateOf(DefaultCategoryColors.first()) }
+    var pattern by remember { mutableStateOf("") }
+    var showOverlapWarning by remember { mutableStateOf<OverlapInfo?>(null) }
+
     val nameClean = name.trim()
     val nameValid = nameClean.isNotEmpty() && nameClean !in existingNames
+    val patternError: String? = patternCompileError(pattern)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("New category") },
         text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                    isError = nameClean.isNotEmpty() && nameClean in existingNames,
-                    supportingText = {
-                        if (nameClean.isNotEmpty() && nameClean in existingNames) {
-                            Text("A category with that name already exists.")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.size(12.dp))
-                Text("Color", style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.size(8.dp))
-                ColorPickerRow(
-                    selected = selectedColor,
-                    onSelect = { selectedColor = it },
-                )
-            }
+            CategoryFormFields(
+                name = name,
+                onNameChange = { name = it },
+                nameDuplicate = nameClean.isNotEmpty() && nameClean in existingNames,
+                color = selectedColor,
+                onColorChange = { selectedColor = it },
+                pattern = pattern,
+                onPatternChange = { pattern = it },
+                patternError = patternError,
+            )
         },
         confirmButton = {
             TextButton(
-                onClick = { onAdd(nameClean, selectedColor) },
-                enabled = nameValid,
+                onClick = {
+                    val patternToSave = pattern.trim().takeIf { it.isNotEmpty() }
+                    val overlap = detectOverlap(patternToSave, otherCategoryPatterns)
+                    if (overlap != null) {
+                        showOverlapWarning = overlap
+                    } else {
+                        onAdd(nameClean, selectedColor, patternToSave)
+                    }
+                },
+                enabled = nameValid && patternError == null,
             ) { Text("Add") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+
+    showOverlapWarning?.let { info ->
+        OverlapWarningDialog(
+            info = info,
+            onSaveAnyway = {
+                showOverlapWarning = null
+                onAdd(nameClean, selectedColor, pattern.trim().takeIf { it.isNotEmpty() })
+            },
+            onCancel = { showOverlapWarning = null },
+        )
+    }
 }
 
 @Composable
-private fun RenameCategoryDialog(
+private fun EditCategoryDialog(
     category: Category,
     existingNames: Set<String>,
-    onRename: (String) -> Unit,
+    otherCategoryPatterns: List<Pair<String, String?>>,
+    onSave: (name: String, color: Int, keywordPattern: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var name by remember { mutableStateOf(category.name) }
+    var name by remember(category.id) { mutableStateOf(category.name) }
+    var color by remember(category.id) { mutableStateOf(category.color) }
+    var pattern by remember(category.id) { mutableStateOf(category.keywordPattern.orEmpty()) }
+    var showOverlapWarning by remember { mutableStateOf<OverlapInfo?>(null) }
+
     val nameClean = name.trim()
     val nameValid = nameClean.isNotEmpty() && nameClean !in existingNames
+    val patternError: String? = patternCompileError(pattern)
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename category") },
+        title = { Text("Edit category") },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Name") },
-                singleLine = true,
-                isError = nameClean.isNotEmpty() && nameClean in existingNames,
-                supportingText = {
-                    if (nameClean.isNotEmpty() && nameClean in existingNames) {
-                        Text("A category with that name already exists.")
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
+            CategoryFormFields(
+                name = name,
+                onNameChange = { name = it },
+                nameDuplicate = nameClean.isNotEmpty() && nameClean in existingNames,
+                color = color,
+                onColorChange = { color = it },
+                pattern = pattern,
+                onPatternChange = { pattern = it },
+                patternError = patternError,
             )
         },
         confirmButton = {
-            TextButton(onClick = { onRename(nameClean) }, enabled = nameValid) { Text("Save") }
+            TextButton(
+                onClick = {
+                    val patternToSave = pattern.trim().takeIf { it.isNotEmpty() }
+                    val overlap = detectOverlap(patternToSave, otherCategoryPatterns)
+                    if (overlap != null) {
+                        showOverlapWarning = overlap
+                    } else {
+                        onSave(nameClean, color, patternToSave)
+                    }
+                },
+                enabled = nameValid && patternError == null,
+            ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+
+    showOverlapWarning?.let { info ->
+        OverlapWarningDialog(
+            info = info,
+            onSaveAnyway = {
+                showOverlapWarning = null
+                onSave(nameClean, color, pattern.trim().takeIf { it.isNotEmpty() })
+            },
+            onCancel = { showOverlapWarning = null },
+        )
+    }
+}
+
+@Composable
+private fun CategoryFormFields(
+    name: String,
+    onNameChange: (String) -> Unit,
+    nameDuplicate: Boolean,
+    color: Int,
+    onColorChange: (Int) -> Unit,
+    pattern: String,
+    onPatternChange: (String) -> Unit,
+    patternError: String?,
+) {
+    Column {
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            label = { Text("Name") },
+            singleLine = true,
+            isError = nameDuplicate,
+            supportingText = {
+                if (nameDuplicate) Text("A category with that name already exists.")
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.size(12.dp))
+        Text("Color", style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.size(8.dp))
+        ColorPickerRow(selected = color, onSelect = onColorChange)
+        Spacer(Modifier.size(16.dp))
+        OutlinedTextField(
+            value = pattern,
+            onValueChange = onPatternChange,
+            label = { Text("Auto-match keywords") },
+            placeholder = { Text("e.g. STARBUCKS|TEALIVE|MIXUE") },
+            isError = patternError != null,
+            supportingText = {
+                Text(
+                    patternError
+                        ?: "Regex matched against captured merchant. Case-insensitive. " +
+                            "Merchants are uppercase with SDN BHD / ENT / SVC removed.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 4,
+        )
+    }
+}
+
+@Composable
+private fun OverlapWarningDialog(
+    info: OverlapInfo,
+    onSaveAnyway: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Keyword overlap") },
+        text = {
+            Text(
+                "\"${info.token}\" also auto-matches \"${info.otherCategoryName}\". " +
+                    "Captures will go to whichever category sorts first. Save anyway?",
+            )
+        },
+        confirmButton = { TextButton(onClick = onSaveAnyway) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
     )
 }
 
@@ -308,6 +427,33 @@ private fun ColorPickerRow(selected: Int, onSelect: (Int) -> Unit) {
             )
         }
     }
+}
+
+private data class OverlapInfo(val token: String, val otherCategoryName: String)
+
+private fun patternCompileError(pattern: String): String? {
+    val trimmed = pattern.trim()
+    if (trimmed.isEmpty()) return null
+    return runCatching { Regex(trimmed, RegexOption.IGNORE_CASE) }
+        .fold(onSuccess = { null }, onFailure = { "Invalid regex: ${it.message?.take(80)}" })
+}
+
+private fun detectOverlap(
+    pattern: String?,
+    otherCategoryPatterns: List<Pair<String, String?>>,
+): OverlapInfo? {
+    if (pattern.isNullOrBlank()) return null
+    val newTokens = pattern.split("|").map { it.trim().uppercase() }
+        .filter { it.isNotEmpty() }.toSet()
+    if (newTokens.isEmpty()) return null
+    for ((otherName, otherPattern) in otherCategoryPatterns) {
+        if (otherPattern.isNullOrBlank()) continue
+        val otherTokens = otherPattern.split("|").map { it.trim().uppercase() }
+            .filter { it.isNotEmpty() }
+        val shared = otherTokens.firstOrNull { it in newTokens }
+        if (shared != null) return OverlapInfo(token = shared, otherCategoryName = otherName)
+    }
+    return null
 }
 
 // Material-style palette used for both seeded categories and the new-category color picker.
