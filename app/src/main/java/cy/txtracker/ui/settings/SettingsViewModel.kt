@@ -84,6 +84,26 @@ class SettingsViewModel @Inject constructor(
     private val _backupStatus = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
     val backupStatus: StateFlow<BackupStatus> = _backupStatus.asStateFlow()
 
+    private val _backfillResult = MutableStateFlow<BackfillResult?>(null)
+    val backfillResult: StateFlow<BackfillResult?> = _backfillResult.asStateFlow()
+
+    /**
+     * Runs the categorizer + describer over every transaction whose category or
+     * description is null, applying any non-null engine result. Surfaces a summary
+     * count via [backfillResult] for the UI to present in a dialog.
+     */
+    fun runBackfill() {
+        viewModelScope.launch {
+            val categoryRows = repository.recategorizeNullRows()
+            val descriptionRows = repository.redescribeNullRows()
+            _backfillResult.value = BackfillResult(categoryRows, descriptionRows)
+        }
+    }
+
+    fun consumeBackfillResult() { _backfillResult.value = null }
+
+    data class BackfillResult(val categoryRows: Int, val descriptionRows: Int)
+
     fun export() {
         if (_exportStatus.value is ExportStatus.Running) return
         _exportStatus.value = ExportStatus.Running

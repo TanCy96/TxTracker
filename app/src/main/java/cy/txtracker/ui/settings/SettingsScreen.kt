@@ -63,6 +63,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val exportStatus by viewModel.exportStatus.collectAsState()
     val backupStatus by viewModel.backupStatus.collectAsState()
+    val backfillResult by viewModel.backfillResult.collectAsState()
     val lockEnabled by viewModel.lockEnabled.collectAsState()
     val captureAllPackages by viewModel.captureAllPackages.collectAsState()
     val cloudSyncEnabled by viewModel.cloudSyncEnabled.collectAsState()
@@ -194,6 +195,17 @@ fun SettingsScreen(
                 headlineContent = { Text("Learned descriptions") },
                 supportingContent = { Text("Review or unlink description suggestions.") },
                 modifier = Modifier.fillMaxWidth().clickableRow(onDescriptionMappingsClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Re-categorize using learnings") },
+                supportingContent = {
+                    Text(
+                        "Run the categorizer over uncategorized rows and apply " +
+                            "description suggestions.",
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(viewModel::runBackfill),
             )
             HorizontalDivider()
             ListItem(
@@ -431,6 +443,24 @@ fun SettingsScreen(
                 }
             }
             else -> Unit
+        }
+
+        backfillResult?.let { result ->
+            AlertDialog(
+                onDismissRequest = { viewModel.consumeBackfillResult() },
+                title = { Text("Backfill complete") },
+                text = {
+                    Text(
+                        "Updated category on ${result.categoryRows} row(s) and " +
+                            "description on ${result.descriptionRows} row(s).",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.consumeBackfillResult() }) {
+                        Text("OK")
+                    }
+                },
+            )
         }
     }
 }
