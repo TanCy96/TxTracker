@@ -82,6 +82,12 @@ interface TransactionDao {
     )
     fun observeTotalBetween(startInclusive: Instant, endExclusive: Instant): Flow<Long>
 
+    @Query("SELECT * FROM transactions WHERE categoryId IS NULL")
+    suspend fun getNullCategoryRows(): List<Transaction>
+
+    @Query("SELECT * FROM transactions WHERE description IS NULL")
+    suspend fun getNullDescriptionRows(): List<Transaction>
+
     @Query("UPDATE transactions SET categoryId = :categoryId WHERE id = :id")
     suspend fun updateCategory(id: Long, categoryId: Long?)
 

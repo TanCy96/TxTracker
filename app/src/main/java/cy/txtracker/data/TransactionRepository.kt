@@ -1,6 +1,8 @@
 package cy.txtracker.data
 
 import androidx.room.withTransaction
+import cy.txtracker.domain.CategorizationEngine
+import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
 import cy.txtracker.domain.bucketOf
 import cy.txtracker.export.Backup
@@ -31,6 +33,8 @@ class TransactionRepository @Inject constructor(
     private val approvedSourceDao: ApprovedSourceDao,
     private val trackedCurrencyDao: TrackedCurrencyDao,
     private val tripWindowDao: TripWindowDao,
+    private val categorizationEngine: CategorizationEngine,
+    private val descriptionEngine: DescriptionEngine,
 ) {
     // Reads ---------------------------------------------------------------
 
@@ -542,6 +546,40 @@ class TransactionRepository @Inject constructor(
     )
 
     suspend fun delete(txId: Long) = transactionDao.delete(txId)
+
+    /**
+     * Runs [CategorizationEngine.categorize] over every transaction with `categoryId == null`,
+     * applying the result where non-null. Returns the count of rows updated.
+     */
+    suspend fun recategorizeNullRows(): Int {
+        val rows = transactionDao.getNullCategoryRows()
+        var updated = 0
+        for (row in rows) {
+            val newCategoryId = categorizationEngine.categorize(row.merchantNormalized) ?: continue
+            transactionDao.updateCategory(row.id, newCategoryId)
+            updated++
+        }
+        return updated
+    }
+
+    /**
+     * Runs [DescriptionEngine.suggest] over every transaction with `description == null`,
+     * applying the result where non-null. Returns the count of rows updated.
+     */
+    suspend fun redescribeNullRows(): Int {
+        val rows = transactionDao.getNullDescriptionRows()
+        var updated = 0
+        for (row in rows) {
+            val suggestion = descriptionEngine.suggest(
+                merchantNormalized = row.merchantNormalized,
+                categoryId = row.categoryId,
+                bucket = row.timeBucket,
+            ) ?: continue
+            transactionDao.updateDescription(row.id, suggestion)
+            updated++
+        }
+        return updated
+    }
 
     // Category management ------------------------------------------------
 
