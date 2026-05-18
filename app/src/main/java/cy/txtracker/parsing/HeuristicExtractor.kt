@@ -37,7 +37,7 @@ class HeuristicExtractor @Inject constructor() {
         symbolDefaults: Map<String, String> = emptyMap(),
     ): ParsedTransaction? {
         if (text.isBlank()) return null
-        val trimmed = text.trim()
+        val trimmed = stripTrailingTapCta(text.trim())
         val amountMatch = AMOUNT.find(trimmed) ?: return null
 
         val amountStr = amountMatch.groups["amtA"]?.value
@@ -60,6 +60,15 @@ class HeuristicExtractor @Inject constructor() {
             direction = Direction.OUT,
         )
     }
+
+    /**
+     * Strips trailing notification call-to-action like "Tap to see this transaction" or
+     * "Tap here to view details". Wise and other apps append these as a body suffix; the
+     * literal "to <verb>…" otherwise hijacks the `to MERCHANT` recipient pattern and
+     * captures the CTA tail as the merchant.
+     */
+    private fun stripTrailingTapCta(text: String): String =
+        TAP_CTA_SUFFIX.replace(text, "").trimEnd().trimEnd('.', ',', ';')
 
     /**
      * Tries the card-spend shape first (no verb required), then falls back to the
@@ -87,11 +96,15 @@ class HeuristicExtractor @Inject constructor() {
         //   Suffix form:  "1 MYR", "100 GBP", "25.50 USD"
         // Leading-digit group accepts either properly comma-grouped thousands or a bare
         // run of digits — some banks (CIMB observed) emit "1163.27" without separators.
+        // Both alternatives are fenced off from running letters/digits to keep date-like
+        // fragments out: e.g. "Transaction Date: 18MAY2026" must NOT match as amtB=18 /
+        // suffix=MAY (regression observed on HSBC capture-all email body). Lookbehind /
+        // lookahead enforce that the amount sits at a real token boundary.
         private val AMOUNT = Regex(
             """(?:""" +
-            """(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)""" +
+            """(?<![A-Za-z])(?<prefix>RM|MYR|[£€¥₹₩₽฿$])\s*(?<amtA>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)""" +
             """|""" +
-            """(?<amtB>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))""" +
+            """(?<![A-Za-z0-9])(?<amtB>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(?<suffix>(?-i:[A-Z]{3}))(?![A-Za-z0-9])""" +
             """)""",
             RegexOption.IGNORE_CASE,
         )
@@ -104,6 +117,15 @@ class HeuristicExtractor @Inject constructor() {
         private val OUT_VERB = Regex(
             """\b(?:paid|payment|transferred|transfer|charged|debited|debit|spent|withdrawn|withdrew|withdraw|sent|deducted|purchased|purchase|billed)\b""",
             RegexOption.IGNORE_CASE,
+        )
+
+        // Notification call-to-action suffix: "Tap to <verb> …", "Tap here to <verb> …".
+        // Anchored to end-of-string so we only strip the trailing CTA, not occurrences in
+        // the middle. Optional preceding period/comma is consumed so we don't leave a
+        // dangling separator.
+        private val TAP_CTA_SUFFIX = Regex(
+            """[\s\.,;]*\bTap\s+(?:here\s+)?to\s+\S+.*$""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
         )
 
         // Card-spend shape (full-string match): `<MERCHANT> RM<amt> with <CARD> <bullets><last4>`.

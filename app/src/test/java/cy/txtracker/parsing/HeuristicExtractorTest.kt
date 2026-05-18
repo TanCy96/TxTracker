@@ -80,6 +80,38 @@ class HeuristicExtractorTest {
     }
 
     @Test
+    fun strips_trailing_tap_cta_so_at_merchant_wins_over_to_cta() {
+        // Wise pushes: "<amt> <CCY> spent at <MERCHANT>. Tap to see this transaction".
+        // Without stripping the "Tap to …" suffix, the `to <X>` recipient pattern
+        // hijacks the CTA tail ("see this transaction") and that ends up as the merchant.
+        val text = "199 CNY spent at W Management. Tap to see this transaction"
+        val r = extractor.extract(text, "com.wise.android", now)!!
+        assertThat(r.merchantRaw).isEqualTo("W Management")
+        assertThat(r.amountMinor).isEqualTo(19900L)
+        assertThat(r.currency).isEqualTo("CNY")
+    }
+
+    @Test
+    fun strips_trailing_tap_here_to_cta() {
+        val text = "RM 12.00 paid to STARBUCKS. Tap here to view details."
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("STARBUCKS")
+    }
+
+    @Test
+    fun skips_date_fragments_when_finding_amount() {
+        // HSBC capture-all email body. The old regex matched "18MAY" inside "18MAY2026"
+        // as amtB=18 / suffix=MAY because there was no word-boundary fence around amtB.
+        // Now the regex requires non-alphanumeric on both sides of the digits+code pair,
+        // so the date is skipped and "MYR 161.00" wins.
+        val text = "We have debited your account due to DuitNow Transfer via Mobile Banking. " +
+            "Transaction Date: 18MAY2026. Amount: MYR 161.00 to ACME SDN BHD"
+        val r = extractor.extract(text, "com.hsbc.email", now)!!
+        assertThat(r.amountMinor).isEqualTo(16_100L)
+        assertThat(r.currency).isEqualTo("MYR")
+    }
+
+    @Test
     fun handles_billed_verb() {
         val text = "Your card was billed RM 30.00 at MERCHANT"
         val r = extractor.extract(text, "anything", now)!!
