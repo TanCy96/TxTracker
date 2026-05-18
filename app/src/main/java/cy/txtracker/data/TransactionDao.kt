@@ -253,6 +253,26 @@ interface TransactionDao {
         endExclusive: Instant,
     ): Flow<List<Transaction>>
 
+    /**
+     * Rows that belong to a specific trip window: same currency, occurredAt inside
+     * [startInclusive, endExclusive). Foreign tab uses this to scope its view to one
+     * trip at a time.
+     */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE currency = :currency
+          AND occurredAt >= :startInclusive
+          AND occurredAt < :endExclusive
+        ORDER BY occurredAt DESC
+        """
+    )
+    fun observeBetweenForCurrency(
+        currency: String,
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>>
+
     @Query(
         """
         SELECT * FROM transactions

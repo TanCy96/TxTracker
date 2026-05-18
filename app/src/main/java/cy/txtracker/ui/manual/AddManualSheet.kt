@@ -61,9 +61,13 @@ import kotlinx.datetime.toLocalDateTime
 @Composable
 fun AddManualSheet(
     onDismiss: () -> Unit,
+    initialCurrency: String? = null,
+    initialOccurredAt: Instant? = null,
     viewModel: AddManualViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(initialCurrency, initialOccurredAt) {
+        viewModel.load(initialCurrency = initialCurrency, initialOccurredAt = initialOccurredAt)
+    }
     val state by viewModel.state.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 

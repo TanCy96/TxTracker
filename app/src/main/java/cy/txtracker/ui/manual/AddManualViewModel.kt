@@ -52,16 +52,24 @@ class AddManualViewModel @Inject constructor(
      * Called every time the sheet opens — without the full reset, the previous entry's
      * text fields and category selection would persist (Hilt scopes the ViewModel to the
      * parent NavGraph, so the same instance is reused across sheet openings).
+     *
+     * @param initialCurrency optional pre-selected currency code (the Foreign tab uses
+     *   this to anchor manual entries to the currently-viewed trip). Falls back to MYR.
+     * @param initialOccurredAt optional pre-selected timestamp. Foreign uses this to
+     *   default into a past trip's window so the new row auto-promotes into that trip.
+     *   Falls back to "now" in KL.
      */
-    fun load() {
+    fun load(initialCurrency: String? = null, initialOccurredAt: Instant? = null) {
         viewModelScope.launch {
-            val now = Clock.System.now().toLocalDateTime(MalaysiaTimeZone)
+            val zone = MalaysiaTimeZone
+            val anchor = (initialOccurredAt ?: Clock.System.now()).toLocalDateTime(zone)
             val categories = repository.observeAllCategories().first()
             val trackedCurrencies = repository.observeTrackedCurrencies().first()
             _state.value = AddManualUiState(
-                date = now.date,
-                time = LocalTime(now.hour, now.minute),
+                date = anchor.date,
+                time = LocalTime(anchor.hour, anchor.minute),
                 categories = categories,
+                currency = initialCurrency ?: "MYR",
                 trackedCurrencies = trackedCurrencies,
             )
         }

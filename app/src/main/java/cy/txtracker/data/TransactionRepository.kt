@@ -73,6 +73,18 @@ class TransactionRepository @Inject constructor(
     fun observeTransactionsForCurrency(currency: String): Flow<List<Transaction>> =
         transactionDao.observeAllForCurrency(currency)
 
+    /**
+     * Trip-scoped feed: rows for [currency] in [startInclusive, endExclusive). The
+     * Foreign tab uses this to render a single trip the same way Home renders a month.
+     * Open-ended trips pass [DISTANT_FUTURE] for [endExclusive].
+     */
+    fun observeTransactionsForTrip(
+        currency: String,
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>> =
+        transactionDao.observeBetweenForCurrency(currency, startInclusive, endExclusive)
+
     fun observeTotalBetween(startInclusive: Instant, endExclusive: Instant): Flow<Long> =
         transactionDao.observeTotalBetween(startInclusive, endExclusive)
 

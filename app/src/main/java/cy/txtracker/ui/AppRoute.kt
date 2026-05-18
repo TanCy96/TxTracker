@@ -188,7 +188,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                 HomeRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
             }
             composable(Routes.FOREIGN) {
-                ForeignRoute()
+                ForeignRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
             }
             composable(Routes.SETTINGS) {
                 SettingsScreen(
