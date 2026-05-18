@@ -152,7 +152,7 @@ fun HomeScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             MonthTotalHeader(totalMinor = state.totalMinor, transactionCount = state.transactionCount)
-            CategoryBreakdownRow(breakdown = state.breakdown)
+            CategoryBreakdownRow(breakdown = state.breakdown, amountFormatter = ::formatMyr)
             HorizontalDivider()
             state.bannerCurrency?.let { offer ->
                 CurrencyReviewBanner(
@@ -176,6 +176,7 @@ fun HomeScreen(
                     days = state.days,
                     notesByMerchant = state.notesByMerchant,
                     contentPadding = PaddingValues(vertical = 8.dp),
+                    amountFormatter = ::formatMyr,
                     onTransactionClick = onTransactionClick,
                 )
             }
@@ -234,7 +235,10 @@ private fun MonthTotalHeader(totalMinor: Long, transactionCount: Int) {
 }
 
 @Composable
-private fun CategoryBreakdownRow(breakdown: List<CategoryBreakdownEntry>) {
+internal fun CategoryBreakdownRow(
+    breakdown: List<CategoryBreakdownEntry>,
+    amountFormatter: (Long) -> String,
+) {
     if (breakdown.isEmpty()) return
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -249,7 +253,7 @@ private fun CategoryBreakdownRow(breakdown: List<CategoryBreakdownEntry>) {
                 },
                 label = {
                     val name = entry.category?.name ?: "Unverified"
-                    Text("$name  ${formatMyr(entry.totalMinor)}")
+                    Text("$name  ${amountFormatter(entry.totalMinor)}")
                 },
                 colors = AssistChipDefaults.assistChipColors(),
             )
@@ -313,21 +317,23 @@ private fun FilterRow(
 }
 
 @Composable
-private fun TransactionList(
+internal fun TransactionList(
     days: List<DayGroup>,
     notesByMerchant: Map<String, String>,
     contentPadding: PaddingValues,
+    amountFormatter: (Long) -> String,
     onTransactionClick: (Transaction) -> Unit,
 ) {
     LazyColumn(contentPadding = contentPadding) {
         days.forEachIndexed { index, group ->
             item(key = "header-${group.date}") {
-                DayHeader(group, isFirst = index == 0)
+                DayHeader(group, isFirst = index == 0, amountFormatter = amountFormatter)
             }
             items(group.transactions, key = { it.transaction.id }) { row ->
                 TransactionRow(
                     row = row,
                     note = notesByMerchant[row.transaction.merchantNormalized],
+                    amountFormatter = amountFormatter,
                     onClick = { onTransactionClick(row.transaction) },
                 )
             }
@@ -336,7 +342,11 @@ private fun TransactionList(
 }
 
 @Composable
-private fun DayHeader(group: DayGroup, isFirst: Boolean) {
+internal fun DayHeader(
+    group: DayGroup,
+    isFirst: Boolean,
+    amountFormatter: (Long) -> String,
+) {
     val total = group.transactions.sumOf { it.transaction.amountMinor }
     Column {
         if (!isFirst) {
@@ -359,7 +369,7 @@ private fun DayHeader(group: DayGroup, isFirst: Boolean) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = formatMyr(total),
+                    text = amountFormatter(total),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -369,9 +379,10 @@ private fun DayHeader(group: DayGroup, isFirst: Boolean) {
 }
 
 @Composable
-private fun TransactionRow(
+internal fun TransactionRow(
     row: TransactionWithCategory,
     note: String?,
+    amountFormatter: (Long) -> String,
     onClick: () -> Unit,
 ) {
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
@@ -404,7 +415,7 @@ private fun TransactionRow(
                     }
                 }
                 Text(
-                    text = formatMyr(row.transaction.amountMinor),
+                    text = amountFormatter(row.transaction.amountMinor),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -441,7 +452,7 @@ private fun TransactionRow(
 }
 
 @Composable
-private fun PendingPill() {
+internal fun PendingPill() {
     val bg = MaterialTheme.colorScheme.tertiaryContainer
     val fg = MaterialTheme.colorScheme.onTertiaryContainer
     Box(
@@ -458,7 +469,7 @@ private fun PendingPill() {
 }
 
 @Composable
-private fun CategoryChip(category: Category?) {
+internal fun CategoryChip(category: Category?) {
     val (label, color) = when (category) {
         null -> "Unverified" to MaterialTheme.colorScheme.outline
         else -> category.name to Color(category.color)

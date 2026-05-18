@@ -11,13 +11,21 @@ import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
 
 /** "RM 12.50", "RM 1,234.56", "RM 0.00" — handles thousands separators and 2-decimal padding. */
-fun formatMyr(amountMinor: Long): String {
+fun formatMyr(amountMinor: Long): String = formatAmount(amountMinor, "RM")
+
+/**
+ * Currency-aware amount formatter. Same shape as [formatMyr] but accepts an arbitrary
+ * display symbol so non-MYR rows render with their own prefix (`$ 12.50`, `¥ 199.00`,
+ * `S$ 4.20`). Used by the Foreign tab + any shared row composable that needs to render
+ * amounts in a per-trip currency.
+ */
+fun formatAmount(amountMinor: Long, symbol: String): String {
     val sign = if (amountMinor < 0) "-" else ""
     val abs = amountMinor.absoluteValue
-    val ringgit = abs / 100
+    val whole = abs / 100
     val cents = abs % 100
-    val ringgitStr = ringgit.toString().reversed().chunked(3).joinToString(",").reversed()
-    return "${sign}RM $ringgitStr.${cents.toString().padStart(2, '0')}"
+    val wholeStr = whole.toString().reversed().chunked(3).joinToString(",").reversed()
+    return "${sign}$symbol $wholeStr.${cents.toString().padStart(2, '0')}"
 }
 
 /** "May 2026". */
