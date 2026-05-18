@@ -249,7 +249,9 @@ Plan: `docs/superpowers/plans/2026-05-11-cloud-sync.md`
 
 **Deferred follow-ups:**
 - Multi-device active sync (pull-on-foreground, periodic downloads).
-- Snapshot rotation in Drive (keep last N versions vs single canonical file).
+- Snapshot rotation in Drive — ✅ DONE (2026-05-15). Dated filenames,
+  retention = last 20 OR <30 days, pre-upload row-count shrink guard.
+  Settings adds a backup picker for selective restore.
 - gzip compression for backups with many transactions.
 - End-to-end encryption of the cloud copy.
 - Multi-account switching.
@@ -383,15 +385,66 @@ occasional Grab Mart row is cheaper than building the learning system.
 
 ---
 
+## 9. Smarter categorization — ✅ DONE (2026-05-16)
+
+Landed across 10 commits on `main` (`b9ffd11` → `9bb36fe`). Schema bumped
+v6 → v7 with a `keywordPattern: String?` column on `Category`; backup
+format v7 round-trips it. `CategorizationEngine` now does
+exact-merchant → longest-prefix merchant (`MerchantPrefixMatcher`,
+token-aligned) → per-category regex pattern (sortOrder priority) → null.
+`DescriptionEngine` mirrors the prefix-merchant step and adds a
+(category, any-bucket) fallback. The legacy hardcoded `KeywordRules`
+runtime path is removed; built-in patterns are now seeded as editable
+category data via `DefaultKeywordPatterns`.
+
+UI: unified `EditCategoryDialog` (name + color + keyword pattern) with
+regex validation and a soft overlap warning when patterns share a
+`|`-token; `AddCategoryDialog` gains the same pattern field; each
+category row shows a `learned: N · auto: M` chip (30-day distinct-merchant
+scan). Settings → Learning → "Re-categorize using learnings" runs
+`recategorizeNullRows()` + `redescribeNullRows()` and surfaces an updated-
+count summary.
+
+Spec: `docs/superpowers/specs/2026-05-15-smarter-categorization-design.md`
+Plan: `docs/superpowers/plans/2026-05-15-smarter-categorization.md`
+
+**Deferred follow-ups:**
+- **Filter non-transaction notifications under CAPTURE_ALL** — the
+  "approach A" path from the brainstorm. Addresses ISSUE.md #4's fourth
+  sub-ask. Separate scope, separate spec.
+- **"Apply default patterns where empty"** action in Settings. On
+  upgrade, existing categories' `keywordPattern` is NULL by design
+  (per-user taxonomies can't be safely auto-seeded). A one-tap action
+  that fills patterns on any category whose name still matches a
+  built-in would save users five minutes of copy-paste against
+  `DefaultKeywordPatterns.kt`.
+- **Learn `MerchantMapping`s from existing labeled transactions.** Today
+  every label dual-writes a mapping, so the table accumulates as you
+  work — but rows labeled before the dual-write existed (or imported
+  from a mapping-less backup) leave the new engines blind. A
+  `learnFromExistingTransactions()` pass over rows with non-null
+  category/description would close that gap.
+- **Pattern-authoring helper** — a regex tester that previews matches
+  against recent merchants from inside the edit dialog. Deferred until
+  pattern authoring proves error-prone in practice.
+
+---
+
 ## Suggested order
 
-1. **Address ISSUE.md before more roadmap work** — see ISSUE.md. #1 (backup
-   data loss) and #3 (CIMB amount parsing) are data-integrity bugs; #2 is a
-   regression in the just-shipped notification work. Insights/charts on top
-   of suspect data is wasted effort.
+All ISSUE.md items are now closed except the CAPTURE_ALL non-transaction
+filter (the remaining piece of #4). Order below reflects the next set of
+forward-looking work.
+
+1. **Non-transaction notification filter under CAPTURE_ALL** — the
+   remaining piece of ISSUE.md #4. Pairs naturally with the recent
+   categorization work since CAPTURE_ALL noise is the main thing degrading
+   the new auto-categorize signal. Worth a brainstorm: heuristic
+   blocklist vs. learn-from-user-deletes vs. a "review queue" intercept.
 2. **Capture real foreign-currency notification samples** for Wise card
    spend, currency conversion, Wise foreign-currency P2P, and GX Bank —
-   validates the shipped phase 1–3 work on real data.
+   validates the shipped phase 1–3 work on real data. No code required
+   until samples diverge from current parsers.
 3. **Inline category pie chart** (item 4, first chunk only — pie above the
    transaction list, library wiring) — a half-day visual win that lifts the
    home screen.
@@ -400,3 +453,7 @@ occasional Grab Mart row is cheaper than building the learning system.
 5. **Grab sub-product learning** (item 8) — only after you've felt the
    hardcoded heuristic miss in practice. Until then, hand-editing the
    occasional Grab Mart row is cheaper than building the learning system.
+6. **Categorization follow-ups** — the three deferreds under item 9
+   (apply-default-patterns action, learn-mappings-from-existing-rows,
+   regex preview helper). All small, all opportunistic — pick up when
+   real use surfaces the need.
