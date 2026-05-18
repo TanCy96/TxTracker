@@ -44,6 +44,13 @@ class TransactionRepository @Inject constructor(
     ): Flow<List<Transaction>> =
         transactionDao.observeBetween(startInclusive, endExclusive)
 
+    /** Home-tab feed: MYR-only rows in window. Foreign rows belong to the Foreign tab. */
+    fun observeMyrTransactionsBetween(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>> =
+        transactionDao.observeMyrBetween(startInclusive, endExclusive)
+
     fun observeForeignTransactionsBetween(
         startInclusive: Instant,
         endExclusive: Instant,

@@ -98,7 +98,7 @@ class HomeViewModel @Inject constructor(
                 val start = ym.start()
                 val end = ym.endExclusive()
                 combine(
-                    repository.observeTransactionsBetween(start, end),
+                    repository.observeMyrTransactionsBetween(start, end),
                     repository.observeCategoryTotalsBetween(start, end),
                     repository.observeTotalBetween(start, end),
                     repository.observeMerchantNotes(),

@@ -53,17 +53,35 @@ interface TransactionDao {
     )
     fun observeBetween(startInclusive: Instant, endExclusive: Instant): Flow<List<Transaction>>
 
+    /**
+     * Home-tab feed: MYR-only rows in window. Foreign rows live in the Foreign tab
+     * (parked or trip-promoted) and must not bleed into Home totals or its list.
+     */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
+          AND currency = 'MYR'
+        ORDER BY occurredAt DESC
+        """
+    )
+    fun observeMyrBetween(startInclusive: Instant, endExclusive: Instant): Flow<List<Transaction>>
+
     @Query(
         "SELECT * FROM transactions WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive ORDER BY occurredAt ASC"
     )
     suspend fun getAllBetween(startInclusive: Instant, endExclusive: Instant): List<Transaction>
 
+    // Totals power the Home tab and intentionally exclude non-MYR rows: foreign
+    // transactions (parked or trip-promoted) live under the Foreign tab and must not
+    // bleed into the Home month total or its per-category breakdown.
     @Query(
         """
         SELECT categoryId, SUM(amountMinor) AS totalMinor
         FROM transactions
         WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
           AND direction = 'OUT'
+          AND currency = 'MYR'
         GROUP BY categoryId
         """
     )
@@ -78,6 +96,7 @@ interface TransactionDao {
         FROM transactions
         WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
           AND direction = 'OUT'
+          AND currency = 'MYR'
         """
     )
     fun observeTotalBetween(startInclusive: Instant, endExclusive: Instant): Flow<Long>
