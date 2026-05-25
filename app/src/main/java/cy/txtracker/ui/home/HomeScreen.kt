@@ -278,7 +278,7 @@ internal fun CategoryBreakdownRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(breakdown) { entry ->
+        items(breakdown, key = { entry -> entry.category?.id ?: -1L }) { entry ->
             FilterChip(
                 selected = isSelected(entry),
                 onClick = { onChipTap(entry) },
@@ -314,7 +314,7 @@ internal fun StatusFilterRow(specs: List<StatusChipSpec>) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(specs) { spec ->
+        items(specs, key = { spec -> spec.label }) { spec ->
             FilterChip(
                 selected = spec.selected,
                 onClick = spec.onTap,
