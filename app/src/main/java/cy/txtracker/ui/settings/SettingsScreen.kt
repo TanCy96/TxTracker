@@ -59,6 +59,8 @@ fun SettingsScreen(
     onForeignCurrenciesClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onRewritesClick: () -> Unit,
+    onNotificationPoolClick: () -> Unit,
+    onTrackedAppsClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -66,7 +68,7 @@ fun SettingsScreen(
     val backupStatus by viewModel.backupStatus.collectAsState()
     val backfillResult by viewModel.backfillResult.collectAsState()
     val lockEnabled by viewModel.lockEnabled.collectAsState()
-    val captureAllPackages by viewModel.captureAllPackages.collectAsState()
+    val poolPendingCount by viewModel.poolPendingCount.collectAsState()
     val cloudSyncEnabled by viewModel.cloudSyncEnabled.collectAsState()
     val cloudSyncPaused by viewModel.cloudSyncPaused.collectAsState()
     val cloudAccountEmail by viewModel.cloudAccountEmail.collectAsState()
@@ -217,6 +219,22 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().clickableRow(onRewritesClick),
             )
             HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Notification pool ($poolPendingCount)") },
+                supportingContent = {
+                    Text("Review captured notifications that were not auto-tracked.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(onNotificationPoolClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Tracked apps") },
+                supportingContent = {
+                    Text("Manage which apps create transactions automatically.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(onTrackedAppsClick),
+            )
+            HorizontalDivider()
             // "Re-parse merchants from raw text" action is intentionally hidden from
             // the UI right now. The repo/VM plumbing (TransactionRepository
             // .reparseMerchantsFromRawText, SettingsViewModel.runReparseMerchants /
@@ -333,28 +351,6 @@ fun SettingsScreen(
                 ),
             )
             HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Capture all packages") },
-                supportingContent = {
-                    Text(
-                        "On by default for new users. Processes notifications from every " +
-                            "app, not just finance apps. Verifying a Pending row from a new " +
-                            "app automatically adds it to your allowlist, so turning this " +
-                            "off later still keeps those apps working. Cost: chat / news / " +
-                            "shopping apps mentioning RM amounts may create review-needed rows.",
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = captureAllPackages,
-                        onCheckedChange = viewModel::setCaptureAllPackages,
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().clickableRow(
-                    onClick = { viewModel.setCaptureAllPackages(!captureAllPackages) },
-                ),
-            )
-
             cy.txtracker.ui.settings.cloud.CloudSyncSection(
                 enabled = cloudSyncEnabled,
                 paused = cloudSyncPaused,

@@ -235,6 +235,9 @@ class HomeViewModel @Inject constructor(
         banner: BannerOffer?,
         currencyReviewCount: Int,
     ): HomeUiState {
+        if (transactions.isEmpty() && _filter.value == HomeFilter.CurrencyReview) {
+            _filter.value = HomeFilter.All
+        }
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
         val days = joined

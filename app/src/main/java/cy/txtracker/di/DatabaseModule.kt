@@ -4,11 +4,13 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import cy.txtracker.data.CapturedNotificationDao
 import cy.txtracker.data.CategoryDao
 import cy.txtracker.data.DescriptionMappingDao
 import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.PackageTextRewriteDao
+import cy.txtracker.data.RejectedSourceDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import cy.txtracker.data.ApprovedSourceDao
@@ -55,7 +57,15 @@ object DatabaseModule {
             // (adds the merchant_notes table). Preserves all captured transactions and
             // learned mappings rather than wiping them. fallbackToDestructiveMigration
             // stays as a safety net for any unforeseen mismatch.
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+                MIGRATION_5_6,
+                MIGRATION_6_7,
+                MIGRATION_7_8,
+                MIGRATION_8_9,
+            )
             .fallbackToDestructiveMigration()
             .build()
 
@@ -82,6 +92,14 @@ object DatabaseModule {
     @Provides
     fun provideApprovedSourceDao(db: TxDatabase): ApprovedSourceDao =
         db.approvedSourceDao()
+
+    @Provides
+    fun provideCapturedNotificationDao(db: TxDatabase): CapturedNotificationDao =
+        db.capturedNotificationDao()
+
+    @Provides
+    fun provideRejectedSourceDao(db: TxDatabase): RejectedSourceDao =
+        db.rejectedSourceDao()
 
     @Provides
     fun provideTrackedCurrencyDao(db: TxDatabase): TrackedCurrencyDao = db.trackedCurrencyDao()
@@ -252,6 +270,72 @@ private val MIGRATION_7_8 = object : Migration(7, 8) {
         )
         db.execSQL(
             "ALTER TABLE `transactions` ADD COLUMN `merchantUserEdited` INTEGER NOT NULL DEFAULT 0"
+        )
+    }
+}
+
+/**
+ * v9 introduces a device-local capture pool for amount-bearing notifications that the
+ * heuristic parser could not promote to real transactions, plus a rejected package list.
+ * Existing permissive "(review)" transactions with raw notification text are moved into
+ * the pool so the user can review them without polluting the transaction list.
+ */
+private val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `captured_notifications` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `packageName` TEXT NOT NULL,
+                `postedAt` INTEGER NOT NULL,
+                `amountMinor` INTEGER NOT NULL,
+                `currency` TEXT NOT NULL,
+                `rawText` TEXT NOT NULL,
+                `rewrittenText` TEXT,
+                `disposition` TEXT NOT NULL,
+                `promotedToTxId` INTEGER,
+                `capturedAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_captured_notifications_packageName` " +
+                "ON `captured_notifications`(`packageName`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_captured_notifications_disposition` " +
+                "ON `captured_notifications`(`disposition`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_captured_notifications_capturedAt` " +
+                "ON `captured_notifications`(`capturedAt`)"
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `rejected_sources` (
+                `packageName` TEXT NOT NULL,
+                `rejectedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            INSERT INTO captured_notifications (
+                packageName, postedAt, amountMinor, currency, rawText, rewrittenText,
+                disposition, promotedToTxId, capturedAt
+            )
+            SELECT sourceApp, occurredAt, amountMinor, currency, rawText, NULL,
+                   'PENDING', NULL, occurredAt
+            FROM transactions
+            WHERE merchantRaw LIKE '% (review)' AND rawText IS NOT NULL
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            DELETE FROM transactions
+            WHERE merchantRaw LIKE '% (review)' AND rawText IS NOT NULL
+            """.trimIndent(),
         )
     }
 }

@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.work.Configuration
 import cy.txtracker.notify.NotificationChannels
 import cy.txtracker.notify.NotificationScheduler
+import cy.txtracker.notify.PoolRetentionScheduler
 import cy.txtracker.ui.lock.LockState
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -20,6 +21,7 @@ class TxApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var cloudSyncScheduler: cy.txtracker.cloud.CloudSyncScheduler
     @Inject lateinit var notificationScheduler: NotificationScheduler
+    @Inject lateinit var poolRetentionScheduler: PoolRetentionScheduler
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -39,5 +41,6 @@ class TxApp : Application(), Configuration.Provider {
         )
         cloudSyncScheduler.start()
         notificationScheduler.start(ProcessLifecycleOwner.get().lifecycleScope)
+        poolRetentionScheduler.start()
     }
 }

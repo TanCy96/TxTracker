@@ -3,6 +3,7 @@ package cy.txtracker.ui
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Language
@@ -36,6 +37,8 @@ import cy.txtracker.ui.onboarding.openListenerSettings
 import cy.txtracker.ui.onboarding.rememberListenerGrantState
 import cy.txtracker.ui.settings.SettingsScreen
 import cy.txtracker.ui.settings.categories.CategoriesScreen
+import cy.txtracker.ui.settings.capture.PoolScreen
+import cy.txtracker.ui.settings.capture.TrackedAppsScreen
 import cy.txtracker.ui.settings.currencies.CurrenciesScreen
 import cy.txtracker.ui.settings.currencies.TripHistoryScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
@@ -63,6 +66,9 @@ private object Routes {
     const val SETTINGS_CURRENCIES_TRIPS = "settings/currencies/trips/{code}"
     const val SETTINGS_NOTIFICATIONS = "settings/notifications"
     const val SETTINGS_REWRITES = "settings/rewrites"
+    const val SETTINGS_POOL = "settings/pool"
+    const val SETTINGS_POOL_PACKAGE = "settings/pool/{packageName}"
+    const val SETTINGS_TRACKED_APPS = "settings/tracked-apps"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
@@ -205,6 +211,8 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                     onForeignCurrenciesClick = { nav.navigate(Routes.SETTINGS_CURRENCIES) },
                     onNotificationsClick = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
                     onRewritesClick = { nav.navigate(Routes.SETTINGS_REWRITES) },
+                    onNotificationPoolClick = { nav.navigate(Routes.SETTINGS_POOL) },
+                    onTrackedAppsClick = { nav.navigate(Routes.SETTINGS_TRACKED_APPS) },
                 )
             }
             composable(Routes.SETTINGS_CATEGORIES) {
@@ -234,6 +242,23 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             }
             composable(Routes.SETTINGS_REWRITES) {
                 RewritesScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_POOL) {
+                PoolScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_POOL_PACKAGE) { entry ->
+                PoolScreen(
+                    packageName = entry.arguments?.getString("packageName"),
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable(Routes.SETTINGS_TRACKED_APPS) {
+                TrackedAppsScreen(
+                    onBack = { nav.popBackStack() },
+                    onPoolPackageClick = { pkg ->
+                        nav.navigate("settings/pool/${Uri.encode(pkg)}")
+                    },
+                )
             }
         }
     }

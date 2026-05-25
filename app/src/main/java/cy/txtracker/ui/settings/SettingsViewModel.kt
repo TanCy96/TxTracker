@@ -16,7 +16,6 @@ import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
 import cy.txtracker.export.ImportResult
 import cy.txtracker.export.YearMonth
-import cy.txtracker.service.CapturePrefs
 import cy.txtracker.service.CloudSyncPrefs
 import kotlinx.datetime.Instant
 import cy.txtracker.ui.lock.LockPrefs
@@ -41,7 +40,6 @@ class SettingsViewModel @Inject constructor(
     private val onboardingPrefs: OnboardingPrefs,
     private val lockPrefs: LockPrefs,
     private val lockState: LockState,
-    private val capturePrefs: CapturePrefs,
     private val cloudSyncPrefs: CloudSyncPrefs,
     private val cloudSyncScheduler: CloudSyncScheduler,
     private val driveClient: DriveClient,
@@ -70,11 +68,13 @@ class SettingsViewModel @Inject constructor(
         if (!value) lockState.unlock()
     }
 
-    val captureAllPackages: StateFlow<Boolean> = capturePrefs.captureAllPackages
-
-    fun setCaptureAllPackages(value: Boolean) {
-        capturePrefs.setCaptureAllPackages(value)
-    }
+    val poolPendingCount: StateFlow<Int> =
+        repository.observePoolPendingCount()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000L),
+                initialValue = 0,
+            )
 
     fun resetOnboarding() = onboardingPrefs.clearDismissed()
 

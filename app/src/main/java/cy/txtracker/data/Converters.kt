@@ -22,4 +22,11 @@ class Converters {
 
     @TypeConverter
     fun stringToDirection(value: String?): Direction? = value?.let(Direction::valueOf)
+
+    @TypeConverter
+    fun captureDispositionToString(value: CaptureDisposition?): String? = value?.name
+
+    @TypeConverter
+    fun stringToCaptureDisposition(value: String?): CaptureDisposition? =
+        value?.let(CaptureDisposition::valueOf)
 }

@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    version = 8,
+    version = 9,
     exportSchema = true,
     entities = [
         Transaction::class,
@@ -17,6 +17,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MerchantNote::class,
         UserFacingSource::class,
         ApprovedSource::class,
+        CapturedNotification::class,
+        RejectedSource::class,
         TrackedCurrency::class,
         TripWindow::class,
         PackageTextRewrite::class,
@@ -31,6 +33,8 @@ abstract class TxDatabase : RoomDatabase() {
     abstract fun merchantNoteDao(): MerchantNoteDao
     abstract fun userFacingSourceDao(): UserFacingSourceDao
     abstract fun approvedSourceDao(): ApprovedSourceDao
+    abstract fun capturedNotificationDao(): CapturedNotificationDao
+    abstract fun rejectedSourceDao(): RejectedSourceDao
     abstract fun trackedCurrencyDao(): TrackedCurrencyDao
     abstract fun tripWindowDao(): TripWindowDao
     abstract fun packageTextRewriteDao(): PackageTextRewriteDao

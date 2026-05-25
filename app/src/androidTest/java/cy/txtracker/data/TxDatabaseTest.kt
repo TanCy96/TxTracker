@@ -91,8 +91,125 @@ class TxDatabaseTest {
         }
     }
 
+    @Test
+    fun migrate_8_to_9_moves_review_transactions_with_raw_text_into_pool() {
+        helper.createDatabase(TEST_DB, 8).use { db ->
+            seedV8Category(db)
+            insertV8Transaction(
+                db = db,
+                merchantRaw = "GX Bank (review)",
+                sourceApp = "my.com.gxsbank",
+                rawText = "RM9.40 to ML TRADITIONAL DESSERT",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            9,
+            true,
+            MIGRATION_8_9_TEST_COPY,
+        )
+
+        migrated.query("SELECT COUNT(*) FROM transactions").use { c ->
+            assertThat(c.moveToFirst()).isTrue()
+            assertThat(c.getInt(0)).isEqualTo(0)
+        }
+        migrated.query(
+            "SELECT packageName, amountMinor, currency, rawText, disposition FROM captured_notifications"
+        ).use { c ->
+            assertThat(c.moveToFirst()).isTrue()
+            assertThat(c.getString(0)).isEqualTo("my.com.gxsbank")
+            assertThat(c.getLong(1)).isEqualTo(940L)
+            assertThat(c.getString(2)).isEqualTo("MYR")
+            assertThat(c.getString(3)).contains("ML TRADITIONAL")
+            assertThat(c.getString(4)).isEqualTo("PENDING")
+        }
+    }
+
+    @Test
+    fun migrate_8_to_9_keeps_review_literal_when_raw_text_is_null() {
+        helper.createDatabase(TEST_DB, 8).use { db ->
+            seedV8Category(db)
+            insertV8Transaction(
+                db = db,
+                merchantRaw = "Shop (review)",
+                sourceApp = "manual",
+                rawText = null,
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            9,
+            true,
+            MIGRATION_8_9_TEST_COPY,
+        )
+
+        migrated.query("SELECT COUNT(*) FROM transactions").use { c ->
+            assertThat(c.moveToFirst()).isTrue()
+            assertThat(c.getInt(0)).isEqualTo(1)
+        }
+        migrated.query("SELECT COUNT(*) FROM captured_notifications").use { c ->
+            assertThat(c.moveToFirst()).isTrue()
+            assertThat(c.getInt(0)).isEqualTo(0)
+        }
+    }
+
+    @Test
+    fun migrate_8_to_9_creates_rejected_sources() {
+        helper.createDatabase(TEST_DB, 8).close()
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            9,
+            true,
+            MIGRATION_8_9_TEST_COPY,
+        )
+
+        migrated.execSQL(
+            "INSERT INTO rejected_sources (packageName, rejectedAt) VALUES ('com.chat', 1770000000000)"
+        )
+        migrated.query("SELECT packageName FROM rejected_sources").use { c ->
+            assertThat(c.moveToFirst()).isTrue()
+            assertThat(c.getString(0)).isEqualTo("com.chat")
+        }
+    }
+
     companion object {
         private const val TEST_DB = "migration_test"
+
+        private fun seedV8Category(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                INSERT INTO categories (id, name, color, isCustom, sortOrder, keywordPattern)
+                VALUES (1, 'Food', -65227, 0, 0, NULL)
+                """.trimIndent(),
+            )
+        }
+
+        private fun insertV8Transaction(
+            db: SupportSQLiteDatabase,
+            merchantRaw: String,
+            sourceApp: String,
+            rawText: String?,
+        ) {
+            db.execSQL(
+                """
+                INSERT INTO transactions (
+                    amountMinor, currency, merchantRaw, merchantNormalized, categoryId,
+                    description, occurredAt, timeBucket, sourceApp, rawText, direction,
+                    createdAt, notificationDedupeKey, needsVerification,
+                    needsCurrencyConfirmation, merchantUserEdited
+                )
+                VALUES (
+                    940, 'MYR', ?, 'GX BANK REVIEW', 1,
+                    NULL, 1770000000000, 'MIDDAY', ?, ?, 'OUT',
+                    1770000000000, ?, 1, 0, 0
+                )
+                """.trimIndent(),
+                arrayOf<Any?>(merchantRaw, sourceApp, rawText, "key-$merchantRaw"),
+            )
+        }
     }
 }
 
@@ -131,6 +248,57 @@ private val MIGRATION_5_6_TEST_COPY = object : Migration(5, 6) {
             """
             ALTER TABLE `transactions`
             ADD COLUMN `needsCurrencyConfirmation` INTEGER NOT NULL DEFAULT 0
+            """.trimIndent(),
+        )
+    }
+}
+
+private val MIGRATION_8_9_TEST_COPY = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `captured_notifications` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `packageName` TEXT NOT NULL,
+                `postedAt` INTEGER NOT NULL,
+                `amountMinor` INTEGER NOT NULL,
+                `currency` TEXT NOT NULL,
+                `rawText` TEXT NOT NULL,
+                `rewrittenText` TEXT,
+                `disposition` TEXT NOT NULL,
+                `promotedToTxId` INTEGER,
+                `capturedAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_captured_notifications_packageName` ON `captured_notifications`(`packageName`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_captured_notifications_disposition` ON `captured_notifications`(`disposition`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_captured_notifications_capturedAt` ON `captured_notifications`(`capturedAt`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `rejected_sources` (
+                `packageName` TEXT NOT NULL,
+                `rejectedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            INSERT INTO captured_notifications (
+                packageName, postedAt, amountMinor, currency, rawText, rewrittenText,
+                disposition, promotedToTxId, capturedAt
+            )
+            SELECT sourceApp, occurredAt, amountMinor, currency, rawText, NULL,
+                   'PENDING', NULL, occurredAt
+            FROM transactions
+            WHERE merchantRaw LIKE '% (review)' AND rawText IS NOT NULL
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            DELETE FROM transactions
+            WHERE merchantRaw LIKE '% (review)' AND rawText IS NOT NULL
             """.trimIndent(),
         )
     }
