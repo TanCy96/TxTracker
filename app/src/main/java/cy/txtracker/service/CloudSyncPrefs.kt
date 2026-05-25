@@ -14,7 +14,7 @@ import kotlinx.datetime.Instant
 /**
  * Persisted cloud-sync state and settings. StateFlow-backed so the Settings UI and the
  * upload worker stay in sync without a restart. Mirrors the pattern used by
- * [cy.txtracker.ui.lock.LockPrefs] and [CapturePrefs].
+ * [cy.txtracker.ui.lock.LockPrefs].
  *
  * Eight fields:
  *   - [enabled]: signed-in to Google Drive (false default; opt-in).

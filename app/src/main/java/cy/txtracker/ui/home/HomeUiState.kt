@@ -55,6 +55,7 @@ data class HomeUiState(
     /** merchantNormalized -> user note. Used by the home row to show context inline. */
     val notesByMerchant: Map<String, String>,
     val pendingCount: Int,
+    val currencyReviewCount: Int,
     val isLoading: Boolean,
     /** Non-null when there are parked currency rows for a currency with no active trip and the
      *  banner has not been dismissed by the user. */

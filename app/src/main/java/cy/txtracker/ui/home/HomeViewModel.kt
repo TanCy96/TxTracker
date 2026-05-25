@@ -150,6 +150,7 @@ class HomeViewModel @Inject constructor(
         days = emptyList(),
         notesByMerchant = emptyMap(),
         pendingCount = 0,
+        currencyReviewCount = 0,
         isLoading = true,
         bannerCurrency = null,
     )
@@ -166,6 +167,7 @@ class HomeViewModel @Inject constructor(
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
+        val currencyReviewCount = joined.count { it.transaction.needsCurrencyConfirmation }
         val filtered = when (filter) {
             HomeFilter.All -> joined
             HomeFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
@@ -195,6 +197,7 @@ class HomeViewModel @Inject constructor(
             days = days,
             notesByMerchant = notes.associate { it.merchantNormalized to it.note },
             pendingCount = transactions.count { it.needsVerification },
+            currencyReviewCount = currencyReviewCount,
             isLoading = false,
             bannerCurrency = banner,
         )
@@ -207,6 +210,9 @@ class HomeViewModel @Inject constructor(
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
     ): HomeUiState {
+        if (transactions.isEmpty() && _filter.value == HomeFilter.CurrencyReview) {
+            _filter.value = HomeFilter.All
+        }
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
         val days = joined
@@ -224,6 +230,7 @@ class HomeViewModel @Inject constructor(
             days = days,
             notesByMerchant = notes.associate { it.merchantNormalized to it.note },
             pendingCount = transactions.count { it.needsVerification },
+            currencyReviewCount = transactions.size,
             isLoading = false,
             bannerCurrency = banner,
         )

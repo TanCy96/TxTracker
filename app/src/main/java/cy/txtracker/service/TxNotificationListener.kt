@@ -7,145 +7,98 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import cy.txtracker.data.TrackedCurrencyDao
 import cy.txtracker.data.TransactionRepository
-import cy.txtracker.parsing.HeuristicExtractor
-import cy.txtracker.parsing.PermissiveExtractor
-import cy.txtracker.parsing.SourcePackages
 import cy.txtracker.parsing.extractText
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 /**
- * Captures notifications from registered payment apps, runs them through the heuristic
- * and permissive extractors, and hands the parsed result to [TxIngestor] for normalization,
- * deduping, and persistence.
+ * Captures notifications, runs them through the capture pipeline, and writes either a
+ * transaction or a reviewable pool entry.
  *
  * The system invokes [onNotificationPosted] on the listener thread; DB writes are
- * offloaded to an IO scope owned by this service so the system thread doesn't
- * block on disk.
+ * offloaded to an IO scope owned by this service so the system thread does not block on disk.
  *
- * Group-summary notifications and notifications from non-allowlisted packages are
- * ignored cheaply. Extractor exceptions are logged but never propagate — a malformed
- * bank notification must not take down the listener for everything else.
- *
- * The user-controllable [CapturePrefs.captureAllPackages] toggle bypasses the allowlist
- * for discovery; on by default for new installs.
+ * Group-summary notifications are ignored cheaply. Extractor exceptions are logged but never
+ * propagate; a malformed notification must not take down the listener for everything else.
  */
 @AndroidEntryPoint
 class TxNotificationListener : NotificationListenerService() {
 
-    @Inject lateinit var heuristicExtractor: HeuristicExtractor
-    @Inject lateinit var permissiveExtractor: PermissiveExtractor
     @Inject lateinit var ingestor: TxIngestor
-    @Inject lateinit var capturePrefs: CapturePrefs
     @Inject lateinit var repository: TransactionRepository
     @Inject lateinit var trackedCurrencyDao: TrackedCurrencyDao
     @Inject lateinit var rewriteEngine: NotificationRewriteEngine
+    @Inject lateinit var capturePipeline: CapturePipeline
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    /**
-     * Packages the listener processes when capture-all is off. Notifications outside this
-     * set bail at the top of [onNotificationPosted] without doing any work.
-     * Refreshed reactively via [watchedPackagesJob] whenever [ApprovedSource] rows change.
-     */
-    @Volatile
-    private var watchedPackages: Set<String> = SourcePackages.PERMISSIVE_PACKAGES
-
-    private var watchedPackagesJob: Job? = null
-
-    override fun onListenerConnected() {
-        super.onListenerConnected()
-        watchedPackagesJob?.cancel()
-        watchedPackagesJob = scope.launch {
-            repository.observeApprovedSourcePackages().collect { approved ->
-                watchedPackages = SourcePackages.PERMISSIVE_PACKAGES + approved
-                Log.i(TAG, "Watching ${watchedPackages.size} packages " +
-                    "(${SourcePackages.PERMISSIVE_PACKAGES.size} default + ${approved.size} approved).")
-            }
-        }
-        if (capturePrefs.captureAllPackages.value) {
-            Log.w(TAG, "Capture-all-packages is ON — every package's notifications will be processed.")
-        }
-    }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.i(TAG, "Disconnected. Requesting rebind.")
-        // Some OEM ROMs aggressively kill notification listeners; a rebind request
-        // gets us reconnected as soon as the system is willing.
         requestRebind(ComponentName(this, TxNotificationListener::class.java))
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val bypassAllowlist = capturePrefs.captureAllPackages.value
-
-        // Cheap filter: bail unless this package is on the finance-app allowlist (or the
-        // user has turned on capture-all-packages for discovery).
-        if (!bypassAllowlist && sbn.packageName !in watchedPackages) return
-
         if ((sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
             Log.d(TAG, "Skipping group summary from ${sbn.packageName}")
             return
         }
 
-        // Apply per-package raw-text rewrites BEFORE parsing so app-specific noise
-        // (e.g. Wise's "Tap to see this transaction" CTA, bank-mail footers) doesn't
-        // hijack the merchant patterns. No-op when the package has no rules.
-        val rawText = sbn.extractText()
-        val text = rawText?.let { rewriteEngine.apply(sbn.packageName, it) }
+        val rawText = sbn.extractText() ?: return
         val postedAt = Instant.fromEpochMilliseconds(sbn.postTime)
 
         scope.launch {
             try {
+                val rewritten = rewriteEngine.apply(sbn.packageName, rawText)
                 val symbolDefaults = trackedCurrencyDao.getDefaultsForSymbol()
                     .associate { it.displaySymbol to it.code }
 
-                // We feed the REWRITTEN `text` to the parser but store the ORIGINAL
-                // `rawText` on the row so a future rewrite-rule change can re-parse
-                // against the unredacted body. `rawText` and `text` are either both
-                // non-null or both null here (text is derived from rawText).
-                val originalRaw = rawText ?: text
-
-                // 1. Heuristic extractor for any watched package. Verb+recipient or
-                //    card-spend shape. Lands as Pending so the user can verify.
-                val heuristic = text?.let {
-                    heuristicExtractor.extract(it, sbn.packageName, postedAt, symbolDefaults)
-                }?.let { parsed -> originalRaw?.let { parsed.copy(rawText = it) } ?: parsed }
-                if (heuristic != null) {
-                    insert(heuristic, sbn.packageName, needsVerification = true)
-                    return@launch
+                when (val decision = capturePipeline.decide(
+                    packageName = sbn.packageName,
+                    rawText = rawText,
+                    rewrittenText = rewritten,
+                    postedAt = postedAt,
+                    symbolDefaults = symbolDefaults,
+                    capturedAt = Clock.System.now(),
+                )) {
+                    is CaptureDecision.Parsed -> {
+                        val rowId = insert(
+                            parsed = decision.parsed,
+                            packageName = sbn.packageName,
+                            needsVerification = true,
+                        )
+                        if (rowId != null) {
+                            repository.trackPackage(sbn.packageName)
+                        }
+                    }
+                    is CaptureDecision.Pooled -> {
+                        val rowId = repository.insertCapturedNotification(
+                            packageName = decision.packageName,
+                            postedAt = decision.postedAt,
+                            amountMinor = decision.amountMinor,
+                            currency = decision.currency,
+                            rawText = decision.rawText,
+                            rewrittenText = decision.rewrittenText,
+                            now = decision.capturedAt,
+                        )
+                        Log.i(
+                            TAG,
+                            "Pooled row ${rowId ?: "<deduped>"} from ${decision.packageName}: " +
+                                "amountMinor=${decision.amountMinor}",
+                        )
+                    }
+                    CaptureDecision.Dropped -> {
+                        val preview = rewritten.take(220).replace('\n', ' ')
+                        Log.i(TAG, "No amount detected for ${sbn.packageName}. text='$preview'")
+                    }
                 }
-
-                // 2. Permissive last-resort capture: anything with an RM/MYR amount lands
-                //    as Pending so the user reviews and confirms or deletes.
-                val permissive = text?.let {
-                    permissiveExtractor.extract(
-                        text = it,
-                        sourceApp = sbn.packageName,
-                        postedAt = postedAt,
-                        bypassAllowlist = bypassAllowlist,
-                        symbolDefaults = symbolDefaults,
-                    )
-                }?.let { parsed -> originalRaw?.let { parsed.copy(rawText = it) } ?: parsed }
-                if (permissive != null) {
-                    insert(permissive, sbn.packageName, needsVerification = true)
-                    return@launch
-                }
-
-                // 3. Nothing matched even at the permissive layer (no amount in the text).
-                //    Log a preview for diagnostics if anyone hooks up logcat later.
-                val preview = text?.take(220)?.replace('\n', ' ')
-                Log.i(
-                    TAG,
-                    "No amount detected for ${sbn.packageName}. text='${preview ?: "<empty>"}'",
-                )
             } catch (t: Throwable) {
                 Log.w(TAG, "Failed to handle notification from ${sbn.packageName}", t)
             }
@@ -156,7 +109,7 @@ class TxNotificationListener : NotificationListenerService() {
         parsed: cy.txtracker.parsing.ParsedTransaction,
         packageName: String,
         needsVerification: Boolean,
-    ) {
+    ): Long? {
         val rowId = ingestor.ingest(parsed, needsVerification = needsVerification)
         val tag = if (needsVerification) "Inserted (PENDING)" else "Inserted"
         if (rowId != null) {
@@ -172,6 +125,7 @@ class TxNotificationListener : NotificationListenerService() {
                     "merchant='${parsed.merchantRaw}' amountMinor=${parsed.amountMinor}",
             )
         }
+        return rowId
     }
 
     override fun onDestroy() {

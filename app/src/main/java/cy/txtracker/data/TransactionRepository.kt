@@ -8,12 +8,18 @@ import cy.txtracker.domain.bucketOf
 import cy.txtracker.export.Backup
 import cy.txtracker.export.ImportResult
 import cy.txtracker.parsing.HeuristicExtractor
+import cy.txtracker.parsing.SourceLabels
+import cy.txtracker.parsing.SourcePackages
 import cy.txtracker.service.NotificationRewriteEngine
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.days
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Instant.Companion.DISTANT_FUTURE
@@ -35,6 +41,28 @@ data class ReparseResult(
     val skippedCollision: Int,
 )
 
+enum class PoolFilter { PENDING, NOISE, PROMOTED, ALL }
+
+data class PromoteEdit(
+    val merchantRaw: String,
+    val amountMinor: Long,
+    val currency: String,
+    val occurredAt: Instant,
+    val categoryId: Long?,
+    val description: String?,
+)
+
+data class TrackedPackageRow(
+    val packageName: String,
+    val label: String,
+    val status: PackageStatus,
+    val isBuiltIn: Boolean,
+    val poolEntryCountLast30Days: Int,
+    val lastCapturedAt: Instant?,
+)
+
+enum class PackageStatus { TRACKED, REJECTED, UNTRACKED }
+
 @Singleton
 class TransactionRepository @Inject constructor(
     private val database: TxDatabase,
@@ -45,6 +73,8 @@ class TransactionRepository @Inject constructor(
     private val merchantNoteDao: MerchantNoteDao,
     private val userFacingSourceDao: UserFacingSourceDao,
     private val approvedSourceDao: ApprovedSourceDao,
+    private val capturedNotificationDao: CapturedNotificationDao,
+    private val rejectedSourceDao: RejectedSourceDao,
     private val trackedCurrencyDao: TrackedCurrencyDao,
     private val tripWindowDao: TripWindowDao,
     private val packageTextRewriteDao: PackageTextRewriteDao,
@@ -53,6 +83,37 @@ class TransactionRepository @Inject constructor(
     private val heuristicExtractor: HeuristicExtractor,
     private val rewriteEngine: NotificationRewriteEngine,
 ) {
+    constructor(
+        database: TxDatabase,
+        transactionDao: TransactionDao,
+        categoryDao: CategoryDao,
+        merchantMappingDao: MerchantMappingDao,
+        descriptionMappingDao: DescriptionMappingDao,
+        merchantNoteDao: MerchantNoteDao,
+        userFacingSourceDao: UserFacingSourceDao,
+        approvedSourceDao: ApprovedSourceDao,
+        trackedCurrencyDao: TrackedCurrencyDao,
+        tripWindowDao: TripWindowDao,
+    ) : this(
+        database = database,
+        transactionDao = transactionDao,
+        categoryDao = categoryDao,
+        merchantMappingDao = merchantMappingDao,
+        descriptionMappingDao = descriptionMappingDao,
+        merchantNoteDao = merchantNoteDao,
+        userFacingSourceDao = userFacingSourceDao,
+        approvedSourceDao = approvedSourceDao,
+        capturedNotificationDao = database.capturedNotificationDao(),
+        rejectedSourceDao = database.rejectedSourceDao(),
+        trackedCurrencyDao = trackedCurrencyDao,
+        tripWindowDao = tripWindowDao,
+        packageTextRewriteDao = database.packageTextRewriteDao(),
+        categorizationEngine = CategorizationEngine(merchantMappingDao, categoryDao),
+        descriptionEngine = DescriptionEngine(descriptionMappingDao),
+        heuristicExtractor = HeuristicExtractor(),
+        rewriteEngine = NotificationRewriteEngine(database.packageTextRewriteDao()),
+    )
+
     // Reads ---------------------------------------------------------------
 
     fun observeTransactionsBetween(
@@ -161,6 +222,54 @@ class TransactionRepository @Inject constructor(
     fun observeApprovedSources(): Flow<List<ApprovedSource>> =
         approvedSourceDao.observeAll()
 
+    fun observePool(
+        filter: PoolFilter,
+        packageName: String? = null,
+    ): Flow<List<CapturedNotification>> =
+        combine(
+            if (packageName == null) capturedNotificationDao.observeAll()
+            else capturedNotificationDao.observeForPackage(packageName),
+            rejectedSourceDao.observeAllPackageNames(),
+        ) { rows, rejected ->
+            val rejectedSet = rejected.toSet()
+            rows.filter { row ->
+                when (filter) {
+                    PoolFilter.PENDING ->
+                        row.disposition == CaptureDisposition.PENDING &&
+                            row.packageName !in rejectedSet
+                    PoolFilter.NOISE -> row.disposition == CaptureDisposition.NOISE
+                    PoolFilter.PROMOTED -> row.disposition == CaptureDisposition.PROMOTED
+                    PoolFilter.ALL -> true
+                }
+            }
+        }
+
+    fun observePoolPendingCount(): Flow<Int> =
+        capturedNotificationDao.observeVisiblePendingCount()
+
+    fun observeTrackedPackages(): Flow<List<TrackedPackageRow>> =
+        combine(
+            approvedSourceDao.observeAllPackageNames(),
+            rejectedSourceDao.observeAllPackageNames(),
+            // Wrap the DAO call in `flow { }` so `Clock.System.now()` is evaluated lazily,
+            // on each collection rather than once when `observeTrackedPackages()` is invoked.
+            // Each re-subscription (e.g. user re-opens the tracked-apps screen) picks up a
+            // fresh 30-day cutoff. The cutoff is still frozen for the lifetime of a single
+            // collection — sufficient for this surface since the screen is opened on demand.
+            flow {
+                emitAll(capturedNotificationDao.observePackageStatsSince(Clock.System.now() - 30.days))
+            },
+        ) { approved, rejected, stats ->
+            buildTrackedPackageRows(
+                approved = approved.toSet(),
+                rejected = rejected.toSet(),
+                stats = stats,
+            )
+        }
+
+    fun observeRejectedPackages(): Flow<List<RejectedSource>> =
+        rejectedSourceDao.observeAll()
+
     fun observeAllSourcePackages(): Flow<List<String>> =
         transactionDao.observeDistinctSourceApps()
 
@@ -225,6 +334,116 @@ class TransactionRepository @Inject constructor(
     suspend fun insert(tx: Transaction): Long? {
         val id = transactionDao.insert(tx)
         return id.takeIf { it >= 0 }
+    }
+
+    suspend fun insertCapturedNotification(
+        packageName: String,
+        postedAt: Instant,
+        amountMinor: Long,
+        currency: String,
+        rawText: String,
+        rewrittenText: String?,
+        now: Instant = Clock.System.now(),
+    ): Long? {
+        val id = capturedNotificationDao.insert(
+            CapturedNotification(
+                packageName = packageName,
+                postedAt = postedAt,
+                amountMinor = amountMinor,
+                currency = currency,
+                rawText = rawText,
+                rewrittenText = rewrittenText,
+                disposition = CaptureDisposition.PENDING,
+                promotedToTxId = null,
+                capturedAt = now,
+            ),
+        )
+        return id.takeIf { it >= 0 }
+    }
+
+    suspend fun markPoolEntryNoise(id: Long) {
+        capturedNotificationDao.markNoise(id)
+    }
+
+    suspend fun rejectPackage(packageName: String, now: Instant = Clock.System.now()) =
+        database.withTransaction {
+            rejectedSourceDao.upsert(RejectedSource(packageName, now))
+            approvedSourceDao.delete(packageName)
+            capturedNotificationDao.markPendingNoiseForPackage(packageName)
+        }
+
+    suspend fun trackPackage(packageName: String, now: Instant = Clock.System.now()) =
+        database.withTransaction {
+            rejectedSourceDao.delete(packageName)
+            approvedSourceDao.insert(ApprovedSource(packageName, now))
+        }
+
+    suspend fun unrejectPackage(packageName: String, now: Instant = Clock.System.now()) {
+        trackPackage(packageName, now)
+    }
+
+    suspend fun deleteRejectedPoolEntriesBefore(cutoff: Instant): Int =
+        capturedNotificationDao.deleteRejectedBefore(cutoff)
+
+    suspend fun promotePoolEntry(
+        id: Long,
+        edit: PromoteEdit,
+        now: Instant = Clock.System.now(),
+    ): Long? = database.withTransaction { promotePoolEntryBody(id, edit, now) }
+
+    /**
+     * Body of [promotePoolEntry], extracted so unit tests can drive it directly without
+     * mocking Room's `withTransaction` extension (which is awkward with mockk's generics).
+     * Production callers MUST go through [promotePoolEntry] so the work runs atomically.
+     */
+    internal suspend fun promotePoolEntryBody(
+        id: Long,
+        edit: PromoteEdit,
+        now: Instant,
+    ): Long? {
+        val pool = capturedNotificationDao.get(id) ?: return null
+        val merchant = edit.merchantRaw.trim()
+        if (merchant.isEmpty()) return null
+
+        val merchantNormalized = normalizeMerchant(merchant)
+        val bucket = bucketOf(edit.occurredAt)
+        val dedupeKey = computeDedupeKey(
+            amountMinor = edit.amountMinor,
+            merchantNormalized = merchantNormalized,
+            occurredAt = edit.occurredAt,
+            currency = edit.currency,
+        )
+        val needsCurrencyConfirmation = if (edit.currency == "MYR") {
+            false
+        } else {
+            ensureTrackedCurrency(edit.currency, now)
+            findActiveTrip(edit.currency, edit.occurredAt) == null
+        }
+
+        val rowId = transactionDao.insert(
+            Transaction(
+                amountMinor = edit.amountMinor,
+                currency = edit.currency,
+                merchantRaw = merchant,
+                merchantNormalized = merchantNormalized,
+                categoryId = edit.categoryId,
+                description = edit.description?.trim()?.takeIf { it.isNotEmpty() },
+                occurredAt = edit.occurredAt,
+                timeBucket = bucket,
+                sourceApp = pool.packageName,
+                rawText = pool.rawText,
+                direction = Direction.OUT,
+                createdAt = now,
+                notificationDedupeKey = dedupeKey,
+                needsVerification = false,
+                needsCurrencyConfirmation = needsCurrencyConfirmation,
+            ),
+        )
+        val txId = rowId.takeIf { it >= 0 } ?: return null
+        capturedNotificationDao.markPromoted(id, txId)
+        rejectedSourceDao.delete(pool.packageName)
+        approvedSourceDao.insert(ApprovedSource(pool.packageName, now))
+        return txId
     }
 
     /**
@@ -977,6 +1196,34 @@ fun bucketBoundsFor(occurredAt: Instant): Pair<Instant, Instant> {
 }
 
 internal const val FIVE_MINUTES_MS: Long = 5 * 60 * 1000
+
+private fun buildTrackedPackageRows(
+    approved: Set<String>,
+    rejected: Set<String>,
+    stats: List<PoolPackageStats>,
+): List<TrackedPackageRow> {
+    val statsByPackage = stats.associateBy { it.packageName }
+    val packages = SourcePackages.PERMISSIVE_PACKAGES + approved + rejected + statsByPackage.keys
+    return packages
+        .map { packageName ->
+            val stat = statsByPackage[packageName]
+            val isBuiltIn = packageName in SourcePackages.PERMISSIVE_PACKAGES
+            val status = when {
+                packageName in rejected -> PackageStatus.REJECTED
+                isBuiltIn || packageName in approved -> PackageStatus.TRACKED
+                else -> PackageStatus.UNTRACKED
+            }
+            TrackedPackageRow(
+                packageName = packageName,
+                label = SourceLabels.label(packageName),
+                status = status,
+                isBuiltIn = isBuiltIn,
+                poolEntryCountLast30Days = stat?.entryCount ?: 0,
+                lastCapturedAt = stat?.lastCapturedAt,
+            )
+        }
+        .sortedWith(compareBy<TrackedPackageRow> { it.status.ordinal }.thenBy { it.label })
+}
 
 private fun sha1Hex(input: String): String {
     val digest = java.security.MessageDigest.getInstance("SHA-1")

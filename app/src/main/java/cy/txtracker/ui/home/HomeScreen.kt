@@ -166,6 +166,7 @@ fun HomeScreen(
                 categories = state.categories,
                 hasUnverified = state.breakdown.any { it.category == null && it.totalMinor > 0 },
                 pendingCount = state.pendingCount,
+                currencyReviewCount = state.currencyReviewCount,
                 onFilterChange = onFilterChange,
             )
             HorizontalDivider()
@@ -268,6 +269,7 @@ private fun FilterRow(
     categories: List<Category>,
     hasUnverified: Boolean,
     pendingCount: Int,
+    currencyReviewCount: Int,
     onFilterChange: (HomeFilter) -> Unit,
 ) {
     LazyRow(
@@ -299,12 +301,14 @@ private fun FilterRow(
                 )
             }
         }
-        item {
-            FilterChip(
-                selected = filter == HomeFilter.CurrencyReview,
-                onClick = { onFilterChange(HomeFilter.CurrencyReview) },
-                label = { Text("Currency review") },
-            )
+        if (currencyReviewCount > 0) {
+            item {
+                FilterChip(
+                    selected = filter == HomeFilter.CurrencyReview,
+                    onClick = { onFilterChange(HomeFilter.CurrencyReview) },
+                    label = { Text("Currency review ($currencyReviewCount)") },
+                )
+            }
         }
         items(categories, key = { it.id }) { c ->
             FilterChip(

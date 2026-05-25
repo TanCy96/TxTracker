@@ -38,21 +38,13 @@ class HeuristicExtractor @Inject constructor() {
     ): ParsedTransaction? {
         if (text.isBlank()) return null
         val trimmed = stripTrailingTapCta(text.trim())
-        val amountMatch = AMOUNT.find(trimmed) ?: return null
-
-        val amountStr = amountMatch.groups["amtA"]?.value
-            ?: amountMatch.groups["amtB"]?.value
-            ?: return null
-        val prefixToken = amountMatch.groups["prefix"]?.value
-        val suffixToken = amountMatch.groups["suffix"]?.value
-
-        val currency = Currencies.resolve(prefixToken, suffixToken, symbolDefaults)
+        val amount = NotificationAmountParser.findFirst(trimmed, symbolDefaults) ?: return null
 
         val merchant = resolveMerchant(trimmed)?.takeIf { it.isNotBlank() } ?: return null
 
         return ParsedTransaction(
-            amountMinor = parseAmountMinor(amountStr),
-            currency = currency,
+            amountMinor = amount.amountMinor,
+            currency = amount.currency,
             merchantRaw = merchant,
             occurredAt = postedAt,
             sourceApp = sourceApp,

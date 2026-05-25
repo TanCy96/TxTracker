@@ -181,6 +181,35 @@ data class ApprovedSource(
 )
 
 @Entity(
+    tableName = "captured_notifications",
+    indices = [
+        Index("packageName"),
+        Index("disposition"),
+        Index("capturedAt"),
+    ],
+)
+data class CapturedNotification(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val packageName: String,
+    val postedAt: Instant,
+    val amountMinor: Long,
+    val currency: String,
+    val rawText: String,
+    val rewrittenText: String?,
+    val disposition: CaptureDisposition,
+    val promotedToTxId: Long?,
+    val capturedAt: Instant,
+)
+
+enum class CaptureDisposition { PENDING, PROMOTED, NOISE }
+
+@Entity(tableName = "rejected_sources")
+data class RejectedSource(
+    @PrimaryKey val packageName: String,
+    val rejectedAt: Instant,
+)
+
+@Entity(
     tableName = "tracked_currencies",
 )
 data class TrackedCurrency(

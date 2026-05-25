@@ -90,6 +90,8 @@ class CategoryBackfillTest {
         merchantNoteDao = mockk(relaxed = true),
         userFacingSourceDao = mockk(relaxed = true),
         approvedSourceDao = mockk(relaxed = true),
+        capturedNotificationDao = mockk(relaxed = true),
+        rejectedSourceDao = mockk(relaxed = true),
         trackedCurrencyDao = mockk(relaxed = true),
         tripWindowDao = mockk(relaxed = true),
         packageTextRewriteDao = mockk(relaxed = true),
