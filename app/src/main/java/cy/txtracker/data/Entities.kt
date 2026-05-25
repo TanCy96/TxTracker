@@ -65,6 +65,14 @@ data class Transaction(
      * (which retroactively flips this to false for rows in range).
      */
     val needsCurrencyConfirmation: Boolean = false,
+    /**
+     * True once the user has renamed the merchant on this row via the Edit sheet.
+     * Acts as a "do not clobber" flag for the Settings → Re-parse merchants action,
+     * which otherwise re-derives merchantRaw from rawText for every captured row.
+     * Default false: fresh captures and migration-upgraded rows are eligible for
+     * reparse until the user has intentionally fixed them.
+     */
+    val merchantUserEdited: Boolean = false,
 )
 
 @Entity(
@@ -185,6 +193,32 @@ data class TrackedCurrency(
      */
     val isDefaultForSymbol: Boolean,
     val addedAt: Instant,
+)
+
+/**
+ * Per-package raw-text rewrite rule. Applied to the incoming notification text BEFORE
+ * the heuristic / permissive extractors run, so app-specific noise (Wise's
+ * "Tap to see this transaction" CTA, banks' boilerplate footers, etc.) can be stripped
+ * without hardcoding regex into the extractor.
+ *
+ * - [pattern] is a Java regex compiled with the IGNORE_CASE flag. Invalid patterns are
+ *   skipped at apply-time rather than blocking ingest.
+ * - [replacement] is the literal text spliced in for each match. The empty string (the
+ *   common case — "strip this junk") effectively deletes matches.
+ *
+ * The composite primary key lets one package own many rules; ordering across rules is
+ * not guaranteed (currently learnedAt-ASC; deliberately not exposed in UI yet).
+ */
+@Entity(
+    tableName = "package_text_rewrites",
+    primaryKeys = ["packageName", "pattern"],
+    indices = [Index("packageName")],
+)
+data class PackageTextRewrite(
+    val packageName: String,
+    val pattern: String,
+    val replacement: String,
+    val learnedAt: Instant,
 )
 
 @Entity(

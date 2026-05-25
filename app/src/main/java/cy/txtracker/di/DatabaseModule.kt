@@ -8,6 +8,7 @@ import cy.txtracker.data.CategoryDao
 import cy.txtracker.data.DescriptionMappingDao
 import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
+import cy.txtracker.data.PackageTextRewriteDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import cy.txtracker.data.ApprovedSourceDao
@@ -54,7 +55,7 @@ object DatabaseModule {
             // (adds the merchant_notes table). Preserves all captured transactions and
             // learned mappings rather than wiping them. fallbackToDestructiveMigration
             // stays as a safety net for any unforeseen mismatch.
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -87,6 +88,10 @@ object DatabaseModule {
 
     @Provides
     fun provideTripWindowDao(db: TxDatabase): TripWindowDao = db.tripWindowDao()
+
+    @Provides
+    fun providePackageTextRewriteDao(db: TxDatabase): PackageTextRewriteDao =
+        db.packageTextRewriteDao()
 }
 
 /**
@@ -214,6 +219,39 @@ private val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL(
             "ALTER TABLE `categories` ADD COLUMN `keywordPattern` TEXT DEFAULT NULL"
+        )
+    }
+}
+
+/**
+ * v8 introduces:
+ *   - `package_text_rewrites` table for per-package raw-text rewrite rules applied
+ *     before the parser runs.
+ *   - `transactions.merchantUserEdited` column so the Settings → "Re-parse merchants
+ *     from raw text" sweep can skip rows the user already fixed by hand.
+ *
+ * Schema mirrors what Room would generate so the resulting DB matches a fresh
+ * install on v8.
+ */
+private val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `package_text_rewrites` (
+                `packageName` TEXT NOT NULL,
+                `pattern` TEXT NOT NULL,
+                `replacement` TEXT NOT NULL,
+                `learnedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`, `pattern`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_package_text_rewrites_packageName` " +
+                "ON `package_text_rewrites`(`packageName`)"
+        )
+        db.execSQL(
+            "ALTER TABLE `transactions` ADD COLUMN `merchantUserEdited` INTEGER NOT NULL DEFAULT 0"
         )
     }
 }

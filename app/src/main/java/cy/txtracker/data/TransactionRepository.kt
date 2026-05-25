@@ -7,6 +7,8 @@ import cy.txtracker.domain.TimeBucket
 import cy.txtracker.domain.bucketOf
 import cy.txtracker.export.Backup
 import cy.txtracker.export.ImportResult
+import cy.txtracker.parsing.HeuristicExtractor
+import cy.txtracker.service.NotificationRewriteEngine
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,6 +23,18 @@ import kotlinx.datetime.Instant.Companion.DISTANT_FUTURE
  * transaction data. Wraps DAOs, owns dedupe-key generation, and applies the
  * dual-table learning policy on user edits.
  */
+/**
+ * Outcome of [TransactionRepository.reparseMerchantsFromRawText]. Surfaced verbatim
+ * in the Settings snackbar so the user can confirm the sweep did something.
+ */
+data class ReparseResult(
+    val scanned: Int,
+    val updated: Int,
+    val unchanged: Int,
+    val parserMiss: Int,
+    val skippedCollision: Int,
+)
+
 @Singleton
 class TransactionRepository @Inject constructor(
     private val database: TxDatabase,
@@ -33,8 +47,11 @@ class TransactionRepository @Inject constructor(
     private val approvedSourceDao: ApprovedSourceDao,
     private val trackedCurrencyDao: TrackedCurrencyDao,
     private val tripWindowDao: TripWindowDao,
+    private val packageTextRewriteDao: PackageTextRewriteDao,
     private val categorizationEngine: CategorizationEngine,
     private val descriptionEngine: DescriptionEngine,
+    private val heuristicExtractor: HeuristicExtractor,
+    private val rewriteEngine: NotificationRewriteEngine,
 ) {
     // Reads ---------------------------------------------------------------
 
@@ -106,6 +123,34 @@ class TransactionRepository @Inject constructor(
         descriptionMappingDao.observeAllCategory()
 
     fun observeMerchantNotes(): Flow<List<MerchantNote>> = merchantNoteDao.observeAll()
+
+    // Per-package raw-text rewrite rules. Applied at ingest-time BEFORE the heuristic /
+    // permissive extractors by NotificationRewriteEngine, which observes [observeRewrites].
+    fun observeRewrites(): Flow<List<PackageTextRewrite>> =
+        packageTextRewriteDao.observeAll()
+
+    suspend fun getRewritesForPackage(packageName: String): List<PackageTextRewrite> =
+        packageTextRewriteDao.getForPackage(packageName)
+
+    suspend fun upsertRewrite(
+        packageName: String,
+        pattern: String,
+        replacement: String,
+        now: Instant = Clock.System.now(),
+    ) {
+        packageTextRewriteDao.upsert(
+            PackageTextRewrite(
+                packageName = packageName,
+                pattern = pattern,
+                replacement = replacement,
+                learnedAt = now,
+            ),
+        )
+    }
+
+    suspend fun deleteRewrite(packageName: String, pattern: String) {
+        packageTextRewriteDao.delete(packageName, pattern)
+    }
 
     fun observeUserFacingSources(): Flow<List<UserFacingSource>> =
         userFacingSourceDao.observeAll()
@@ -304,6 +349,9 @@ class TransactionRepository @Inject constructor(
      * Renames a single transaction's merchant. Re-normalizes and regenerates the
      * `notificationDedupeKey` so future captures of the same payment (amount + 5-min
      * bucket + new merchant) will dedupe against this row rather than re-inserting.
+     *
+     * Also flips `merchantUserEdited` to true via the DAO update, so the Settings →
+     * "Re-parse merchants from raw text" sweep skips this row from now on.
      *
      * Returns true on success, false when the regenerated dedupe key collides with
      * another existing row (rare — happens only if the user renames into a key that
@@ -579,6 +627,74 @@ class TransactionRepository @Inject constructor(
             updated++
         }
         return updated
+    }
+
+    /**
+     * Re-runs the heuristic parser against each row's stored `rawText` and rewrites the
+     * merchant if it differs. Operates ONLY on captured rows where the user hasn't
+     * manually fixed the merchant (`merchantUserEdited = 0`) and the row has a
+     * `rawText` (excludes manual entries by definition — they have no source text to
+     * re-derive against).
+     *
+     * Amount, currency, occurredAt, category, description, note, and verification state
+     * are intentionally NOT touched: the user may have already corrected those, and
+     * re-derivation would silently undo their fixes. The dedupe key IS recomputed
+     * because it's a function of the new merchant.
+     *
+     * Rows whose new dedupe key collides with another existing row are counted as
+     * `skippedCollision` and left as-is — rare in practice but possible if two prior
+     * mis-parses converge onto the same merchant after the fix.
+     *
+     * Returns counts so the UI can show what happened.
+     */
+    suspend fun reparseMerchantsFromRawText(): ReparseResult {
+        val rows = transactionDao.getReparseCandidates()
+        val symbolDefaults = trackedCurrencyDao.getDefaultsForSymbol()
+            .associate { it.displaySymbol to it.code }
+
+        var updated = 0
+        var unchanged = 0
+        var parserMiss = 0
+        var skippedCollision = 0
+
+        for (row in rows) {
+            val raw = row.rawText ?: continue // SQL filter already excludes null, defensive
+            val rewritten = rewriteEngine.apply(row.sourceApp, raw)
+            val parsed = heuristicExtractor.extract(
+                text = rewritten,
+                sourceApp = row.sourceApp,
+                postedAt = row.occurredAt,
+                symbolDefaults = symbolDefaults,
+            )
+            if (parsed == null) { parserMiss++; continue }
+            val newNormalized = normalizeMerchant(parsed.merchantRaw)
+            if (newNormalized == row.merchantNormalized) { unchanged++; continue }
+            val newKey = computeDedupeKey(
+                amountMinor = row.amountMinor,
+                merchantNormalized = newNormalized,
+                occurredAt = row.occurredAt,
+                currency = row.currency,
+            )
+            try {
+                transactionDao.updateMerchantFromReparse(
+                    id = row.id,
+                    merchantRaw = parsed.merchantRaw,
+                    merchantNormalized = newNormalized,
+                    notificationDedupeKey = newKey,
+                )
+                updated++
+            } catch (e: android.database.sqlite.SQLiteConstraintException) {
+                skippedCollision++
+            }
+        }
+
+        return ReparseResult(
+            scanned = rows.size,
+            updated = updated,
+            unchanged = unchanged,
+            parserMiss = parserMiss,
+            skippedCollision = skippedCollision,
+        )
     }
 
     /**

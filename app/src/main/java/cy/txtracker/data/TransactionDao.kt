@@ -195,7 +195,8 @@ interface TransactionDao {
         UPDATE transactions
         SET merchantRaw = :merchantRaw,
             merchantNormalized = :merchantNormalized,
-            notificationDedupeKey = :notificationDedupeKey
+            notificationDedupeKey = :notificationDedupeKey,
+            merchantUserEdited = 1
         WHERE id = :id
         """
     )
@@ -205,6 +206,41 @@ interface TransactionDao {
         merchantNormalized: String,
         notificationDedupeKey: String,
     )
+
+    /**
+     * Reparse path: rewrites the merchant fields but DOES NOT flip `merchantUserEdited`,
+     * so subsequent reparse sweeps can still touch this row if the regex improves further.
+     */
+    @Query(
+        """
+        UPDATE transactions
+        SET merchantRaw = :merchantRaw,
+            merchantNormalized = :merchantNormalized,
+            notificationDedupeKey = :notificationDedupeKey
+        WHERE id = :id
+        """
+    )
+    suspend fun updateMerchantFromReparse(
+        id: Long,
+        merchantRaw: String,
+        merchantNormalized: String,
+        notificationDedupeKey: String,
+    )
+
+    /**
+     * Backing query for the Settings → "Re-parse merchants from raw text" sweep. Filters
+     * rows the user already corrected, manual entries, and rows without a captured rawText.
+     */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE merchantUserEdited = 0
+          AND rawText IS NOT NULL
+          AND sourceApp != 'manual'
+        ORDER BY occurredAt ASC
+        """
+    )
+    suspend fun getReparseCandidates(): List<Transaction>
 
     @Query(
         """

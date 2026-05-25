@@ -46,6 +46,7 @@ class TxNotificationListener : NotificationListenerService() {
     @Inject lateinit var capturePrefs: CapturePrefs
     @Inject lateinit var repository: TransactionRepository
     @Inject lateinit var trackedCurrencyDao: TrackedCurrencyDao
+    @Inject lateinit var rewriteEngine: NotificationRewriteEngine
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -94,7 +95,11 @@ class TxNotificationListener : NotificationListenerService() {
             return
         }
 
-        val text = sbn.extractText()
+        // Apply per-package raw-text rewrites BEFORE parsing so app-specific noise
+        // (e.g. Wise's "Tap to see this transaction" CTA, bank-mail footers) doesn't
+        // hijack the merchant patterns. No-op when the package has no rules.
+        val rawText = sbn.extractText()
+        val text = rawText?.let { rewriteEngine.apply(sbn.packageName, it) }
         val postedAt = Instant.fromEpochMilliseconds(sbn.postTime)
 
         scope.launch {
@@ -102,11 +107,17 @@ class TxNotificationListener : NotificationListenerService() {
                 val symbolDefaults = trackedCurrencyDao.getDefaultsForSymbol()
                     .associate { it.displaySymbol to it.code }
 
+                // We feed the REWRITTEN `text` to the parser but store the ORIGINAL
+                // `rawText` on the row so a future rewrite-rule change can re-parse
+                // against the unredacted body. `rawText` and `text` are either both
+                // non-null or both null here (text is derived from rawText).
+                val originalRaw = rawText ?: text
+
                 // 1. Heuristic extractor for any watched package. Verb+recipient or
                 //    card-spend shape. Lands as Pending so the user can verify.
                 val heuristic = text?.let {
                     heuristicExtractor.extract(it, sbn.packageName, postedAt, symbolDefaults)
-                }
+                }?.let { parsed -> originalRaw?.let { parsed.copy(rawText = it) } ?: parsed }
                 if (heuristic != null) {
                     insert(heuristic, sbn.packageName, needsVerification = true)
                     return@launch
@@ -122,7 +133,7 @@ class TxNotificationListener : NotificationListenerService() {
                         bypassAllowlist = bypassAllowlist,
                         symbolDefaults = symbolDefaults,
                     )
-                }
+                }?.let { parsed -> originalRaw?.let { parsed.copy(rawText = it) } ?: parsed }
                 if (permissive != null) {
                     insert(permissive, sbn.packageName, needsVerification = true)
                     return@launch

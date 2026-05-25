@@ -92,7 +92,10 @@ class CategoryBackfillTest {
         approvedSourceDao = mockk(relaxed = true),
         trackedCurrencyDao = mockk(relaxed = true),
         tripWindowDao = mockk(relaxed = true),
+        packageTextRewriteDao = mockk(relaxed = true),
         categorizationEngine = cat,
         descriptionEngine = desc,
+        heuristicExtractor = mockk(relaxed = true),
+        rewriteEngine = mockk(relaxed = true),
     )
 }

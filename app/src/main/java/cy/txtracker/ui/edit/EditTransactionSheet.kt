@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +26,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -326,6 +328,32 @@ private fun EditingContent(
             modifier = Modifier.fillMaxWidth(),
         )
 
+        // "Improve parsing for this app" — only meaningful when we have both a package
+        // and a captured rawText to anchor a rule against. Manual entries are excluded.
+        var showRewriteDialog by remember { mutableStateOf(false) }
+        if (tx.sourceApp != cy.txtracker.data.MANUAL_SOURCE_APP && !tx.rawText.isNullOrBlank()) {
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(
+                onClick = { showRewriteDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Improve parsing for this app") }
+        }
+        if (showRewriteDialog && !tx.rawText.isNullOrBlank()) {
+            ImproveParsingDialog(
+                packageName = tx.sourceApp,
+                rawText = tx.rawText,
+                onDismiss = { showRewriteDialog = false },
+                onSave = { pattern, replacement ->
+                    viewModel.upsertRewrite(
+                        packageName = tx.sourceApp,
+                        pattern = pattern,
+                        replacement = replacement,
+                        onDone = { showRewriteDialog = false },
+                    )
+                },
+            )
+        }
+
         Spacer(Modifier.height(20.dp))
         if (tx.needsVerification) {
             Row(
@@ -351,6 +379,88 @@ private fun EditingContent(
         }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/**
+ * Lets the user define a regex rewrite applied to every future notification from this
+ * package before the parser runs. Shows the raw notification text and a live preview
+ * of what the parser would actually see after the rule is applied — invaluable for
+ * verifying the regex picks up the intended junk without eating too much.
+ */
+@Composable
+private fun ImproveParsingDialog(
+    packageName: String,
+    rawText: String,
+    onDismiss: () -> Unit,
+    onSave: (pattern: String, replacement: String) -> Unit,
+) {
+    var pattern by remember { mutableStateOf("") }
+    var replacement by remember { mutableStateOf("") }
+
+    val preview = remember(pattern, replacement, rawText) {
+        if (pattern.isBlank()) rawText
+        else runCatching {
+            Regex(pattern, RegexOption.IGNORE_CASE).replace(rawText, replacement)
+        }.getOrElse { "<invalid regex: ${it.message}>" }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Improve parsing") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "Package: $packageName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Original notification text", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    rawText,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Regex to strip / replace", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = pattern,
+                    onValueChange = { pattern = it },
+                    placeholder = { Text("e.g. Tap to see this transaction") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Replacement (leave blank to strip)", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = replacement,
+                    onValueChange = { replacement = it },
+                    placeholder = { Text("") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Preview", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    preview,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(pattern.trim(), replacement) },
+                enabled = pattern.isNotBlank() && preview != rawText && !preview.startsWith("<invalid regex"),
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

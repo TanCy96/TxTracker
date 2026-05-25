@@ -58,6 +58,7 @@ fun SettingsScreen(
     onNotificationPriorityClick: () -> Unit,
     onForeignCurrenciesClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    onRewritesClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -208,6 +209,19 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().clickableRow(viewModel::runBackfill),
             )
             HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Notification rewrites") },
+                supportingContent = {
+                    Text("Per-app regex rules applied to notification text before parsing.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(onRewritesClick),
+            )
+            HorizontalDivider()
+            // "Re-parse merchants from raw text" action is intentionally hidden from
+            // the UI right now. The repo/VM plumbing (TransactionRepository
+            // .reparseMerchantsFromRawText, SettingsViewModel.runReparseMerchants /
+            // reparseResult / consumeReparseResult, the dialog below) stays in place
+            // so a future Settings entry can re-expose it without re-wiring.
             ListItem(
                 headlineContent = { Text("Notification priority") },
                 supportingContent = {
@@ -459,6 +473,26 @@ fun SettingsScreen(
                     TextButton(onClick = { viewModel.consumeBackfillResult() }) {
                         Text("OK")
                     }
+                },
+            )
+        }
+
+        val reparseResult by viewModel.reparseResult.collectAsState()
+        reparseResult?.let { r ->
+            AlertDialog(
+                onDismissRequest = { viewModel.consumeReparseResult() },
+                title = { Text("Re-parse complete") },
+                text = {
+                    Text(
+                        "Scanned ${r.scanned} row(s).\n" +
+                            "Updated: ${r.updated}\n" +
+                            "Unchanged: ${r.unchanged}\n" +
+                            "Parser miss: ${r.parserMiss}\n" +
+                            "Skipped (dedupe collision): ${r.skippedCollision}",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.consumeReparseResult() }) { Text("OK") }
                 },
             )
         }

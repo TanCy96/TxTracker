@@ -104,6 +104,22 @@ class SettingsViewModel @Inject constructor(
 
     data class BackfillResult(val categoryRows: Int, val descriptionRows: Int)
 
+    private val _reparseResult = MutableStateFlow<cy.txtracker.data.ReparseResult?>(null)
+    val reparseResult: StateFlow<cy.txtracker.data.ReparseResult?> = _reparseResult.asStateFlow()
+
+    /**
+     * Runs the parser over every captured row's stored `rawText`, applying any
+     * per-package rewrite rules first. Updates merchant fields where the new parse
+     * differs and the row hasn't been user-edited. Surfaces counts via [reparseResult].
+     */
+    fun runReparseMerchants() {
+        viewModelScope.launch {
+            _reparseResult.value = repository.reparseMerchantsFromRawText()
+        }
+    }
+
+    fun consumeReparseResult() { _reparseResult.value = null }
+
     fun export() {
         if (_exportStatus.value is ExportStatus.Running) return
         _exportStatus.value = ExportStatus.Running

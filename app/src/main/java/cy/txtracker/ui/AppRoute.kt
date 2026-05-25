@@ -40,6 +40,7 @@ import cy.txtracker.ui.settings.currencies.CurrenciesScreen
 import cy.txtracker.ui.settings.currencies.TripHistoryScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
+import cy.txtracker.ui.settings.rewrites.RewritesScreen
 import cy.txtracker.ui.settings.notifications.NotificationsScreen
 import cy.txtracker.ui.settings.sources.NotificationPriorityScreen
 import dagger.hilt.EntryPoint
@@ -61,6 +62,7 @@ private object Routes {
     const val SETTINGS_CURRENCIES = "settings/currencies"
     const val SETTINGS_CURRENCIES_TRIPS = "settings/currencies/trips/{code}"
     const val SETTINGS_NOTIFICATIONS = "settings/notifications"
+    const val SETTINGS_REWRITES = "settings/rewrites"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
@@ -202,6 +204,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                     onNotificationPriorityClick = { nav.navigate(Routes.SETTINGS_SOURCES) },
                     onForeignCurrenciesClick = { nav.navigate(Routes.SETTINGS_CURRENCIES) },
                     onNotificationsClick = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
+                    onRewritesClick = { nav.navigate(Routes.SETTINGS_REWRITES) },
                 )
             }
             composable(Routes.SETTINGS_CATEGORIES) {
@@ -228,6 +231,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             }
             composable(Routes.SETTINGS_NOTIFICATIONS) {
                 NotificationsScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_REWRITES) {
+                RewritesScreen(onBack = { nav.popBackStack() })
             }
         }
     }

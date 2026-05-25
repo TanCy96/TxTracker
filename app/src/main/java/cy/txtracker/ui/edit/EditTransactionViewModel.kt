@@ -183,4 +183,20 @@ class EditTransactionViewModel @Inject constructor(
     fun addCurrency(code: String) {
         viewModelScope.launch { repository.ensureTrackedCurrency(code) }
     }
+
+    /**
+     * Saves a per-package raw-text rewrite rule. Applied to incoming notifications from
+     * [packageName] BEFORE the parser runs, so app-specific noise can be stripped without
+     * code changes. Called from the row's "Improve parsing for this app" dialog.
+     */
+    fun upsertRewrite(packageName: String, pattern: String, replacement: String, onDone: () -> Unit) {
+        viewModelScope.launch {
+            repository.upsertRewrite(
+                packageName = packageName,
+                pattern = pattern,
+                replacement = replacement,
+            )
+            onDone()
+        }
+    }
 }
