@@ -182,28 +182,38 @@ class HomeViewModel @Inject constructor(
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
-        val filtered = when (filter) {
+
+        // 1. Compute breakdown FIRST so we can consult it for snap-back below.
+        val breakdown = totals
+            .map { CategoryBreakdownEntry(category = it.categoryId?.let(byId::get), totalMinor = it.totalMinor) }
+            .sortedWith(
+                compareByDescending<CategoryBreakdownEntry> { it.category != null }
+                    .thenBy { it.category?.sortOrder ?: Int.MAX_VALUE },
+            )
+
+        // 2. Snap a stale category filter back to All. Writes back to _filter so the next emit
+        //    sees the corrected value; this lambda's local `filter` is already captured.
+        val effectiveFilter = snapStaleHomeCategoryToAll(filter, breakdown)
+        if (effectiveFilter != filter) {
+            _filter.value = effectiveFilter
+        }
+
+        // 3. Filter / group using the effective filter.
+        val filtered = when (effectiveFilter) {
             HomeFilter.All -> joined
             HomeFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
             HomeFilter.Pending -> joined.filter { it.transaction.needsVerification }
             HomeFilter.CurrencyReview -> joined.filter { it.transaction.needsCurrencyConfirmation }
-            is HomeFilter.Category -> joined.filter { it.transaction.categoryId == filter.id }
+            is HomeFilter.Category -> joined.filter { it.transaction.categoryId == effectiveFilter.id }
         }
         val days = filtered
             .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
             .toSortedMap(reverseOrder())
             .map { (date, list) -> DayGroup(date, list) }
 
-        val breakdown = totals
-            .map { CategoryBreakdownEntry(category = it.categoryId?.let(byId::get), totalMinor = it.totalMinor) }
-            .sortedWith(
-                compareByDescending<CategoryBreakdownEntry> { it.category != null } // categorized first
-                    .thenBy { it.category?.sortOrder ?: Int.MAX_VALUE },
-            )
-
         return HomeUiState(
             yearMonth = yearMonth,
-            filter = filter,
+            filter = effectiveFilter,
             totalMinor = monthTotal,
             transactionCount = transactions.size,
             breakdown = breakdown,
