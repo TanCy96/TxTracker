@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -48,6 +49,15 @@ class HomeViewModel @Inject constructor(
             initialValue = null,
         )
 
+    private val _currencyReviewCount: StateFlow<Int> =
+        repository.observeCurrencyReviewTransactions()
+            .map { it.size }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = 0,
+            )
+
     init {
         // Deep-link arrives via DeeplinkBus from MainActivity intent extras (e.g. user
         // taps a pending-row notification). Each Deeplink maps to a Home filter switch.
@@ -67,18 +77,20 @@ class HomeViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<HomeUiState> =
-        combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer) { ym, filter, cats, banner ->
+        combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer, _currencyReviewCount) { ym, filter, cats, banner, crCount ->
             object {
                 val yearMonth = ym
                 val filter = filter
                 val categories = cats
                 val banner = banner
+                val currencyReviewCount = crCount
             }
         }.flatMapLatest { params ->
             val ym = params.yearMonth
             val filter = params.filter
             val categories = params.categories
             val banner = params.banner
+            val currencyReviewCount = params.currencyReviewCount
 
             if (filter == HomeFilter.CurrencyReview) {
                 // Currency-review filter: show all parked rows regardless of month
@@ -92,6 +104,7 @@ class HomeViewModel @Inject constructor(
                         transactions = txs,
                         notes = notes,
                         banner = banner,
+                        currencyReviewCount = currencyReviewCount,
                     )
                 }
             } else {
@@ -112,6 +125,7 @@ class HomeViewModel @Inject constructor(
                         monthTotal = total,
                         notes = notes,
                         banner = banner,
+                        currencyReviewCount = currencyReviewCount,
                     )
                 }
             }
@@ -150,6 +164,7 @@ class HomeViewModel @Inject constructor(
         days = emptyList(),
         notesByMerchant = emptyMap(),
         pendingCount = 0,
+        currencyReviewCount = 0,
         isLoading = true,
         bannerCurrency = null,
     )
@@ -163,6 +178,7 @@ class HomeViewModel @Inject constructor(
         monthTotal: Long,
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
+        currencyReviewCount: Int,
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
@@ -195,6 +211,7 @@ class HomeViewModel @Inject constructor(
             days = days,
             notesByMerchant = notes.associate { it.merchantNormalized to it.note },
             pendingCount = transactions.count { it.needsVerification },
+            currencyReviewCount = currencyReviewCount,
             isLoading = false,
             bannerCurrency = banner,
         )
@@ -206,6 +223,7 @@ class HomeViewModel @Inject constructor(
         transactions: List<Transaction>,
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
+        currencyReviewCount: Int,
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
@@ -224,6 +242,7 @@ class HomeViewModel @Inject constructor(
             days = days,
             notesByMerchant = notes.associate { it.merchantNormalized to it.note },
             pendingCount = transactions.count { it.needsVerification },
+            currencyReviewCount = currencyReviewCount,
             isLoading = false,
             bannerCurrency = banner,
         )
