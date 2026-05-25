@@ -22,8 +22,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -152,7 +150,48 @@ fun HomeScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             MonthTotalHeader(totalMinor = state.totalMinor, transactionCount = state.transactionCount)
-            CategoryBreakdownRow(breakdown = state.breakdown, amountFormatter = ::formatMyr)
+
+            val onChipTap: (HomeFilter) -> Unit = { target ->
+                onFilterChange(if (state.filter == target) HomeFilter.All else target)
+            }
+
+            val statusChips = buildList {
+                if (state.pendingCount > 0) add(
+                    StatusChipSpec(
+                        label = "Pending (${state.pendingCount})",
+                        selected = state.filter is HomeFilter.Pending,
+                        onTap = { onChipTap(HomeFilter.Pending) },
+                    )
+                )
+                if (state.currencyReviewCount > 0) add(
+                    StatusChipSpec(
+                        label = "Currency review (${state.currencyReviewCount})",
+                        selected = state.filter is HomeFilter.CurrencyReview,
+                        onTap = { onChipTap(HomeFilter.CurrencyReview) },
+                    )
+                )
+            }
+            StatusFilterRow(specs = statusChips)
+
+            CategoryBreakdownRow(
+                breakdown = state.breakdown,
+                amountFormatter = ::formatMyr,
+                isSelected = { entry ->
+                    val f = state.filter
+                    when {
+                        entry.category == null -> f is HomeFilter.Unverified
+                        else -> f is HomeFilter.Category && f.id == entry.category.id
+                    }
+                },
+                onChipTap = { entry ->
+                    val target = if (entry.category == null) {
+                        HomeFilter.Unverified
+                    } else {
+                        HomeFilter.Category(entry.category.id)
+                    }
+                    onChipTap(target)
+                },
+            )
             HorizontalDivider()
             state.bannerCurrency?.let { offer ->
                 CurrencyReviewBanner(
@@ -161,14 +200,6 @@ fun HomeScreen(
                     onDismiss = { onDismissBanner(offer.currency) },
                 )
             }
-            FilterRow(
-                filter = state.filter,
-                categories = state.categories,
-                hasUnverified = state.breakdown.any { it.category == null && it.totalMinor > 0 },
-                pendingCount = state.pendingCount,
-                onFilterChange = onFilterChange,
-            )
-            HorizontalDivider()
             if (state.days.isEmpty()) {
                 EmptyState(state)
             } else {
@@ -234,10 +265,13 @@ private fun MonthTotalHeader(totalMinor: Long, transactionCount: Int) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CategoryBreakdownRow(
     breakdown: List<CategoryBreakdownEntry>,
     amountFormatter: (Long) -> String,
+    isSelected: (CategoryBreakdownEntry) -> Boolean,
+    onChipTap: (CategoryBreakdownEntry) -> Unit,
 ) {
     if (breakdown.isEmpty()) return
     LazyRow(
@@ -245,8 +279,9 @@ internal fun CategoryBreakdownRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(breakdown) { entry ->
-            AssistChip(
-                onClick = { /* TODO: tap to filter to this category — wire when filter is in scope */ },
+            FilterChip(
+                selected = isSelected(entry),
+                onClick = { onChipTap(entry) },
                 leadingIcon = {
                     val color = entry.category?.color?.let(::Color) ?: MaterialTheme.colorScheme.outline
                     Box(modifier = Modifier.size(10.dp).background(color, CircleShape))
@@ -255,62 +290,35 @@ internal fun CategoryBreakdownRow(
                     val name = entry.category?.name ?: "Unverified"
                     Text("$name  ${amountFormatter(entry.totalMinor)}")
                 },
-                colors = AssistChipDefaults.assistChipColors(),
             )
         }
     }
 }
 
+/**
+ * Shared spec for the thin status-filter row above [CategoryBreakdownRow]. Each spec is
+ * one chip; the row only renders when at least one spec is present (callers omit chips
+ * whose underlying count is zero, so an empty list means "row hides itself").
+ */
+internal data class StatusChipSpec(
+    val label: String,
+    val selected: Boolean,
+    val onTap: () -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilterRow(
-    filter: HomeFilter,
-    categories: List<Category>,
-    hasUnverified: Boolean,
-    pendingCount: Int,
-    onFilterChange: (HomeFilter) -> Unit,
-) {
+internal fun StatusFilterRow(specs: List<StatusChipSpec>) {
+    if (specs.isEmpty()) return
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
+        items(specs) { spec ->
             FilterChip(
-                selected = filter is HomeFilter.All,
-                onClick = { onFilterChange(HomeFilter.All) },
-                label = { Text("All") },
-            )
-        }
-        if (pendingCount > 0) {
-            item {
-                FilterChip(
-                    selected = filter is HomeFilter.Pending,
-                    onClick = { onFilterChange(HomeFilter.Pending) },
-                    label = { Text("Pending ($pendingCount)") },
-                )
-            }
-        }
-        if (hasUnverified) {
-            item {
-                FilterChip(
-                    selected = filter is HomeFilter.Unverified,
-                    onClick = { onFilterChange(HomeFilter.Unverified) },
-                    label = { Text("Unverified") },
-                )
-            }
-        }
-        item {
-            FilterChip(
-                selected = filter == HomeFilter.CurrencyReview,
-                onClick = { onFilterChange(HomeFilter.CurrencyReview) },
-                label = { Text("Currency review") },
-            )
-        }
-        items(categories, key = { it.id }) { c ->
-            FilterChip(
-                selected = filter is HomeFilter.Category && filter.id == c.id,
-                onClick = { onFilterChange(HomeFilter.Category(c.id)) },
-                label = { Text(c.name) },
+                selected = spec.selected,
+                onClick = spec.onTap,
+                label = { Text(spec.label) },
             )
         }
     }

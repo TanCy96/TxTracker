@@ -44,4 +44,22 @@ class CategoryFilterSnapBackTest {
             assertThat(result).isEqualTo(f)
         }
     }
+
+    @Test
+    fun `foreign category filter snaps to All when chip is gone`() {
+        val result = snapStaleForeignCategoryToAll(
+            filter = cy.txtracker.ui.foreign.ForeignFilter.Category(99L),
+            breakdown = listOf(foodEntry),
+        )
+        assertThat(result).isEqualTo(cy.txtracker.ui.foreign.ForeignFilter.All)
+    }
+
+    @Test
+    fun `foreign category filter survives when chip is present`() {
+        val result = snapStaleForeignCategoryToAll(
+            filter = cy.txtracker.ui.foreign.ForeignFilter.Category(5L),
+            breakdown = listOf(foodEntry),
+        )
+        assertThat(result).isEqualTo(cy.txtracker.ui.foreign.ForeignFilter.Category(5L))
+    }
 }
