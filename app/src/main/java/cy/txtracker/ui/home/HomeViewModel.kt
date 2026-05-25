@@ -1,4 +1,4 @@
-package cy.txtracker.ui.home
+﻿package cy.txtracker.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -36,7 +36,7 @@ class HomeViewModel @Inject constructor(
     private val _yearMonth = MutableStateFlow(YearMonth.current())
     private val _filter = MutableStateFlow<HomeFilter>(HomeFilter.All)
 
-    /** Banner offer — derived independently from currency-review rows + dismissed prefs. */
+    /** Banner offer â€” derived independently from currency-review rows + dismissed prefs. */
     private val _bannerOffer: StateFlow<BannerOffer?> =
         combine(
             repository.observeCurrencyReviewTransactions(),
@@ -191,8 +191,8 @@ class HomeViewModel @Inject constructor(
                     .thenBy { it.category?.sortOrder ?: Int.MAX_VALUE },
             )
 
-        // 2. Snap a stale category filter back to All. Writes back to _filter so the next emit
-        //    sees the corrected value; this lambda's local `filter` is already captured.
+        // 2. Snap a stale category filter back to All. Writes back so the next flatMapLatest emit
+        //    carries the corrected value; this invocation continues with `filter` as-is.
         val effectiveFilter = snapStaleHomeCategoryToAll(filter, breakdown)
         if (effectiveFilter != filter) {
             _filter.value = effectiveFilter
@@ -265,7 +265,7 @@ class HomeViewModel @Inject constructor(
      * banner flow via [_bannerOffer] which re-evaluates whenever parked rows or prefs change.
      *
      * NOTE: "no active trip" is approximated here by checking if the currency appears in the
-     * dismissed set — the real trip check happens asynchronously via the flow in the ViewModel's
+     * dismissed set â€” the real trip check happens asynchronously via the flow in the ViewModel's
      * init block. The banner flow uses this same approach: dismissed == no active trip check
      * needed for the in-memory flow; the ViewModel's [openTrip] clears dismissal so the check
      * stays coherent.
@@ -290,3 +290,4 @@ class HomeViewModel @Inject constructor(
         const val STOP_TIMEOUT_MS = 5_000L
     }
 }
+
