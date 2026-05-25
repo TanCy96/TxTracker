@@ -1,6 +1,5 @@
 package cy.txtracker.ui.foreign
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,8 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -18,7 +15,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,11 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import cy.txtracker.data.Category
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.ui.edit.EditTransactionSheet
 import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.home.CategoryBreakdownRow
+import cy.txtracker.ui.home.StatusChipSpec
+import cy.txtracker.ui.home.StatusFilterRow
 import cy.txtracker.ui.home.TransactionList
 import cy.txtracker.ui.manual.AddManualSheet
 import kotlin.time.Duration.Companion.seconds
@@ -193,17 +190,40 @@ private fun LoadedContent(
             totalMinor = state.totalMinor,
             transactionCount = state.transactionCount,
         )
+
+        val onChipTap: (ForeignFilter) -> Unit = { target ->
+            onFilterChange(if (state.filter == target) ForeignFilter.All else target)
+        }
+
+        val statusChips = buildList {
+            if (state.pendingCount > 0) add(
+                StatusChipSpec(
+                    label = "Pending (${state.pendingCount})",
+                    selected = state.filter is ForeignFilter.Pending,
+                    onTap = { onChipTap(ForeignFilter.Pending) },
+                )
+            )
+        }
+        StatusFilterRow(specs = statusChips)
+
         CategoryBreakdownRow(
             breakdown = state.breakdown,
             amountFormatter = { amt -> formatAmount(amt, state.trip.displaySymbol) },
-        )
-        HorizontalDivider()
-        ForeignFilterRow(
-            filter = state.filter,
-            categories = state.categories,
-            hasUnverified = state.breakdown.any { it.category == null && it.totalMinor > 0 },
-            pendingCount = state.pendingCount,
-            onFilterChange = onFilterChange,
+            isSelected = { entry ->
+                val f = state.filter
+                when {
+                    entry.category == null -> f is ForeignFilter.Unverified
+                    else -> f is ForeignFilter.Category && f.id == entry.category.id
+                }
+            },
+            onChipTap = { entry ->
+                val target = if (entry.category == null) {
+                    ForeignFilter.Unverified
+                } else {
+                    ForeignFilter.Category(entry.category.id)
+                }
+                onChipTap(target)
+            },
         )
         HorizontalDivider()
         if (state.days.isEmpty()) {
@@ -240,54 +260,6 @@ private fun TripTotalHeader(trip: TripDescriptor, totalMinor: Long, transactionC
                 text = if (transactionCount == 1) "1 transaction" else "$transactionCount transactions",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ForeignFilterRow(
-    filter: ForeignFilter,
-    categories: List<Category>,
-    hasUnverified: Boolean,
-    pendingCount: Int,
-    onFilterChange: (ForeignFilter) -> Unit,
-) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item {
-            FilterChip(
-                selected = filter is ForeignFilter.All,
-                onClick = { onFilterChange(ForeignFilter.All) },
-                label = { Text("All") },
-            )
-        }
-        if (pendingCount > 0) {
-            item {
-                FilterChip(
-                    selected = filter is ForeignFilter.Pending,
-                    onClick = { onFilterChange(ForeignFilter.Pending) },
-                    label = { Text("Pending ($pendingCount)") },
-                )
-            }
-        }
-        if (hasUnverified) {
-            item {
-                FilterChip(
-                    selected = filter is ForeignFilter.Unverified,
-                    onClick = { onFilterChange(ForeignFilter.Unverified) },
-                    label = { Text("Unverified") },
-                )
-            }
-        }
-        items(categories, key = { it.id }) { c ->
-            FilterChip(
-                selected = filter is ForeignFilter.Category && filter.id == c.id,
-                onClick = { onFilterChange(ForeignFilter.Category(c.id)) },
-                label = { Text(c.name) },
             )
         }
     }

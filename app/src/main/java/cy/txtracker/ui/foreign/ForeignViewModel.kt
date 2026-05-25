@@ -11,6 +11,7 @@ import cy.txtracker.parsing.Currencies
 import cy.txtracker.ui.home.CategoryBreakdownEntry
 import cy.txtracker.ui.home.DayGroup
 import cy.txtracker.ui.home.TransactionWithCategory
+import cy.txtracker.ui.home.snapStaleForeignCategoryToAll
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -92,24 +93,8 @@ class ForeignViewModel @Inject constructor(
     ): ForeignUiState.Loaded {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
-        val filtered = when (filter) {
-            ForeignFilter.All -> joined
-            ForeignFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
-            ForeignFilter.Pending -> joined.filter { it.transaction.needsVerification }
-            is ForeignFilter.Category -> joined.filter { it.transaction.categoryId == filter.id }
-        }
 
-        // Day groups mirror Home: newest day first; within a day, newest occurredAt first
-        // (groupBy preserves the input order which is already DESC from the DAO).
-        val days = filtered
-            .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
-            .toSortedMap(reverseOrder())
-            .map { (date, list) -> DayGroup(date, list) }
-
-        // Breakdown is computed in-memory from the trip's rows rather than via a SQL
-        // GROUP BY; trips are small enough that the saving isn't worth a second query.
-        // Note: we sum the FULL trip's rows (not the filtered subset) so the chips
-        // continue to reflect the trip-wide totals as the user toggles filters.
+        // Breakdown FIRST so snap-back can consult it.
         val breakdown = transactions
             .filter { it.direction == cy.txtracker.data.Direction.OUT }
             .groupBy { it.categoryId }
@@ -120,6 +105,23 @@ class ForeignViewModel @Inject constructor(
                 compareByDescending<CategoryBreakdownEntry> { it.category != null }
                     .thenBy { it.category?.sortOrder ?: Int.MAX_VALUE },
             )
+
+        val effectiveFilter = snapStaleForeignCategoryToAll(filter, breakdown)
+        if (effectiveFilter != filter) {
+            _filter.value = effectiveFilter
+        }
+
+        val filtered = when (effectiveFilter) {
+            ForeignFilter.All -> joined
+            ForeignFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
+            ForeignFilter.Pending -> joined.filter { it.transaction.needsVerification }
+            is ForeignFilter.Category -> joined.filter { it.transaction.categoryId == effectiveFilter.id }
+        }
+
+        val days = filtered
+            .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
+            .toSortedMap(reverseOrder())
+            .map { (date, list) -> DayGroup(date, list) }
 
         val total = transactions
             .filter { it.direction == cy.txtracker.data.Direction.OUT }
@@ -137,7 +139,7 @@ class ForeignViewModel @Inject constructor(
             ),
             tripIndex = tripIndex,
             tripCount = trips.size,
-            filter = filter,
+            filter = effectiveFilter,
             totalMinor = total,
             transactionCount = transactions.size,
             breakdown = breakdown,
