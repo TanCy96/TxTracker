@@ -55,6 +55,8 @@ data class HomeUiState(
     /** merchantNormalized -> user note. Used by the home row to show context inline. */
     val notesByMerchant: Map<String, String>,
     val pendingCount: Int,
+    /** Count of MYR transactions awaiting currency confirmation. Drives the visibility of the
+     *  Currency-review filter chip in the breakdown header — chip hides when count is 0. */
     val currencyReviewCount: Int,
     val isLoading: Boolean,
     /** Non-null when there are parked currency rows for a currency with no active trip and the

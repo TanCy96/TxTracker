@@ -1,4 +1,4 @@
-package cy.txtracker.ui.home
+﻿package cy.txtracker.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -35,7 +36,7 @@ class HomeViewModel @Inject constructor(
     private val _yearMonth = MutableStateFlow(YearMonth.current())
     private val _filter = MutableStateFlow<HomeFilter>(HomeFilter.All)
 
-    /** Banner offer — derived independently from currency-review rows + dismissed prefs. */
+    /** Banner offer â€” derived independently from currency-review rows + dismissed prefs. */
     private val _bannerOffer: StateFlow<BannerOffer?> =
         combine(
             repository.observeCurrencyReviewTransactions(),
@@ -47,6 +48,15 @@ class HomeViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = null,
         )
+
+    private val _currencyReviewCount: StateFlow<Int> =
+        repository.observeCurrencyReviewTransactions()
+            .map { it.size }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = 0,
+            )
 
     init {
         // Deep-link arrives via DeeplinkBus from MainActivity intent extras (e.g. user
@@ -67,18 +77,20 @@ class HomeViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<HomeUiState> =
-        combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer) { ym, filter, cats, banner ->
+        combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer, _currencyReviewCount) { ym, filter, cats, banner, crCount ->
             object {
                 val yearMonth = ym
                 val filter = filter
                 val categories = cats
                 val banner = banner
+                val currencyReviewCount = crCount
             }
         }.flatMapLatest { params ->
             val ym = params.yearMonth
             val filter = params.filter
             val categories = params.categories
             val banner = params.banner
+            val currencyReviewCount = params.currencyReviewCount
 
             if (filter == HomeFilter.CurrencyReview) {
                 // Currency-review filter: show all parked rows regardless of month
@@ -92,6 +104,7 @@ class HomeViewModel @Inject constructor(
                         transactions = txs,
                         notes = notes,
                         banner = banner,
+                        currencyReviewCount = currencyReviewCount,
                     )
                 }
             } else {
@@ -112,6 +125,7 @@ class HomeViewModel @Inject constructor(
                         monthTotal = total,
                         notes = notes,
                         banner = banner,
+                        currencyReviewCount = currencyReviewCount,
                     )
                 }
             }
@@ -164,32 +178,42 @@ class HomeViewModel @Inject constructor(
         monthTotal: Long,
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
+        currencyReviewCount: Int,
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
-        val currencyReviewCount = joined.count { it.transaction.needsCurrencyConfirmation }
-        val filtered = when (filter) {
+
+        // 1. Compute breakdown FIRST so we can consult it for snap-back below.
+        val breakdown = totals
+            .map { CategoryBreakdownEntry(category = it.categoryId?.let(byId::get), totalMinor = it.totalMinor) }
+            .sortedWith(
+                compareByDescending<CategoryBreakdownEntry> { it.category != null }
+                    .thenBy { it.category?.sortOrder ?: Int.MAX_VALUE },
+            )
+
+        // 2. Snap a stale category filter back to All. Writes back so the next flatMapLatest emit
+        //    carries the corrected value; this invocation continues with `filter` as-is.
+        val effectiveFilter = snapStaleHomeCategoryToAll(filter, breakdown)
+        if (effectiveFilter != filter) {
+            _filter.value = effectiveFilter
+        }
+
+        // 3. Filter / group using the effective filter.
+        val filtered = when (effectiveFilter) {
             HomeFilter.All -> joined
             HomeFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
             HomeFilter.Pending -> joined.filter { it.transaction.needsVerification }
             HomeFilter.CurrencyReview -> joined.filter { it.transaction.needsCurrencyConfirmation }
-            is HomeFilter.Category -> joined.filter { it.transaction.categoryId == filter.id }
+            is HomeFilter.Category -> joined.filter { it.transaction.categoryId == effectiveFilter.id }
         }
         val days = filtered
             .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
             .toSortedMap(reverseOrder())
             .map { (date, list) -> DayGroup(date, list) }
 
-        val breakdown = totals
-            .map { CategoryBreakdownEntry(category = it.categoryId?.let(byId::get), totalMinor = it.totalMinor) }
-            .sortedWith(
-                compareByDescending<CategoryBreakdownEntry> { it.category != null } // categorized first
-                    .thenBy { it.category?.sortOrder ?: Int.MAX_VALUE },
-            )
-
         return HomeUiState(
             yearMonth = yearMonth,
-            filter = filter,
+            filter = effectiveFilter,
             totalMinor = monthTotal,
             transactionCount = transactions.size,
             breakdown = breakdown,
@@ -209,6 +233,7 @@ class HomeViewModel @Inject constructor(
         transactions: List<Transaction>,
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
+        currencyReviewCount: Int,
     ): HomeUiState {
         if (transactions.isEmpty() && _filter.value == HomeFilter.CurrencyReview) {
             _filter.value = HomeFilter.All
@@ -230,7 +255,7 @@ class HomeViewModel @Inject constructor(
             days = days,
             notesByMerchant = notes.associate { it.merchantNormalized to it.note },
             pendingCount = transactions.count { it.needsVerification },
-            currencyReviewCount = transactions.size,
+            currencyReviewCount = currencyReviewCount,
             isLoading = false,
             bannerCurrency = banner,
         )
@@ -243,7 +268,7 @@ class HomeViewModel @Inject constructor(
      * banner flow via [_bannerOffer] which re-evaluates whenever parked rows or prefs change.
      *
      * NOTE: "no active trip" is approximated here by checking if the currency appears in the
-     * dismissed set — the real trip check happens asynchronously via the flow in the ViewModel's
+     * dismissed set â€” the real trip check happens asynchronously via the flow in the ViewModel's
      * init block. The banner flow uses this same approach: dismissed == no active trip check
      * needed for the in-memory flow; the ViewModel's [openTrip] clears dismissal so the check
      * stays coherent.
@@ -268,3 +293,4 @@ class HomeViewModel @Inject constructor(
         const val STOP_TIMEOUT_MS = 5_000L
     }
 }
+
