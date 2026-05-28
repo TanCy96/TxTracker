@@ -22,14 +22,17 @@ interface FundingSourceDao {
     @Query(
         """
         SELECT * FROM funding_sources
-        WHERE (sourceAppHint IS :sourceAppHint OR (sourceAppHint IS NULL AND :sourceAppHint IS NULL))
-          AND (last4 IS :last4 OR (last4 IS NULL AND :last4 IS NULL))
+        WHERE sourceAppHint IS :sourceAppHint
+          AND last4 IS :last4
         LIMIT 1
         """,
     )
     suspend fun findByKey(sourceAppHint: String?, last4: String?): FundingSource?
 
-    /** Default Cash source resolution. Lowest-id CASH row wins. */
+    /**
+     * Default Cash source resolution. Lowest-id CASH row wins.
+     * @return null only if the seeded CASH row is absent (migration not yet run or seed failed).
+     */
     @Query("SELECT * FROM funding_sources WHERE kind = 'CASH' ORDER BY id ASC LIMIT 1")
     suspend fun getDefaultCash(): FundingSource?
 

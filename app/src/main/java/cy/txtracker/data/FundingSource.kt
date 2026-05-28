@@ -10,7 +10,7 @@ import kotlinx.datetime.Instant
  * filter and the CSV `Source` column. Kind is mutable on a given FundingSource — when the
  * user corrects an auto-classifier guess in Settings, this is the field that changes.
  */
-enum class FundingSourceKind { CREDIT_CARD, EWALLET, DEBIT_BANK, CASH }
+enum class FundingSourceKind { CREDIT_CARD, E_WALLET, DEBIT_BANK, CASH }
 
 /**
  * A specific account/card/wallet identity that funds transactions. Multiple transactions can
