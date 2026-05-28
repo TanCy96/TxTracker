@@ -76,6 +76,12 @@ class TxIngestor @Inject constructor(
                 if (incomingTier == SourceTier.USER_FACING &&
                     existingTier == SourceTier.CARD_LAYER
                 ) {
+                    // Intentionally not passing fundingSourceId here. Spec invariant: when two
+                    // notifications for the same payment collapse, the surviving row keeps the
+                    // FundingSource of whichever notification was classified first (typically
+                    // the GWallet/CARD_LAYER push, which arrives seconds before the bank SMS
+                    // and has a richer card-name string via classifier rule 1). The just-
+                    // classified fundingSourceId from the incoming notification is dropped.
                     repository.promoteSourceFields(
                         id = existing.id,
                         merchantRaw = parsed.merchantRaw,

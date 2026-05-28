@@ -81,6 +81,7 @@ class TxIngestorTest {
         assertThat(row.currency).isEqualTo("MYR")
         assertThat(row.direction).isEqualTo(Direction.OUT)
         assertThat(row.sourceApp).isEqualTo("com.google.android.apps.walletnfcrel")
+        assertThat(row.fundingSourceId).isNotNull()
     }
 
     @Test
