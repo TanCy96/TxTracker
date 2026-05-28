@@ -30,7 +30,7 @@ import kotlinx.datetime.toLocalDateTime
  * The `Source` column shows the funding-source bucket label(s) for all transactions in that
  * day. When all transactions share the same bucket, the single label is shown (e.g.
  * `Credit Card`). When the day has transactions from multiple buckets, the distinct labels
- * are joined with `"/"` in canonical kind order. Unlinked transactions contribute nothing to
+ * are joined with `" / "` in canonical kind order. Unlinked transactions contribute nothing to
  * the Source cell.
  */
 @Singleton
@@ -117,7 +117,7 @@ fun writeCsv(
  *   - The `description` column joins all non-blank descriptions with `", "`, in
  *     chronological order. Blanks are skipped.
  *   - The `Source` column shows the distinct funding-source bucket label(s) for all
- *     transactions in that day, joined with `"/"` in canonical kind order. Unlinked
+ *     transactions in that day, joined with `" / "` in canonical kind order. Unlinked
  *     transactions (null fundingSourceId or unresolved id) are excluded from the cell.
  *   - Each category column is empty if the day had no tx in that category; the literal
  *     amount if exactly one; a spreadsheet formula `=A+B+C` if more than one. The formula
@@ -162,7 +162,7 @@ fun buildCsv(
             .mapNotNull { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } }
             .distinct()
             .sortedBy { CANONICAL_KIND_ORDER.indexOf(it) }
-        val sourceCell = dayBuckets.joinToString("/") { bucketLabel(it) }
+        val sourceCell = dayBuckets.joinToString(" / ") { bucketLabel(it) }
         sb.append(',').append(csvEscape(sourceCell))
 
         // Per-category columns.

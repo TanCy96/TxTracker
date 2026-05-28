@@ -322,8 +322,31 @@ class BuildCsvTest {
             ),
         )
         val rows = csv.trimEnd().lines()
-        // Both buckets appear, joined with "/"
-        assertThat(rows[1]).contains("Credit Card/E-Wallet")
+        // Both buckets appear, joined with " / " (space-padded)
+        assertThat(rows[1]).contains("Credit Card / E-Wallet")
+    }
+
+    @Test
+    fun source_cell_uses_padded_slash_to_disambiguate_from_debit_transfer_label() {
+        // Regression: the DEBIT_BANK label is "Debit/Transfer" (contains a /). The Source
+        // cell separator must use a space-padded slash so a day mixing Credit Card and
+        // Debit/Transfer renders unambiguously.
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 1000, merchant = "A", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-05-09T04:00:00Z"), fundingSourceId = 10L),
+                tx(amountMinor = 500, merchant = "B", categoryId = null,
+                    occurredAt = Instant.parse("2026-05-09T08:00:00Z"), fundingSourceId = 20L),
+            ),
+            categories = categories,
+            fundingSourcesById = mapOf(
+                10L to fixtureFundingSource(id = 10L, kind = FundingSourceKind.CREDIT_CARD),
+                20L to fixtureFundingSource(id = 20L, kind = FundingSourceKind.DEBIT_BANK),
+            ),
+        )
+        val rows = csv.trimEnd().lines()
+        // Day 1 row should contain the padded-slash join, unambiguous from the embedded slash.
+        assertThat(rows[1]).contains("Credit Card / Debit/Transfer")
     }
 }
 
