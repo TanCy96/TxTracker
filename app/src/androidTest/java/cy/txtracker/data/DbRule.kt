@@ -19,6 +19,12 @@ class DbRule : ExternalResource() {
                 object : androidx.room.RoomDatabase.Callback() {
                     override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                         TxDatabase.seedCategories(db)
+                        val now = System.currentTimeMillis()
+                        db.execSQL(
+                            "INSERT INTO funding_sources(kind, displayName, last4, sourceAppHint, isUserNamed, createdAt, updatedAt) " +
+                                "VALUES('CASH', 'Cash', NULL, NULL, 0, ?, ?)",
+                            arrayOf<Any?>(now, now),
+                        )
                     }
                 },
             )
@@ -41,4 +47,5 @@ class DbRule : ExternalResource() {
     val rejectedSourceDao: RejectedSourceDao get() = db.rejectedSourceDao()
     val trackedCurrencyDao: TrackedCurrencyDao get() = db.trackedCurrencyDao()
     val tripWindowDao: TripWindowDao get() = db.tripWindowDao()
+    val fundingSourceDao: FundingSourceDao get() = db.fundingSourceDao()
 }

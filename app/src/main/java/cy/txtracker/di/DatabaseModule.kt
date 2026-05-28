@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import cy.txtracker.data.CapturedNotificationDao
 import cy.txtracker.data.CategoryDao
 import cy.txtracker.data.DescriptionMappingDao
+import cy.txtracker.data.FundingSourceDao
 import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.PackageTextRewriteDao
@@ -36,6 +37,12 @@ object DatabaseModule {
                 object : androidx.room.RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         TxDatabase.seedCategories(db)
+                        val now = System.currentTimeMillis()
+                        db.execSQL(
+                            "INSERT INTO funding_sources(kind, displayName, last4, sourceAppHint, isUserNamed, createdAt, updatedAt) " +
+                                "VALUES('CASH', 'Cash', NULL, NULL, 0, ?, ?)",
+                            arrayOf<Any?>(now, now),
+                        )
                     }
 
                     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -49,6 +56,16 @@ object DatabaseModule {
                         val count = cursor.use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
                         if (count == 0) {
                             TxDatabase.seedCategories(db)
+                        }
+                        val cashCursor = db.query("SELECT COUNT(*) FROM funding_sources WHERE kind = 'CASH'")
+                        val cashCount = cashCursor.use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                        if (cashCount == 0) {
+                            val now = System.currentTimeMillis()
+                            db.execSQL(
+                                "INSERT INTO funding_sources(kind, displayName, last4, sourceAppHint, isUserNamed, createdAt, updatedAt) " +
+                                    "VALUES('CASH', 'Cash', NULL, NULL, 0, ?, ?)",
+                                arrayOf<Any?>(now, now),
+                            )
                         }
                     }
                 },
@@ -65,6 +82,7 @@ object DatabaseModule {
                 MIGRATION_6_7,
                 MIGRATION_7_8,
                 MIGRATION_8_9,
+                MIGRATION_9_10,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -110,6 +128,9 @@ object DatabaseModule {
     @Provides
     fun providePackageTextRewriteDao(db: TxDatabase): PackageTextRewriteDao =
         db.packageTextRewriteDao()
+
+    @Provides
+    fun provideFundingSourceDao(db: TxDatabase): FundingSourceDao = db.fundingSourceDao()
 }
 
 /**
@@ -336,6 +357,53 @@ private val MIGRATION_8_9 = object : Migration(8, 9) {
             DELETE FROM transactions
             WHERE merchantRaw LIKE '% (review)' AND rawText IS NOT NULL
             """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * v10 introduces funding-source tracking. Adds the `funding_sources` table, a nullable
+ * `fundingSourceId` FK on `transactions`, and seeds a single Cash source so manual entries
+ * and the backfill action have a default to attach to.
+ *
+ * Existing transactions are left with `fundingSourceId = NULL` and are linked on demand by
+ * the Settings -> "Classify existing transactions" action.
+ */
+private val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `funding_sources` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `kind` TEXT NOT NULL,
+                `displayName` TEXT NOT NULL,
+                `last4` TEXT,
+                `sourceAppHint` TEXT,
+                `isUserNamed` INTEGER NOT NULL DEFAULT 0,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_funding_sources_sourceAppHint_last4` " +
+                "ON `funding_sources`(`sourceAppHint`, `last4`)",
+        )
+        db.execSQL(
+            "ALTER TABLE `transactions` ADD COLUMN `fundingSourceId` INTEGER " +
+                "REFERENCES `funding_sources`(`id`) ON DELETE SET NULL",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_transactions_fundingSourceId` " +
+                "ON `transactions`(`fundingSourceId`)",
+        )
+        val now = System.currentTimeMillis()
+        db.execSQL(
+            """
+            INSERT INTO funding_sources(kind, displayName, last4, sourceAppHint, isUserNamed, createdAt, updatedAt)
+            VALUES ('CASH', 'Cash', NULL, NULL, 0, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>(now, now),
         )
     }
 }

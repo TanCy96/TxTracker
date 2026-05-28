@@ -19,12 +19,19 @@ const val MANUAL_SOURCE_APP = "manual"
             childColumns = ["categoryId"],
             onDelete = ForeignKey.SET_NULL,
         ),
+        ForeignKey(
+            entity = FundingSource::class,
+            parentColumns = ["id"],
+            childColumns = ["fundingSourceId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
     ],
     indices = [
         Index("occurredAt"),
         Index("categoryId"),
         Index("merchantNormalized"),
         Index(value = ["notificationDedupeKey"], unique = true),
+        Index("fundingSourceId"),
     ],
 )
 data class Transaction(
@@ -73,6 +80,13 @@ data class Transaction(
      * reparse until the user has intentionally fixed them.
      */
     val merchantUserEdited: Boolean = false,
+    /**
+     * FK to [FundingSource.id]. Null for: existing rows pre-v10 upgrade until the user runs the
+     * Settings "Classify existing transactions" backfill action, and for any notification that
+     * the classifier could not link (very rare — the catch-all rule always produces a per-bank
+     * "unknown account" source).
+     */
+    val fundingSourceId: Long? = null,
 )
 
 @Entity(

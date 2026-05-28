@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    version = 9,
+    version = 10,
     exportSchema = true,
     entities = [
         Transaction::class,
@@ -22,6 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrackedCurrency::class,
         TripWindow::class,
         PackageTextRewrite::class,
+        FundingSource::class,
     ],
 )
 @TypeConverters(Converters::class)
@@ -38,6 +39,7 @@ abstract class TxDatabase : RoomDatabase() {
     abstract fun trackedCurrencyDao(): TrackedCurrencyDao
     abstract fun tripWindowDao(): TripWindowDao
     abstract fun packageTextRewriteDao(): PackageTextRewriteDao
+    abstract fun fundingSourceDao(): FundingSourceDao
 
     companion object {
         const val DB_NAME = "txtracker.db"
