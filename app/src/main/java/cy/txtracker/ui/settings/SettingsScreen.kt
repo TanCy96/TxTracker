@@ -61,6 +61,7 @@ fun SettingsScreen(
     onRewritesClick: () -> Unit,
     onNotificationPoolClick: () -> Unit,
     onTrackedAppsClick: () -> Unit,
+    onFundingSourcesClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -254,6 +255,14 @@ fun SettingsScreen(
                     Text("Manage tracked currencies and trip windows.")
                 },
                 modifier = Modifier.fillMaxWidth().clickableRow(onForeignCurrenciesClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Funding sources") },
+                supportingContent = {
+                    Text("Cards, wallets, and accounts that funded your transactions.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(onFundingSourcesClick),
             )
             HorizontalDivider()
             ListItem(

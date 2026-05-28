@@ -42,6 +42,7 @@ import cy.txtracker.ui.settings.capture.TrackedAppsScreen
 import cy.txtracker.ui.settings.currencies.CurrenciesScreen
 import cy.txtracker.ui.settings.currencies.TripHistoryScreen
 import cy.txtracker.ui.settings.descriptions.DescriptionMappingsScreen
+import cy.txtracker.ui.settings.funding.FundingSourcesScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
 import cy.txtracker.ui.settings.rewrites.RewritesScreen
 import cy.txtracker.ui.settings.notifications.NotificationsScreen
@@ -69,6 +70,7 @@ private object Routes {
     const val SETTINGS_POOL = "settings/pool"
     const val SETTINGS_POOL_PACKAGE = "settings/pool/{packageName}"
     const val SETTINGS_TRACKED_APPS = "settings/tracked-apps"
+    const val SETTINGS_FUNDING_SOURCES = "settings/funding-sources"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
@@ -213,6 +215,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                     onRewritesClick = { nav.navigate(Routes.SETTINGS_REWRITES) },
                     onNotificationPoolClick = { nav.navigate(Routes.SETTINGS_POOL) },
                     onTrackedAppsClick = { nav.navigate(Routes.SETTINGS_TRACKED_APPS) },
+                    onFundingSourcesClick = { nav.navigate(Routes.SETTINGS_FUNDING_SOURCES) },
                 )
             }
             composable(Routes.SETTINGS_CATEGORIES) {
@@ -259,6 +262,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                         nav.navigate("settings/pool/${Uri.encode(pkg)}")
                     },
                 )
+            }
+            composable(Routes.SETTINGS_FUNDING_SOURCES) {
+                FundingSourcesScreen(onBack = { nav.popBackStack() })
             }
         }
     }
