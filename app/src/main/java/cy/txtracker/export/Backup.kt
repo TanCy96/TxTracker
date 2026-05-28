@@ -5,6 +5,17 @@ import cy.txtracker.domain.TimeBucket
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
+@Serializable
+data class BackupFundingSource(
+    val kind: String,            // FundingSourceKind name
+    val displayName: String,
+    val last4: String?,
+    val sourceAppHint: String?,
+    val isUserNamed: Boolean,
+    val createdAt: Long,         // epoch ms
+    val updatedAt: Long,
+)
+
 /**
  * Wire format for the local JSON backup. Versioned so future changes to the schema can be
  * handled by reading the [version] field before deciding how to parse the rest.
@@ -30,6 +41,7 @@ data class Backup(
     val transactions: List<BackupTransaction> = emptyList(),
     val trackedCurrencies: List<BackupTrackedCurrency> = emptyList(),
     val tripWindows: List<BackupTripWindow> = emptyList(),
+    val fundingSources: List<BackupFundingSource> = emptyList(),
 ) {
     companion object {
         const val CURRENT_VERSION = 7
@@ -120,4 +132,6 @@ data class BackupTransaction(
     val notificationDedupeKey: String,
     val needsVerification: Boolean,
     val needsCurrencyConfirmation: Boolean = false,
+    /** "<sourceAppHint>|<last4>" — null when unlinked. Empty strings for null parts (e.g. Cash = "|"). */
+    val fundingSourceLookupKey: String? = null,
 )

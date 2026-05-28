@@ -104,6 +104,21 @@ class SettingsViewModel @Inject constructor(
 
     data class BackfillResult(val categoryRows: Int, val descriptionRows: Int)
 
+    private val _classifyResult = MutableStateFlow<Int?>(null)
+    val classifyResult: StateFlow<Int?> = _classifyResult.asStateFlow()
+
+    /**
+     * Runs the funding-source classifier over every transaction whose [fundingSourceId] is
+     * null. Surfaces the count of rows linked via [classifyResult] for a snackbar.
+     */
+    fun classifyExistingTransactions() {
+        viewModelScope.launch {
+            _classifyResult.value = repository.classifyAllUnlinkedTransactions()
+        }
+    }
+
+    fun consumeClassifyResult() { _classifyResult.value = null }
+
     private val _reparseResult = MutableStateFlow<cy.txtracker.data.ReparseResult?>(null)
     val reparseResult: StateFlow<cy.txtracker.data.ReparseResult?> = _reparseResult.asStateFlow()
 

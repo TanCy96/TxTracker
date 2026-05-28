@@ -1211,13 +1211,74 @@ class TransactionRepository @Inject constructor(
             )
         }
 
-        // 11. Transactions. Insert with IGNORE on the unique notificationDedupeKey index —
+        // 11. Funding sources. Match on (sourceAppHint, last4, displayName). On conflict, the
+        //     user-named row wins over auto-named; among rows of equal isUserNamed, the one
+        //     with the later updatedAt wins. On no match, insert as a new row.
+        //     Build a lookupKey -> local-id map for transaction linking below.
+        val existingFundingSources = fundingSourceDao.getAll()
+        // Key: (sourceAppHint, last4, displayName)
+        val existingFsTriple = existingFundingSources.associateBy { fs ->
+            Triple(fs.sourceAppHint, fs.last4, fs.displayName)
+        }
+        // lookupKey = "<sourceAppHint ?: "">|<last4 ?: "">" -> local id
+        val lookupKeyToId = mutableMapOf<String, Long>()
+        // Seed with existing rows first so unmodified local sources are always referenceable.
+        for (fs in existingFundingSources) {
+            val key = "${fs.sourceAppHint ?: ""}|${fs.last4 ?: ""}"
+            // If multiple local rows share the same lookup key, the last one wins here — that
+            // mirrors the first-arrival-wins invariant since the DB unique index on
+            // (sourceAppHint, last4) prevents duplicates in practice.
+            lookupKeyToId[key] = fs.id
+        }
+        for (bfs in backup.fundingSources) {
+            val triple = Triple(bfs.sourceAppHint, bfs.last4, bfs.displayName)
+            val existing = existingFsTriple[triple]
+            val backupUpdatedAt = Instant.fromEpochMilliseconds(bfs.updatedAt)
+            val backupCreatedAt = Instant.fromEpochMilliseconds(bfs.createdAt)
+            val backupKind = runCatching { FundingSourceKind.valueOf(bfs.kind) }.getOrNull()
+                ?: FundingSourceKind.CASH
+            val lookupKey = "${bfs.sourceAppHint ?: ""}|${bfs.last4 ?: ""}"
+            if (existing == null) {
+                // No match — insert a new row.
+                val newId = fundingSourceDao.insert(
+                    FundingSource(
+                        kind = backupKind,
+                        displayName = bfs.displayName,
+                        last4 = bfs.last4,
+                        sourceAppHint = bfs.sourceAppHint,
+                        isUserNamed = bfs.isUserNamed,
+                        createdAt = backupCreatedAt,
+                        updatedAt = backupUpdatedAt,
+                    ),
+                )
+                lookupKeyToId[lookupKey] = newId
+            } else {
+                // Match found. Prefer user-named; if equal, latest updatedAt wins.
+                val localWins = existing.isUserNamed && !bfs.isUserNamed ||
+                    existing.isUserNamed == bfs.isUserNamed && existing.updatedAt >= backupUpdatedAt
+                if (!localWins) {
+                    fundingSourceDao.update(
+                        existing.copy(
+                            kind = backupKind,
+                            displayName = bfs.displayName,
+                            isUserNamed = bfs.isUserNamed,
+                            updatedAt = backupUpdatedAt,
+                        ),
+                    )
+                }
+                // Either way, the local id is the authoritative one.
+                lookupKeyToId[lookupKey] = existing.id
+            }
+        }
+
+        // 12. Transactions. Insert with IGNORE on the unique notificationDedupeKey index —
         //     local transactions always win on conflict. Backup transactions whose
         //     categoryName doesn't resolve to a local category get inserted with
         //     categoryId = null (Unverified, same as a fresh capture).
         var transactionsAdded = 0
         for (bt in backup.transactions) {
             val categoryId = bt.categoryName?.let { categoriesByName[it]?.id }
+            val fundingSourceId = bt.fundingSourceLookupKey?.let { lookupKeyToId[it] }
             val rowId = transactionDao.insert(
                 Transaction(
                     amountMinor = bt.amountMinor,
@@ -1235,6 +1296,7 @@ class TransactionRepository @Inject constructor(
                     notificationDedupeKey = bt.notificationDedupeKey,
                     needsVerification = bt.needsVerification,
                     needsCurrencyConfirmation = bt.needsCurrencyConfirmation,
+                    fundingSourceId = fundingSourceId,
                 ),
             )
             if (rowId >= 0) transactionsAdded++

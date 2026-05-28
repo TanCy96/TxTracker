@@ -88,6 +88,7 @@ class CloudSyncScheduler @Inject constructor(
             "merchant_notes",
             "user_facing_sources",
             "approved_sources",
+            "funding_sources",
         )
         private val NETWORK_CONNECTED: Constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)

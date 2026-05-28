@@ -276,6 +276,56 @@ class BackupSerializationTest {
     }
 
     @Test
+    fun roundTrip_preserves_user_renamed_funding_source_and_link() {
+        val original = Backup(
+            exportedAt = Instant.parse("2026-05-28T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            fundingSources = listOf(
+                BackupFundingSource(
+                    kind = "CREDIT_CARD",
+                    displayName = "Personal Travel Visa",
+                    last4 = "1234",
+                    sourceAppHint = "com.hsbc.hsbcclassic",
+                    isUserNamed = true,
+                    createdAt = 1_700_000_000_000L,
+                    updatedAt = 1_700_500_000_000L,
+                ),
+            ),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 5000L,
+                    currency = "MYR",
+                    merchantRaw = "HSBC PURCHASE",
+                    merchantNormalized = "HSBC PURCHASE",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = Instant.parse("2026-05-01T10:00:00Z"),
+                    timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                    sourceApp = "com.hsbc.hsbcclassic",
+                    rawText = "Your HSBC card ending 1234 was charged RM 50.00",
+                    direction = cy.txtracker.data.Direction.OUT,
+                    createdAt = Instant.parse("2026-05-01T10:00:00Z"),
+                    notificationDedupeKey = "hsbc-test-key-001",
+                    needsVerification = false,
+                    fundingSourceLookupKey = "com.hsbc.hsbcclassic|1234",
+                ),
+            ),
+        )
+
+        val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        val decoded = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+
+        assertThat(decoded.fundingSources).hasSize(1)
+        assertThat(decoded.fundingSources.single().displayName).isEqualTo("Personal Travel Visa")
+        assertThat(decoded.fundingSources.single().isUserNamed).isTrue()
+        assertThat(decoded.transactions.first().fundingSourceLookupKey)
+            .isEqualTo("com.hsbc.hsbcclassic|1234")
+    }
+
+    @Test
     fun v4_backup_parses_with_empty_transactions_and_null_cutoff() {
         val v4Json = """
             {

@@ -266,6 +266,14 @@ fun SettingsScreen(
             )
             HorizontalDivider()
             ListItem(
+                headlineContent = { Text("Classify existing transactions") },
+                supportingContent = {
+                    Text("Auto-link unlinked rows to a funding source.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(viewModel::classifyExistingTransactions),
+            )
+            HorizontalDivider()
+            ListItem(
                 headlineContent = { Text("Push notifications") },
                 supportingContent = {
                     Text("Pending reminders, foreign-currency alerts, spending summaries.")
@@ -480,6 +488,14 @@ fun SettingsScreen(
                     }
                 },
             )
+        }
+
+        val classifyResult by viewModel.classifyResult.collectAsState()
+        classifyResult?.let { count ->
+            LaunchedEffect(count) {
+                snackbar.showSnackbar("$count rows linked")
+                viewModel.consumeClassifyResult()
+            }
         }
 
         val reparseResult by viewModel.reparseResult.collectAsState()

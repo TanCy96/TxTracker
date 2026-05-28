@@ -3,6 +3,7 @@ package cy.txtracker.export
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import cy.txtracker.data.FundingSourceDao
 import cy.txtracker.data.TrackedCurrencyDao
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.data.TripWindowDao
@@ -37,6 +38,7 @@ class BackupExporter @Inject constructor(
     private val repository: TransactionRepository,
     private val trackedCurrencyDao: TrackedCurrencyDao,
     private val tripWindowDao: TripWindowDao,
+    private val fundingSourceDao: FundingSourceDao,
 ) {
     suspend fun export(): Uri {
         val json = exportToJsonString(transactionCutoff = null)
@@ -63,6 +65,12 @@ class BackupExporter @Inject constructor(
             repository.getAllTransactionsOnceFrom(cutoffStart)
         } else {
             repository.getAllTransactionsOnce()
+        }
+
+        val fundingSources = fundingSourceDao.getAll()
+        // Build a map from id to lookup key so tx.fundingSourceId resolves in O(1).
+        val fundingSourceKeyById = fundingSources.associate { fs ->
+            fs.id to "${fs.sourceAppHint ?: ""}|${fs.last4 ?: ""}"
         }
 
         val backup = Backup(
@@ -134,6 +142,18 @@ class BackupExporter @Inject constructor(
                     notificationDedupeKey = tx.notificationDedupeKey,
                     needsVerification = tx.needsVerification,
                     needsCurrencyConfirmation = tx.needsCurrencyConfirmation,
+                    fundingSourceLookupKey = tx.fundingSourceId?.let { fundingSourceKeyById[it] },
+                )
+            },
+            fundingSources = fundingSources.map { fs ->
+                BackupFundingSource(
+                    kind = fs.kind.name,
+                    displayName = fs.displayName,
+                    last4 = fs.last4,
+                    sourceAppHint = fs.sourceAppHint,
+                    isUserNamed = fs.isUserNamed,
+                    createdAt = fs.createdAt.toEpochMilliseconds(),
+                    updatedAt = fs.updatedAt.toEpochMilliseconds(),
                 )
             },
             trackedCurrencies = trackedCurrencyDao.observeAll().first().map {
