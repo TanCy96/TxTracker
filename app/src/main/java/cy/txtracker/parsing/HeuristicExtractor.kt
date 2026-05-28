@@ -158,6 +158,15 @@ class HeuristicExtractor @Inject constructor() {
                 """\bat\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|via|using|by|accepted|successfully|completed|processed)\b|[\.\n,]|\s*$)""",
                 RegexOption.IGNORE_CASE,
             ),
+            // Wallet head-colon shape: "MERCHANT: RM<amt> ..." — TnG and other wallets put the
+            // merchant as the SUBJECT at the start of the body, not as the object of a preposition.
+            // Anchored to start-of-text and requires a currency-prefix amount immediately after
+            // the colon, so non-wallet "X:" prefixes (dates, labels) don't match. Placed last so
+            // existing `to MERCHANT` / `at MERCHANT` patterns still win when both shapes apply.
+            Regex(
+                """^(?<merchant>[^:\n]+?):\s+(?:RM|MYR|[£€¥₹₩₽฿$])""",
+                RegexOption.IGNORE_CASE,
+            ),
         )
     }
 }

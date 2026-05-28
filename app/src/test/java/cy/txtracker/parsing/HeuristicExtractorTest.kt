@@ -354,4 +354,31 @@ class HeuristicExtractorTest {
         assertThat(r.amountMinor).isEqualTo(116327L)
         assertThat(r.currency).isEqualTo("GBP")
     }
+
+    @Test
+    fun handles_tng_wallet_prefix_format_user_reported() {
+        // TnG wallet pushes the merchant as the SUBJECT at the start of the body, followed
+        // by a colon and then the amount: "MERCHANT: RM<amt> has been deducted ...". None of
+        // the to/at/@/in patterns anchor onto this shape because the merchant isn't the
+        // object of a preposition — it's the head. A dedicated wallet-prefix pattern is
+        // required to avoid falling through to UNDEFINED_MERCHANT.
+        val text = "Restoran Holiao Noodles Old Klang Road: RM45.60 has been deducted from " +
+            "your TNG e-wallet. Merchant Reference No. XXXXXXXX"
+        val r = extractor.extract(text, "my.com.tngdigital.ewallet", now)!!
+        assertThat(r.amountMinor).isEqualTo(4560L)
+        assertThat(r.currency).isEqualTo("MYR")
+        assertThat(r.merchantRaw).isEqualTo("Restoran Holiao Noodles Old Klang Road")
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
+
+    @Test
+    fun wallet_prefix_pattern_does_not_shadow_to_recipient_when_both_present() {
+        // Defensive: a text like "RECEIPT: paid RM 5 to JOHN" has both a head-colon and a
+        // `to X` clause. The existing `to X` recipient pattern must win because it's the
+        // more explicit recipient. The wallet pattern is placed LAST in RECIPIENT_PATTERNS
+        // for exactly this reason.
+        val text = "RECEIPT: paid RM 5.00 to JOHN"
+        val r = extractor.extract(text, "anything", now)!!
+        assertThat(r.merchantRaw).isEqualTo("JOHN")
+    }
 }
