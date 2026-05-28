@@ -71,6 +71,24 @@ class FundingSourceClassifier @Inject constructor(
             RegexOption.IGNORE_CASE,
         )
 
+        // Wallet packages that are themselves the funding source (NOT pass-through like
+        // GWallet/GPay — those are handled by rule 1, which extracts the underlying card).
+        // Reference SourcePackages.PERMISSIVE_PACKAGES for the canonical list; this is the
+        // subset that maps to E_WALLET. Update both when adding a new wallet.
+        private val EWALLET_PACKAGES = setOf(
+            SourcePackages.TOUCH_N_GO,
+            SourcePackages.GRAB,
+            "my.com.myboost",
+            "com.shopee.my",
+            "com.transferwise.android",
+            "com.wise.android",
+        )
+
+        private val DUITNOW_MARKERS = Regex(
+            """\b(?:DuitNow|FPX|Transfer|via\s+Mobile\s+Banking)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+
         /**
          * Pure detection — no DAO interaction. Splitting this out lets us unit-test the
          * rule table without a mocked DAO and lets the lookup-then-create code use the
@@ -120,8 +138,29 @@ class FundingSourceClassifier @Inject constructor(
                     sourceAppHint = sourceApp,
                 )
             }
-            // Rules 5-8 fall in here in Task 4. Placeholder fallback for this task so the
-            // method always returns:
+            // Rule 5: DuitNow / FPX / Transfer / "via Mobile Banking" — debit/transfer
+            // without a last-4. Per-bank "unknown account" placeholder; user can rename.
+            if (DUITNOW_MARKERS.containsMatchIn(text)) {
+                return FundingSourceDetection(
+                    kind = FundingSourceKind.DEBIT_BANK,
+                    displayName = "$bankLabel (unknown account)",
+                    last4 = null,
+                    sourceAppHint = sourceApp,
+                )
+            }
+            // Rule 6: known stored-value wallet app — E_WALLET. Last-4 stays null; the wallet
+            // identity is anchored by sourceApp alone.
+            if (sourceApp in EWALLET_PACKAGES) {
+                return FundingSourceDetection(
+                    kind = FundingSourceKind.E_WALLET,
+                    displayName = bankLabel,
+                    last4 = null,
+                    sourceAppHint = sourceApp,
+                )
+            }
+            // Rule 7: handled in classify() before detect() runs — manual entries short-
+            // circuit to the seeded Cash source. detect() never sees MANUAL_SOURCE_APP.
+            // Rule 8: catch-all. Per-bank "unknown account" with DEBIT_BANK.
             return FundingSourceDetection(
                 kind = FundingSourceKind.DEBIT_BANK,
                 displayName = "$bankLabel (unknown account)",
