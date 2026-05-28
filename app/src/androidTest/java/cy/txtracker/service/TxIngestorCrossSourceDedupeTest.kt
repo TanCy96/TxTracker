@@ -8,6 +8,7 @@ import cy.txtracker.data.MANUAL_SOURCE_APP
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
+import cy.txtracker.parsing.FundingSourceClassifier
 import cy.txtracker.parsing.ParsedTransaction
 import cy.txtracker.parsing.SourcePackages
 import cy.txtracker.parsing.SourceTierResolver
@@ -50,6 +51,7 @@ class TxIngestorCrossSourceDedupeTest {
                 descriptionMappingDao = dbRule.descriptionMappingDao,
             ),
             sourceTierResolver = SourceTierResolver(dbRule.userFacingSourceDao),
+            fundingSourceClassifier = FundingSourceClassifier(dbRule.fundingSourceDao),
         )
     }
 

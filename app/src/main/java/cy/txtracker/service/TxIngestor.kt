@@ -9,6 +9,7 @@ import cy.txtracker.data.normalizeMerchant
 import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.bucketOf
+import cy.txtracker.parsing.FundingSourceClassifier
 import cy.txtracker.parsing.ParsedTransaction
 import cy.txtracker.parsing.SourceTier
 import cy.txtracker.parsing.SourceTierResolver
@@ -37,6 +38,7 @@ class TxIngestor @Inject constructor(
     private val categorizationEngine: CategorizationEngine,
     private val descriptionEngine: DescriptionEngine,
     private val sourceTierResolver: SourceTierResolver,
+    private val fundingSourceClassifier: FundingSourceClassifier,
 ) {
     /**
      * Inserts the parsed transaction. Returns the new row ID for fresh inserts, the
@@ -52,6 +54,11 @@ class TxIngestor @Inject constructor(
             merchantNormalized = merchantNormalized,
             occurredAt = parsed.occurredAt,
             currency = parsed.currency,
+        )
+        val fundingSourceId = fundingSourceClassifier.classify(
+            rawText = parsed.rawText,
+            sourceApp = parsed.sourceApp,
+            now = parsed.occurredAt,
         )
 
         return database.withTransaction {
@@ -107,6 +114,7 @@ class TxIngestor @Inject constructor(
                 notificationDedupeKey = dedupeKey,
                 needsVerification = needsVerification,
                 needsCurrencyConfirmation = needsCurrencyConfirmation,
+                fundingSourceId = fundingSourceId,
             )
             repository.insert(row)
         }

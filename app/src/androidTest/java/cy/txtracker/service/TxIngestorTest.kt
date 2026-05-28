@@ -11,6 +11,7 @@ import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
+import cy.txtracker.parsing.FundingSourceClassifier
 import cy.txtracker.parsing.ParsedTransaction
 import cy.txtracker.parsing.SourceTierResolver
 import kotlinx.coroutines.test.runTest
@@ -46,6 +47,7 @@ class TxIngestorTest {
             descriptionMappingDao = dbRule.descriptionMappingDao,
         ),
         sourceTierResolver = SourceTierResolver(dbRule.userFacingSourceDao),
+        fundingSourceClassifier = FundingSourceClassifier(dbRule.fundingSourceDao),
     )
 
     private suspend fun categoryId(name: String): Long =
