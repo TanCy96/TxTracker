@@ -47,8 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.Transaction
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.ui.common.KIND_ORDER
+import cy.txtracker.ui.common.fundingBucketLabel
 import cy.txtracker.ui.currency.TripCreationDialog
 import cy.txtracker.ui.edit.EditTransactionSheet
 import cy.txtracker.ui.format.formatDayHeader
@@ -75,6 +78,7 @@ fun HomeRoute(
         onPrevMonth = viewModel::previousMonth,
         onNextMonth = viewModel::nextMonth,
         onFilterChange = viewModel::setFilter,
+        onFundingBucketToggle = viewModel::toggleFundingBucket,
         onTransactionClick = { tx -> editingTxId = tx.id },
         onAddClick = { showAddSheet = true },
         onSettingsClick = onSettingsClick,
@@ -112,6 +116,7 @@ fun HomeScreen(
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onFilterChange: (HomeFilter) -> Unit,
+    onFundingBucketToggle: (FundingSourceKind) -> Unit = {},
     onTransactionClick: (Transaction) -> Unit,
     onAddClick: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -191,6 +196,11 @@ fun HomeScreen(
                     }
                     onChipTap(target)
                 },
+            )
+            FundingBucketFilterRow(
+                counts = state.fundingBucketCounts,
+                selected = state.fundingBucketFilter,
+                onToggle = onFundingBucketToggle,
             )
             HorizontalDivider()
             state.bannerCurrency?.let { offer ->
@@ -319,6 +329,36 @@ internal fun StatusFilterRow(specs: List<StatusChipSpec>) {
                 selected = spec.selected,
                 onClick = spec.onTap,
                 label = { Text(spec.label) },
+            )
+        }
+    }
+}
+
+/**
+ * Horizontal chip row that lets the user filter transactions by funding bucket (kind).
+ * Chips only appear for buckets that have at least one transaction in the current month.
+ * Multi-select: tapping a selected chip deselects it; tapping an unselected chip adds it.
+ * The row hides itself entirely when no bucket has any transactions.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun FundingBucketFilterRow(
+    counts: Map<FundingSourceKind, Int>,
+    selected: Set<FundingSourceKind>,
+    onToggle: (FundingSourceKind) -> Unit,
+) {
+    val visibleKinds = KIND_ORDER.filter { kind -> (counts[kind] ?: 0) > 0 }
+    if (visibleKinds.isEmpty()) return
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(visibleKinds, key = { kind -> kind.name }) { kind ->
+            val count = counts[kind] ?: 0
+            FilterChip(
+                selected = kind in selected,
+                onClick = { onToggle(kind) },
+                label = { Text("${fundingBucketLabel(kind)} ($count)") },
             )
         }
     }

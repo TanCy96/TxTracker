@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
 import cy.txtracker.data.CategoryTotal
+import cy.txtracker.data.FundingSource
+import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
@@ -35,6 +37,7 @@ class HomeViewModel @Inject constructor(
 
     private val _yearMonth = MutableStateFlow(YearMonth.current())
     private val _filter = MutableStateFlow<HomeFilter>(HomeFilter.All)
+    private val _fundingBucketFilter = MutableStateFlow<Set<FundingSourceKind>>(emptySet())
 
     /** Banner offer â€” derived independently from currency-review rows + dismissed prefs. */
     private val _bannerOffer: StateFlow<BannerOffer?> =
@@ -77,13 +80,27 @@ class HomeViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<HomeUiState> =
-        combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer, _currencyReviewCount) { ym, filter, cats, banner, crCount ->
+        combine(
+            combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer, _currencyReviewCount) { ym, filter, cats, banner, crCount ->
+                object {
+                    val yearMonth = ym
+                    val filter = filter
+                    val categories = cats
+                    val banner = banner
+                    val currencyReviewCount = crCount
+                }
+            },
+            _fundingBucketFilter,
+            repository.observeFundingSources(),
+        ) { params, bucketFilter, fundingSources ->
             object {
-                val yearMonth = ym
-                val filter = filter
-                val categories = cats
-                val banner = banner
-                val currencyReviewCount = crCount
+                val yearMonth = params.yearMonth
+                val filter = params.filter
+                val categories = params.categories
+                val banner = params.banner
+                val currencyReviewCount = params.currencyReviewCount
+                val fundingBucketFilter = bucketFilter
+                val fundingSourcesById = fundingSources.associateBy { it.id }
             }
         }.flatMapLatest { params ->
             val ym = params.yearMonth
@@ -91,6 +108,8 @@ class HomeViewModel @Inject constructor(
             val categories = params.categories
             val banner = params.banner
             val currencyReviewCount = params.currencyReviewCount
+            val fundingBucketFilter = params.fundingBucketFilter
+            val fundingSourcesById = params.fundingSourcesById
 
             if (filter == HomeFilter.CurrencyReview) {
                 // Currency-review filter: show all parked rows regardless of month
@@ -105,6 +124,8 @@ class HomeViewModel @Inject constructor(
                         notes = notes,
                         banner = banner,
                         currencyReviewCount = currencyReviewCount,
+                        fundingBucketFilter = fundingBucketFilter,
+                        fundingSourcesById = fundingSourcesById,
                     )
                 }
             } else {
@@ -126,6 +147,8 @@ class HomeViewModel @Inject constructor(
                         notes = notes,
                         banner = banner,
                         currencyReviewCount = currencyReviewCount,
+                        fundingBucketFilter = fundingBucketFilter,
+                        fundingSourcesById = fundingSourcesById,
                     )
                 }
             }
@@ -139,6 +162,12 @@ class HomeViewModel @Inject constructor(
     fun nextMonth() = _yearMonth.update { it.next() }
     fun selectMonth(ym: YearMonth) { _yearMonth.value = ym }
     fun setFilter(filter: HomeFilter) { _filter.value = filter }
+
+    fun toggleFundingBucket(kind: FundingSourceKind) {
+        _fundingBucketFilter.update {
+            if (kind in it) it - kind else it + kind
+        }
+    }
 
     fun dismissBanner(currency: String) {
         currencyPrefs.markDismissed(currency)
@@ -179,6 +208,8 @@ class HomeViewModel @Inject constructor(
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
         currencyReviewCount: Int,
+        fundingBucketFilter: Set<FundingSourceKind>,
+        fundingSourcesById: Map<Long, FundingSource>,
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
@@ -198,13 +229,25 @@ class HomeViewModel @Inject constructor(
             _filter.value = effectiveFilter
         }
 
-        // 3. Filter / group using the effective filter.
+        // 3. Compute bucket counts from the full joined list (before any filter), so the
+        //    chips always reflect month totals regardless of current filter selection.
+        val fundingBucketCounts = joined
+            .mapNotNull { twc -> fundingSourcesById[twc.transaction.fundingSourceId]?.kind }
+            .groupingBy { it }
+            .eachCount()
+
+        // 4. Filter / group using the effective category filter and then the bucket filter.
         val filtered = when (effectiveFilter) {
             HomeFilter.All -> joined
             HomeFilter.Unverified -> joined.filter { it.transaction.categoryId == null }
             HomeFilter.Pending -> joined.filter { it.transaction.needsVerification }
             HomeFilter.CurrencyReview -> joined.filter { it.transaction.needsCurrencyConfirmation }
             is HomeFilter.Category -> joined.filter { it.transaction.categoryId == effectiveFilter.id }
+        }.filter { twc ->
+            matchesFundingFilter(
+                fundingBucketFilter,
+                fundingSourcesById[twc.transaction.fundingSourceId]?.kind,
+            )
         }
         val days = filtered
             .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
@@ -224,6 +267,8 @@ class HomeViewModel @Inject constructor(
             currencyReviewCount = currencyReviewCount,
             isLoading = false,
             bannerCurrency = banner,
+            fundingBucketFilter = fundingBucketFilter,
+            fundingBucketCounts = fundingBucketCounts,
         )
     }
 
@@ -234,13 +279,28 @@ class HomeViewModel @Inject constructor(
         notes: List<cy.txtracker.data.MerchantNote>,
         banner: BannerOffer?,
         currencyReviewCount: Int,
+        fundingBucketFilter: Set<FundingSourceKind>,
+        fundingSourcesById: Map<Long, FundingSource>,
     ): HomeUiState {
         if (transactions.isEmpty() && _filter.value == HomeFilter.CurrencyReview) {
             _filter.value = HomeFilter.All
         }
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
-        val days = joined
+
+        // Bucket counts from all currency-review rows before bucket filtering.
+        val fundingBucketCounts = joined
+            .mapNotNull { twc -> fundingSourcesById[twc.transaction.fundingSourceId]?.kind }
+            .groupingBy { it }
+            .eachCount()
+
+        val filtered = joined.filter { twc ->
+            matchesFundingFilter(
+                fundingBucketFilter,
+                fundingSourcesById[twc.transaction.fundingSourceId]?.kind,
+            )
+        }
+        val days = filtered
             .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
             .toSortedMap(reverseOrder())
             .map { (date, list) -> DayGroup(date, list) }
@@ -258,6 +318,8 @@ class HomeViewModel @Inject constructor(
             currencyReviewCount = currencyReviewCount,
             isLoading = false,
             bannerCurrency = banner,
+            fundingBucketFilter = fundingBucketFilter,
+            fundingBucketCounts = fundingBucketCounts,
         )
     }
 
@@ -294,3 +356,12 @@ class HomeViewModel @Inject constructor(
     }
 }
 
+/**
+ * Returns true when [kind] should be shown given the active [active] filter set.
+ * An empty set means "no filter — show everything". A non-empty set requires the tx's
+ * kind to be present. Null kind (unlinked tx) never matches an active filter.
+ */
+fun matchesFundingFilter(active: Set<FundingSourceKind>, kind: FundingSourceKind?): Boolean {
+    if (active.isEmpty()) return true
+    return kind != null && kind in active
+}

@@ -1,6 +1,7 @@
 package cy.txtracker.ui.home
 
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.Transaction
 import cy.txtracker.domain.YearMonth
 import kotlinx.datetime.Instant
@@ -62,4 +63,9 @@ data class HomeUiState(
     /** Non-null when there are parked currency rows for a currency with no active trip and the
      *  banner has not been dismissed by the user. */
     val bannerCurrency: BannerOffer? = null,
+    /** Which funding buckets the user has activated. Empty = no filter (show all). Multi-select. */
+    val fundingBucketFilter: Set<FundingSourceKind> = emptySet(),
+    /** Count of transactions per funding bucket in the current month (unfiltered by bucket).
+     *  Used to show counts on each chip and hide chips with zero transactions. */
+    val fundingBucketCounts: Map<FundingSourceKind, Int> = emptyMap(),
 )
