@@ -71,6 +71,7 @@ fun FundingSourcePickerSheet(
     selected: FundingSource?,
     onDismiss: () -> Unit,
     onPick: (FundingSource?) -> Unit,
+    showNoneOption: Boolean = true,
 ) {
     var query by remember { mutableStateOf("") }
 
@@ -109,19 +110,21 @@ fun FundingSourcePickerSheet(
         }
 
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            // "None" entry — always shown at the top regardless of search.
-            item(key = "none") {
-                ListItem(
-                    headlineContent = { Text("None") },
-                    trailingContent = if (selected == null) {
-                        { Icon(Icons.Filled.Check, contentDescription = "Selected") }
-                    } else null,
-                    modifier = Modifier.clickable {
-                        onPick(null)
-                        onDismiss()
-                    },
-                )
-                HorizontalDivider()
+            // "None" entry — shown at the top when the caller allows clearing the selection.
+            if (showNoneOption) {
+                item(key = "none") {
+                    ListItem(
+                        headlineContent = { Text("None") },
+                        trailingContent = if (selected == null) {
+                            { Icon(Icons.Filled.Check, contentDescription = "Selected") }
+                        } else null,
+                        modifier = Modifier.clickable {
+                            onPick(null)
+                            onDismiss()
+                        },
+                    )
+                    HorizontalDivider()
+                }
             }
 
             grouped.forEach { (kind, group) ->

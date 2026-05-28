@@ -139,9 +139,18 @@ fun FundingSourceEditSheet(
             Spacer(Modifier.height(16.dp))
             OutlinedButton(
                 onClick = { showMergePicker = true },
+                enabled = !isDefaultCash,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Merge into…")
+            }
+            if (isDefaultCash) {
+                Text(
+                    text = "The default Cash source cannot be merged.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
 
             Spacer(Modifier.height(8.dp))
@@ -187,6 +196,7 @@ fun FundingSourceEditSheet(
                     onDismiss()
                 }
             },
+            showNoneOption = false,
         )
     }
 

@@ -338,6 +338,11 @@ class TransactionRepository @Inject constructor(
      */
     suspend fun mergeFundingSources(sourceId: Long, targetId: Long) {
         if (sourceId == targetId) return
+        // Defense against accidentally destroying the seeded Cash row, which is the
+        // classifier's MANUAL_SOURCE_APP target and the AddManual default. The UI also
+        // disables the merge button for this row; this guard is the safety net.
+        val defaultCashId = fundingSourceDao.getDefaultCash()?.id
+        if (defaultCashId != null && sourceId == defaultCashId) return
         database.withTransaction { mergeFundingSourcesBody(sourceId, targetId) }
     }
 
