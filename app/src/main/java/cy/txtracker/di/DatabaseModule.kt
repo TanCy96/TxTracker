@@ -87,6 +87,7 @@ object DatabaseModule {
                 MIGRATION_7_8,
                 MIGRATION_8_9,
                 MIGRATION_9_10,
+                MIGRATION_10_11,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -408,6 +409,30 @@ private val MIGRATION_9_10 = object : Migration(9, 10) {
             VALUES ('CASH', 'Cash', NULL, NULL, 0, ?, ?)
             """.trimIndent(),
             arrayOf<Any?>(now, now),
+        )
+    }
+}
+
+/**
+ * v11 adds a dedupe column on `captured_notifications` so the pool no longer creates
+ * a duplicate row each time Android re-fires the same notification. Existing rows are
+ * backfilled with `legacy-<id>` so the new unique index doesn't fire on upgrade. New
+ * inserts compute a real SHA-1 hash; collisions are dropped by `OnConflictStrategy.IGNORE`.
+ */
+private val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `captured_notifications` ADD COLUMN `dedupeKey` TEXT NOT NULL DEFAULT ''",
+        )
+        // Backfill existing rows with a unique sentinel so the unique index can be created
+        // without collision. The pattern `legacy-<id>` is guaranteed unique because id is
+        // the autoincrement PK.
+        db.execSQL(
+            "UPDATE `captured_notifications` SET `dedupeKey` = 'legacy-' || `id` WHERE `dedupeKey` = ''",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_captured_notifications_dedupeKey` " +
+                "ON `captured_notifications`(`dedupeKey`)",
         )
     }
 }

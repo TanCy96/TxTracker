@@ -46,6 +46,7 @@ class PromotePoolEntryTest {
         disposition = CaptureDisposition.PENDING,
         promotedToTxId = null,
         capturedAt = now,
+        dedupeKey = "test-dedupe-42",
     )
 
     @Test

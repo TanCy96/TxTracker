@@ -428,6 +428,13 @@ class TransactionRepository @Inject constructor(
         rewrittenText: String?,
         now: Instant = Clock.System.now(),
     ): Long? {
+        val dedupeKey = computeCapturedNotificationDedupeKey(
+            packageName = packageName,
+            amountMinor = amountMinor,
+            currency = currency,
+            rawText = rawText,
+            postedAt = postedAt,
+        )
         val id = capturedNotificationDao.insert(
             CapturedNotification(
                 packageName = packageName,
@@ -439,6 +446,7 @@ class TransactionRepository @Inject constructor(
                 disposition = CaptureDisposition.PENDING,
                 promotedToTxId = null,
                 capturedAt = now,
+                dedupeKey = dedupeKey,
             ),
         )
         return id.takeIf { it >= 0 }
@@ -1322,6 +1330,23 @@ class TransactionRepository @Inject constructor(
             transactionsAdded = transactionsAdded,
         )
     }
+}
+
+/**
+ * SHA-1 hash of `(packageName, amountMinor, currency, rawText, postedAt)` used as the
+ * `dedupeKey` column on [CapturedNotification]. Re-fires of the same Android notification
+ * — common after a ranking change or content update — produce the same hash, so
+ * `OnConflictStrategy.IGNORE` drops the duplicate row at insert time.
+ */
+fun computeCapturedNotificationDedupeKey(
+    packageName: String,
+    amountMinor: Long,
+    currency: String,
+    rawText: String,
+    postedAt: Instant,
+): String {
+    val payload = "$packageName|$amountMinor|$currency|$rawText|${postedAt.toEpochMilliseconds()}"
+    return sha1Hex(payload)
 }
 
 /**

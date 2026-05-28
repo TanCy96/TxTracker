@@ -200,6 +200,7 @@ data class ApprovedSource(
         Index("packageName"),
         Index("disposition"),
         Index("capturedAt"),
+        Index(value = ["dedupeKey"], unique = true),
     ],
 )
 data class CapturedNotification(
@@ -213,6 +214,13 @@ data class CapturedNotification(
     val disposition: CaptureDisposition,
     val promotedToTxId: Long?,
     val capturedAt: Instant,
+    /**
+     * SHA-1 hash of `(packageName, amountMinor, currency, rawText, postedAt)`. Re-fires of
+     * the same Android notification — common when the system re-posts after a ranking
+     * change or content update — produce the same hash, so `OnConflictStrategy.IGNORE`
+     * drops the duplicate row at insert time.
+     */
+    val dedupeKey: String,
 )
 
 enum class CaptureDisposition { PENDING, PROMOTED, NOISE }
