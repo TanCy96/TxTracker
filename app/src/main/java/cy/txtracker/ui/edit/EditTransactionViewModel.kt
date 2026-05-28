@@ -3,6 +3,7 @@ package cy.txtracker.ui.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSource
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
@@ -25,6 +26,9 @@ sealed interface EditUiState {
         /** Existing note for this transaction's merchant, or null when none. */
         val merchantNote: String?,
         val trackedCurrencies: List<TrackedCurrency>,
+        val availableFundingSources: List<FundingSource> = emptyList(),
+        /** Resolved from [Transaction.fundingSourceId] against [availableFundingSources]. */
+        val fundingSource: FundingSource? = null,
     ) : EditUiState
 }
 
@@ -42,11 +46,14 @@ class EditTransactionViewModel @Inject constructor(
             _state.value = if (tx == null) {
                 EditUiState.Missing
             } else {
+                val sources = repository.observeFundingSources().first()
                 EditUiState.Editing(
                     transaction = tx,
                     categories = repository.observeAllCategories().first(),
                     merchantNote = repository.getMerchantNote(tx.merchantNormalized)?.note,
                     trackedCurrencies = repository.observeTrackedCurrencies().first(),
+                    availableFundingSources = sources,
+                    fundingSource = sources.find { it.id == tx.fundingSourceId },
                 )
             }
         }
@@ -87,6 +94,21 @@ class EditTransactionViewModel @Inject constructor(
             val current = _state.value
             if (current is EditUiState.Editing) {
                 _state.value = current.copy(transaction = refreshed)
+            }
+        }
+    }
+
+    /** Sets (or clears, when [fundingSourceId] is null) the funding source for a transaction. */
+    fun setFundingSource(transactionId: Long, fundingSourceId: Long?) {
+        viewModelScope.launch {
+            repository.setTransactionFundingSource(transactionId, fundingSourceId)
+            val refreshed = repository.getTransaction(transactionId) ?: return@launch
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                _state.value = current.copy(
+                    transaction = refreshed,
+                    fundingSource = current.availableFundingSources.find { it.id == fundingSourceId },
+                )
             }
         }
     }

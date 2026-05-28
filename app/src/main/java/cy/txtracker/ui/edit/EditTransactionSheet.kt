@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.data.Transaction
+import cy.txtracker.ui.common.FundingSourcePickerSheet
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
@@ -86,6 +87,9 @@ fun EditTransactionSheet(
                 viewModel = viewModel,
                 onCategoryChange = { categoryId ->
                     viewModel.setCategory(transactionId, categoryId, learn = true)
+                },
+                onFundingSourceChange = { fundingSourceId ->
+                    viewModel.setFundingSource(transactionId, fundingSourceId)
                 },
                 onDescriptionChange = { description ->
                     viewModel.setDescription(transactionId, description, learn = true)
@@ -131,6 +135,7 @@ private fun EditingContent(
     transactionId: Long,
     viewModel: EditTransactionViewModel,
     onCategoryChange: (Long?) -> Unit,
+    onFundingSourceChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
     onMerchantNoteChange: (String?) -> Unit,
     onMerchantChange: (String) -> Unit,
@@ -289,6 +294,29 @@ private fun EditingContent(
                     }
                 },
                 onDismiss = { pendingCurrency = null },
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
+        Text(text = "Funding source", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+
+        var showFundingSourcePicker by remember { mutableStateOf(false) }
+        AssistChip(
+            onClick = { showFundingSourcePicker = true },
+            label = { Text(state.fundingSource?.displayName ?: "None") },
+        )
+        if (showFundingSourcePicker) {
+            FundingSourcePickerSheet(
+                sources = state.availableFundingSources,
+                selected = state.fundingSource,
+                onDismiss = { showFundingSourcePicker = false },
+                onPick = { picked ->
+                    onFundingSourceChange(picked?.id)
+                },
             )
         }
 
