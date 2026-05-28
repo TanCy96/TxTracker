@@ -44,4 +44,7 @@ interface FundingSourceDao {
 
     @Query("DELETE FROM funding_sources WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE fundingSourceId = :id")
+    suspend fun txCountFor(id: Long): Int
 }

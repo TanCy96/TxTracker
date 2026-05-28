@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
+import cy.txtracker.parsing.FundingSourceClassifier
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -95,9 +96,13 @@ class CategoryBackfillTest {
         trackedCurrencyDao = mockk(relaxed = true),
         tripWindowDao = mockk(relaxed = true),
         packageTextRewriteDao = mockk(relaxed = true),
+        fundingSourceDao = mockk(relaxed = true),
         categorizationEngine = cat,
         descriptionEngine = desc,
         heuristicExtractor = mockk(relaxed = true),
         rewriteEngine = mockk(relaxed = true),
+        fundingSourceClassifier = mockk<FundingSourceClassifier>().also {
+            io.mockk.coEvery { it.classify(any(), any(), any()) } returns 1L
+        },
     )
 }

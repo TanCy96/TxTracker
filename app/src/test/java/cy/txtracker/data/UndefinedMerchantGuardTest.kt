@@ -3,6 +3,7 @@ package cy.txtracker.data
 import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
+import cy.txtracker.parsing.FundingSourceClassifier
 import io.mockk.coVerify
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -167,9 +168,13 @@ class UndefinedMerchantGuardTest {
         trackedCurrencyDao = mockk(relaxed = true),
         tripWindowDao = mockk(relaxed = true),
         packageTextRewriteDao = mockk(relaxed = true),
+        fundingSourceDao = mockk(relaxed = true),
         categorizationEngine = mockk<CategorizationEngine>(relaxed = true),
         descriptionEngine = mockk<DescriptionEngine>(relaxed = true),
         heuristicExtractor = mockk(relaxed = true),
         rewriteEngine = mockk(relaxed = true),
+        fundingSourceClassifier = mockk<FundingSourceClassifier>().also {
+            coEvery { it.classify(any(), any(), any()) } returns 1L
+        },
     )
 }

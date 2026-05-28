@@ -7,6 +7,7 @@ import cy.txtracker.domain.TimeBucket
 import cy.txtracker.domain.bucketOf
 import cy.txtracker.export.Backup
 import cy.txtracker.export.ImportResult
+import cy.txtracker.parsing.FundingSourceClassifier
 import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.SourceLabels
 import cy.txtracker.parsing.SourcePackages
@@ -78,10 +79,12 @@ class TransactionRepository @Inject constructor(
     private val trackedCurrencyDao: TrackedCurrencyDao,
     private val tripWindowDao: TripWindowDao,
     private val packageTextRewriteDao: PackageTextRewriteDao,
+    private val fundingSourceDao: FundingSourceDao,
     private val categorizationEngine: CategorizationEngine,
     private val descriptionEngine: DescriptionEngine,
     private val heuristicExtractor: HeuristicExtractor,
     private val rewriteEngine: NotificationRewriteEngine,
+    private val fundingSourceClassifier: FundingSourceClassifier,
 ) {
     constructor(
         database: TxDatabase,
@@ -108,10 +111,12 @@ class TransactionRepository @Inject constructor(
         trackedCurrencyDao = trackedCurrencyDao,
         tripWindowDao = tripWindowDao,
         packageTextRewriteDao = database.packageTextRewriteDao(),
+        fundingSourceDao = database.fundingSourceDao(),
         categorizationEngine = CategorizationEngine(merchantMappingDao, categoryDao),
         descriptionEngine = DescriptionEngine(descriptionMappingDao),
         heuristicExtractor = HeuristicExtractor(),
         rewriteEngine = NotificationRewriteEngine(database.packageTextRewriteDao()),
+        fundingSourceClassifier = FundingSourceClassifier(database.fundingSourceDao()),
     )
 
     // Reads ---------------------------------------------------------------
@@ -303,6 +308,76 @@ class TransactionRepository @Inject constructor(
         } else {
             merchantNoteDao.upsert(MerchantNote(merchantNormalized, cleaned, now))
         }
+    }
+
+    // Funding source management ------------------------------------------
+
+    fun observeFundingSources(): Flow<List<FundingSource>> = fundingSourceDao.observeAll()
+
+    suspend fun fundingSourceTxCount(id: Long): Int = fundingSourceDao.txCountFor(id)
+
+    suspend fun renameFundingSource(id: Long, displayName: String, now: Instant = Clock.System.now()) {
+        val existing = fundingSourceDao.getById(id) ?: return
+        fundingSourceDao.update(
+            existing.copy(displayName = displayName.trim(), isUserNamed = true, updatedAt = now),
+        )
+    }
+
+    suspend fun setFundingSourceKind(id: Long, kind: FundingSourceKind, now: Instant = Clock.System.now()) {
+        val existing = fundingSourceDao.getById(id) ?: return
+        // The seeded Cash source's kind is locked; UI greys out the selector but defend here.
+        val defaultCashId = fundingSourceDao.getDefaultCash()?.id
+        if (defaultCashId != null && existing.id == defaultCashId) return
+        fundingSourceDao.update(existing.copy(kind = kind, isUserNamed = true, updatedAt = now))
+    }
+
+    /**
+     * Merge [sourceId] into [targetId]. All transactions previously pointing to source are
+     * re-linked to target, then source is deleted. Single DB transaction so the FK reference
+     * never dangles.
+     */
+    suspend fun mergeFundingSources(sourceId: Long, targetId: Long) {
+        if (sourceId == targetId) return
+        database.withTransaction { mergeFundingSourcesBody(sourceId, targetId) }
+    }
+
+    /**
+     * Body of [mergeFundingSources], extracted so unit tests can drive it directly without
+     * mocking Room's `withTransaction` extension. Production callers MUST go through
+     * [mergeFundingSources] so the work runs atomically.
+     */
+    internal suspend fun mergeFundingSourcesBody(sourceId: Long, targetId: Long) {
+        transactionDao.relinkFundingSource(oldId = sourceId, newId = targetId)
+        fundingSourceDao.deleteById(sourceId)
+    }
+
+    suspend fun deleteFundingSource(id: Long) {
+        // UI only enables delete when count == 0; defend here too.
+        if (fundingSourceDao.txCountFor(id) > 0) return
+        val src = fundingSourceDao.getById(id) ?: return
+        val defaultCashId = fundingSourceDao.getDefaultCash()?.id
+        if (defaultCashId != null && id == defaultCashId) return   // seeded Cash is non-deletable
+        fundingSourceDao.deleteById(id)
+    }
+
+    suspend fun setTransactionFundingSource(txId: Long, fundingSourceId: Long?) {
+        transactionDao.updateFundingSource(txId, fundingSourceId)
+    }
+
+    /**
+     * Settings -> "Classify existing transactions" backfill. Iterates rows with NULL FK,
+     * runs the classifier, writes the link. Manual entries (rawText IS NULL) get linked
+     * to the Cash source. Returns (linked, total).
+     */
+    suspend fun classifyAllUnlinkedTransactions(now: Instant = Clock.System.now()): Pair<Int, Int> {
+        val rows = transactionDao.getUnlinkedFundingSourceRows()
+        var linked = 0
+        for (tx in rows) {
+            val id = fundingSourceClassifier.classify(tx.rawText, tx.sourceApp, now)
+            transactionDao.updateFundingSource(tx.id, id)
+            linked++
+        }
+        return linked to rows.size
     }
 
     suspend fun getTransaction(id: Long): Transaction? = transactionDao.getById(id)

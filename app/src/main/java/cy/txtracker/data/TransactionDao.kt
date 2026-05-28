@@ -320,4 +320,13 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("UPDATE transactions SET fundingSourceId = :fundingSourceId WHERE id = :txId")
+    suspend fun updateFundingSource(txId: Long, fundingSourceId: Long?)
+
+    @Query("UPDATE transactions SET fundingSourceId = :newId WHERE fundingSourceId = :oldId")
+    suspend fun relinkFundingSource(oldId: Long, newId: Long)
+
+    @Query("SELECT * FROM transactions WHERE fundingSourceId IS NULL")
+    suspend fun getUnlinkedFundingSourceRows(): List<Transaction>
 }
