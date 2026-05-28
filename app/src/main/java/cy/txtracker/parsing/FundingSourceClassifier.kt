@@ -75,7 +75,7 @@ class FundingSourceClassifier @Inject constructor(
         // GWallet/GPay — those are handled by rule 1, which extracts the underlying card).
         // Reference SourcePackages.PERMISSIVE_PACKAGES for the canonical list; this is the
         // subset that maps to E_WALLET. Update both when adding a new wallet.
-        private val EWALLET_PACKAGES = setOf(
+        private val E_WALLET_PACKAGES = setOf(
             SourcePackages.TOUCH_N_GO,
             SourcePackages.GRAB,
             "my.com.myboost",
@@ -138,8 +138,23 @@ class FundingSourceClassifier @Inject constructor(
                     sourceAppHint = sourceApp,
                 )
             }
-            // Rule 5: DuitNow / FPX / Transfer / "via Mobile Banking" — debit/transfer
-            // without a last-4. Per-bank "unknown account" placeholder; user can rename.
+            // Wallet shortcut: if the source app is itself a stored-value wallet (NOT a
+            // pass-through like GWallet/GPay — those were handled by rule 1), the funding
+            // source IS the wallet, regardless of body text. This runs before the DuitNow
+            // marker check so wallet notifications using the word "Transfer" don't get
+            // misclassified as bank transfers. Last-4 stays null; the wallet identity is
+            // anchored by sourceApp alone.
+            if (sourceApp in E_WALLET_PACKAGES) {
+                return FundingSourceDetection(
+                    kind = FundingSourceKind.E_WALLET,
+                    displayName = bankLabel,
+                    last4 = null,
+                    sourceAppHint = sourceApp,
+                )
+            }
+            // DuitNow / FPX / Transfer / "via Mobile Banking" — debit/transfer without a
+            // last-4 and without a wallet sourceApp. Per-bank "unknown account" placeholder;
+            // user can rename.
             if (DUITNOW_MARKERS.containsMatchIn(text)) {
                 return FundingSourceDetection(
                     kind = FundingSourceKind.DEBIT_BANK,
@@ -148,19 +163,9 @@ class FundingSourceClassifier @Inject constructor(
                     sourceAppHint = sourceApp,
                 )
             }
-            // Rule 6: known stored-value wallet app — E_WALLET. Last-4 stays null; the wallet
-            // identity is anchored by sourceApp alone.
-            if (sourceApp in EWALLET_PACKAGES) {
-                return FundingSourceDetection(
-                    kind = FundingSourceKind.E_WALLET,
-                    displayName = bankLabel,
-                    last4 = null,
-                    sourceAppHint = sourceApp,
-                )
-            }
             // Rule 7: handled in classify() before detect() runs — manual entries short-
             // circuit to the seeded Cash source. detect() never sees MANUAL_SOURCE_APP.
-            // Rule 8: catch-all. Per-bank "unknown account" with DEBIT_BANK.
+            // Catch-all. Per-bank "unknown account" with DEBIT_BANK.
             return FundingSourceDetection(
                 kind = FundingSourceKind.DEBIT_BANK,
                 displayName = "$bankLabel (unknown account)",

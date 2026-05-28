@@ -1,7 +1,10 @@
 package cy.txtracker.parsing
 
 import com.google.common.truth.Truth.assertThat
+import cy.txtracker.data.FundingSource
+import cy.txtracker.data.FundingSourceDao
 import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.MANUAL_SOURCE_APP
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -84,9 +87,24 @@ class FundingSourceClassifierTest {
     }
 
     @Test
+    fun wallet_app_with_transfer_in_body_still_attributes_to_ewallet() {
+        // Regression: the word "Transfer" appears in DUITNOW_MARKERS, but wallet identity
+        // is authoritative — a TnG notification using the word "Transfer" must still be
+        // E_WALLET, not DEBIT_BANK.
+        val detected = FundingSourceClassifier.detect(
+            rawText = "RM 5.00 Transfer to JOHN DOE",
+            sourceApp = "my.com.tngdigital.ewallet",
+        )
+        assertThat(detected.kind).isEqualTo(FundingSourceKind.E_WALLET)
+        assertThat(detected.last4).isNull()
+        assertThat(detected.displayName).isEqualTo("TnG")
+        assertThat(detected.sourceAppHint).isEqualTo("my.com.tngdigital.ewallet")
+    }
+
+    @Test
     fun rule7_manual_entry_returns_cash_kind_via_classify() = runTest {
-        val dao = mockk<cy.txtracker.data.FundingSourceDao>(relaxed = true)
-        val cash = cy.txtracker.data.FundingSource(
+        val dao = mockk<FundingSourceDao>(relaxed = true)
+        val cash = FundingSource(
             id = 7L,
             kind = FundingSourceKind.CASH,
             displayName = "Cash",
@@ -100,7 +118,7 @@ class FundingSourceClassifierTest {
         val classifier = FundingSourceClassifier(dao)
         val id = classifier.classify(
             rawText = null,
-            sourceApp = cy.txtracker.data.MANUAL_SOURCE_APP,
+            sourceApp = MANUAL_SOURCE_APP,
             now = cash.createdAt,
         )
         assertThat(id).isEqualTo(7L)
@@ -121,8 +139,8 @@ class FundingSourceClassifierTest {
 
     @Test
     fun learning_loop_returns_existing_user_set_kind_without_reinferring() = runTest {
-        val dao = mockk<cy.txtracker.data.FundingSourceDao>(relaxed = true)
-        val userEdited = cy.txtracker.data.FundingSource(
+        val dao = mockk<FundingSourceDao>(relaxed = true)
+        val userEdited = FundingSource(
             id = 42L,
             kind = FundingSourceKind.DEBIT_BANK,        // user flipped from CREDIT_CARD
             displayName = "HSBC debit 1868",            // user-renamed
@@ -144,11 +162,14 @@ class FundingSourceClassifierTest {
         assertThat(id).isEqualTo(42L)
         coVerify(exactly = 0) { dao.insert(any()) }
         coVerify(exactly = 0) { dao.update(any()) }
+        io.mockk.coVerify(exactly = 1) {
+            dao.findByKey("com.hsbc.hsbcclassic", "1868")
+        }
     }
 
     @Test
     fun classify_inserts_new_source_on_first_observation() = runTest {
-        val dao = mockk<cy.txtracker.data.FundingSourceDao>(relaxed = true)
+        val dao = mockk<FundingSourceDao>(relaxed = true)
         coEvery { dao.findByKey(any(), any()) } returns null
         coEvery { dao.insert(any()) } returns 99L
         val classifier = FundingSourceClassifier(dao)
@@ -161,6 +182,7 @@ class FundingSourceClassifierTest {
         coVerify(exactly = 1) {
             dao.insert(match {
                 it.kind == FundingSourceKind.CREDIT_CARD &&
+                    it.displayName == "HSBC card 1868" &&
                     it.last4 == "1868" &&
                     it.sourceAppHint == "com.hsbc.hsbcclassic" &&
                     !it.isUserNamed
