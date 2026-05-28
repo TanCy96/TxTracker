@@ -57,6 +57,10 @@ object DatabaseModule {
                         if (count == 0) {
                             TxDatabase.seedCategories(db)
                         }
+                        // Same rationale as the categories self-heal above: after a destructive migration,
+                        // onCreate does not re-fire and the v10 migration's Cash seed also didn't run
+                        // (the migration path was skipped). This ensures one Cash funding source always
+                        // exists when the DB opens.
                         val cashCursor = db.query("SELECT COUNT(*) FROM funding_sources WHERE kind = 'CASH'")
                         val cashCount = cashCursor.use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
                         if (cashCount == 0) {
