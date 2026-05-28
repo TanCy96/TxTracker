@@ -41,7 +41,7 @@ fun fundingBucketLabel(kind: FundingSourceKind): String = when (kind) {
 }
 
 /** Canonical display order for funding-source kind sections. */
-private val KIND_ORDER = listOf(
+internal val KIND_ORDER = listOf(
     FundingSourceKind.CREDIT_CARD,
     FundingSourceKind.E_WALLET,
     FundingSourceKind.DEBIT_BANK,

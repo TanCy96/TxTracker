@@ -30,14 +30,8 @@ import androidx.compose.ui.unit.dp
 import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.ui.common.FundingSourcePickerSheet
+import cy.txtracker.ui.common.KIND_ORDER
 import cy.txtracker.ui.common.fundingBucketLabel
-
-private val KIND_ORDER = listOf(
-    FundingSourceKind.CREDIT_CARD,
-    FundingSourceKind.E_WALLET,
-    FundingSourceKind.DEBIT_BANK,
-    FundingSourceKind.CASH,
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,15 +73,13 @@ fun FundingSourceEditSheet(
             )
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                val trimmedName = name.trim()
                 TextButton(
                     onClick = {
-                        val trimmed = name.trim()
-                        if (trimmed.isNotEmpty()) {
-                            onRename(source.id, trimmed)
-                            onDismiss()
-                        }
+                        onRename(source.id, trimmedName)
+                        onDismiss()
                     },
-                    enabled = name.trim().isNotEmpty() && name.trim() != source.displayName,
+                    enabled = trimmedName.isNotEmpty() && trimmedName != source.displayName,
                 ) {
                     Text("Save name")
                 }
@@ -121,12 +113,7 @@ fun FundingSourceEditSheet(
                     RadioButton(
                         selected = source.kind == kind,
                         enabled = !isDefaultCash,
-                        onClick = {
-                            if (!isDefaultCash) {
-                                onSetKind(source.id, kind)
-                                onDismiss()
-                            }
-                        },
+                        onClick = null,
                     )
                     Text(
                         text = fundingBucketLabel(kind),
@@ -207,12 +194,7 @@ fun FundingSourceEditSheet(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete \"${source.displayName}\"?") },
-            text = {
-                Text(
-                    "This funding source will be permanently removed. " +
-                        "Linked transactions will lose their funding source.",
-                )
-            },
+            text = { Text("This funding source will be permanently removed.") },
             confirmButton = {
                 TextButton(
                     onClick = {

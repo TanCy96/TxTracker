@@ -33,15 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.FundingSource
-import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.ui.common.KIND_ORDER
 import cy.txtracker.ui.common.fundingBucketLabel
-
-private val KIND_ORDER = listOf(
-    FundingSourceKind.CREDIT_CARD,
-    FundingSourceKind.E_WALLET,
-    FundingSourceKind.DEBIT_BANK,
-    FundingSourceKind.CASH,
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
