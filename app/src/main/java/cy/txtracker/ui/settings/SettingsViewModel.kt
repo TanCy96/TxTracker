@@ -104,8 +104,10 @@ class SettingsViewModel @Inject constructor(
 
     data class BackfillResult(val categoryRows: Int, val descriptionRows: Int)
 
-    private val _classifyResult = MutableStateFlow<Int?>(null)
-    val classifyResult: StateFlow<Int?> = _classifyResult.asStateFlow()
+    data class ClassifyResult(val count: Int)
+
+    private val _classifyResult = MutableStateFlow<ClassifyResult?>(null)
+    val classifyResult: StateFlow<ClassifyResult?> = _classifyResult.asStateFlow()
 
     /**
      * Runs the funding-source classifier over every transaction whose [fundingSourceId] is
@@ -113,7 +115,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun classifyExistingTransactions() {
         viewModelScope.launch {
-            _classifyResult.value = repository.classifyAllUnlinkedTransactions()
+            _classifyResult.value = ClassifyResult(repository.classifyAllUnlinkedTransactions())
         }
     }
 

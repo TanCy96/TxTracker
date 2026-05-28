@@ -491,9 +491,9 @@ fun SettingsScreen(
         }
 
         val classifyResult by viewModel.classifyResult.collectAsState()
-        classifyResult?.let { count ->
-            LaunchedEffect(count) {
-                snackbar.showSnackbar("$count rows linked")
+        classifyResult?.let { r ->
+            LaunchedEffect(r) {
+                snackbar.showSnackbar("${r.count} rows linked")
                 viewModel.consumeClassifyResult()
             }
         }

@@ -24,6 +24,12 @@ data class BackupFundingSource(
  * reinstalls (where ids are regenerated) and across devices (where the same name maps to a
  * different id). On import, missing categories are created from [BackupCategory] and then
  * mappings are translated to local ids.
+ *
+ * Version history:
+ *   v5 – baseline (transactions, categories, mappings, notes, sources)
+ *   v6 – added [trackedCurrencies] and [tripWindows] (foreign-currency tracking)
+ *   v7 – added [keywordPattern] on [BackupCategory]
+ *   v8 – added [fundingSources] and [BackupTransaction.fundingSourceLookupKey]
  */
 @Serializable
 data class Backup(
@@ -44,7 +50,7 @@ data class Backup(
     val fundingSources: List<BackupFundingSource> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 7
+        const val CURRENT_VERSION = 8
     }
 }
 

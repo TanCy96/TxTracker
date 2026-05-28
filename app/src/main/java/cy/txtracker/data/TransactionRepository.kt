@@ -1211,14 +1211,16 @@ class TransactionRepository @Inject constructor(
             )
         }
 
-        // 11. Funding sources. Match on (sourceAppHint, last4, displayName). On conflict, the
-        //     user-named row wins over auto-named; among rows of equal isUserNamed, the one
-        //     with the later updatedAt wins. On no match, insert as a new row.
-        //     Build a lookupKey -> local-id map for transaction linking below.
+        // 11. Funding sources. Match on (sourceAppHint, last4) — displayName is mutable and
+        //     excluded from the key to avoid insert conflicts when the same card was renamed
+        //     differently on two devices. On conflict, the user-named row wins over auto-named;
+        //     among rows of equal isUserNamed, the one with the later updatedAt wins. On no
+        //     match, insert as a new row. Build a lookupKey -> local-id map after all
+        //     updates/inserts so it reflects the final state.
         val existingFundingSources = fundingSourceDao.getAll()
-        // Key: (sourceAppHint, last4, displayName)
-        val existingFsTriple = existingFundingSources.associateBy { fs ->
-            Triple(fs.sourceAppHint, fs.last4, fs.displayName)
+        // Key: (sourceAppHint, last4)
+        val existingFsPair = existingFundingSources.associateBy { fs ->
+            fs.sourceAppHint to fs.last4
         }
         // lookupKey = "<sourceAppHint ?: "">|<last4 ?: "">" -> local id
         val lookupKeyToId = mutableMapOf<String, Long>()
@@ -1231,12 +1233,12 @@ class TransactionRepository @Inject constructor(
             lookupKeyToId[key] = fs.id
         }
         for (bfs in backup.fundingSources) {
-            val triple = Triple(bfs.sourceAppHint, bfs.last4, bfs.displayName)
-            val existing = existingFsTriple[triple]
+            val pair = bfs.sourceAppHint to bfs.last4
+            val existing = existingFsPair[pair]
             val backupUpdatedAt = Instant.fromEpochMilliseconds(bfs.updatedAt)
             val backupCreatedAt = Instant.fromEpochMilliseconds(bfs.createdAt)
             val backupKind = runCatching { FundingSourceKind.valueOf(bfs.kind) }.getOrNull()
-                ?: FundingSourceKind.CASH
+                ?: continue
             val lookupKey = "${bfs.sourceAppHint ?: ""}|${bfs.last4 ?: ""}"
             if (existing == null) {
                 // No match — insert a new row.
@@ -1253,7 +1255,8 @@ class TransactionRepository @Inject constructor(
                 )
                 lookupKeyToId[lookupKey] = newId
             } else {
-                // Match found. Prefer user-named; if equal, latest updatedAt wins.
+                // Match found on (sourceAppHint, last4). Prefer user-named; if equal, latest
+                // updatedAt wins. Apply conflict resolution to mutable fields only.
                 val localWins = existing.isUserNamed && !bfs.isUserNamed ||
                     existing.isUserNamed == bfs.isUserNamed && existing.updatedAt >= backupUpdatedAt
                 if (!localWins) {
