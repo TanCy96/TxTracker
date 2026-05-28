@@ -1,6 +1,17 @@
 package cy.txtracker.data
 
 /**
+ * Sentinel emitted by the parser when a notification provides an amount and an out-verb but no
+ * recipient anchor (e.g. HSBC SMS: "Debited your A/C ending X with MYR Y for DuitNow Transfer
+ * via Mobile Banking" — no `to`/`at`/`@`). The transaction is still captured so the user can
+ * label it manually, but this exact string short-circuits all merchant-keyed learning
+ * (`MerchantMapping`, `MerchantDescriptionMapping`, `MerchantNote`) — otherwise the first
+ * UNDEFINED tx the user categorizes would poison every future UNDEFINED tx with the same
+ * category/description/note.
+ */
+const val UNDEFINED_MERCHANT = "UNDEFINED"
+
+/**
  * Normalizes a raw merchant string into a stable form used for:
  *   1. Dedupe-key computation (so the same payment from GWallet and from the bank app collapse)
  *   2. `MerchantMapping` / `MerchantDescriptionMapping` lookups (so cosmetic variants of the same

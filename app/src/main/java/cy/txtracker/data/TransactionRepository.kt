@@ -293,6 +293,10 @@ class TransactionRepository @Inject constructor(
         note: String?,
         now: Instant = Clock.System.now(),
     ) {
+        // UNDEFINED is the parser's "no recipient in the notification" sentinel — it labels
+        // many unrelated transactions. Writing a note keyed by UNDEFINED would surface that
+        // note on every future unattributed tx, which is wrong. Drop the write silently.
+        if (merchantNormalized == UNDEFINED_MERCHANT) return
         val cleaned = note?.trim()?.takeIf { it.isNotEmpty() }
         if (cleaned == null) {
             merchantNoteDao.delete(merchantNormalized)
@@ -503,13 +507,19 @@ class TransactionRepository @Inject constructor(
         transactionDao.updateCategory(txId, categoryId)
         if (learnMapping && categoryId != null) {
             val tx = transactionDao.getById(txId) ?: return
-            merchantMappingDao.upsert(
-                MerchantMapping(
-                    merchantNormalized = tx.merchantNormalized,
-                    categoryId = categoryId,
-                    learnedAt = now,
-                ),
-            )
+            // Skip merchant→category learning when the merchant is the parser's UNDEFINED
+            // sentinel — otherwise the user's first manual labeling of an unattributed tx
+            // would auto-categorize every future unattributed tx the same way. Category→
+            // description propagation below is still safe (keyed by category, not merchant).
+            if (tx.merchantNormalized != UNDEFINED_MERCHANT) {
+                merchantMappingDao.upsert(
+                    MerchantMapping(
+                        merchantNormalized = tx.merchantNormalized,
+                        categoryId = categoryId,
+                        learnedAt = now,
+                    ),
+                )
+            }
             // If the transaction already has a description, propagate it to the
             // category-level mapping so future txs in the same (category, bucket)
             // get the suggestion. Without this, the order in which the user labels
@@ -543,14 +553,18 @@ class TransactionRepository @Inject constructor(
         transactionDao.updateDescription(txId, cleaned)
         if (learnMappings && cleaned != null) {
             val tx = transactionDao.getById(txId) ?: return
-            descriptionMappingDao.upsertMerchant(
-                MerchantDescriptionMapping(
-                    merchantNormalized = tx.merchantNormalized,
-                    timeBucket = tx.timeBucket,
-                    description = cleaned,
-                    learnedAt = now,
-                ),
-            )
+            // Same rationale as setCategory: don't poison the UNDEFINED bucket with the
+            // first user-typed description. Category-keyed mapping below is still allowed.
+            if (tx.merchantNormalized != UNDEFINED_MERCHANT) {
+                descriptionMappingDao.upsertMerchant(
+                    MerchantDescriptionMapping(
+                        merchantNormalized = tx.merchantNormalized,
+                        timeBucket = tx.timeBucket,
+                        description = cleaned,
+                        learnedAt = now,
+                    ),
+                )
+            }
             tx.categoryId?.let { categoryId ->
                 descriptionMappingDao.upsertCategory(
                     CategoryDescriptionMapping(

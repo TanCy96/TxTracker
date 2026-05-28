@@ -2,6 +2,7 @@ package cy.txtracker.parsing
 
 import com.google.common.truth.Truth.assertThat
 import cy.txtracker.data.Direction
+import cy.txtracker.data.UNDEFINED_MERCHANT
 import kotlinx.datetime.Instant
 import org.junit.Test
 
@@ -112,6 +113,41 @@ class HeuristicExtractorTest {
     }
 
     @Test
+    fun handles_hsbc_sms_debited_with_no_recipient_falls_back_to_undefined() {
+        // HSBC SMS: "<date>: Debited your A/C ending <last4> with <AMT> for <DESC> via
+        // <CHANNEL>". No `to`/`at`/`@` anchor at all — HSBC doesn't include the recipient
+        // in this message format. We still capture the transaction (amount + out-verb are
+        // unambiguous), but emit UNDEFINED_MERCHANT so downstream learning doesn't lock
+        // arbitrary text in as a merchant name. Note: double space before the account
+        // last4 is a real capture artifact and must not affect parsing.
+        //
+        // Also guards against the leading "26MAY2026" being mistaken for a 26 MAY amount:
+        // the amount regex's `(?![A-Za-z0-9])` lookahead fails on the trailing "2026", so
+        // the date is skipped and "MYR 13.00" wins.
+        val text = "26MAY2026: Debited your A/C ending  0025 with MYR 13.00 " +
+            "for DuitNow Transfer via Mobile Banking. Not you? Pls call us."
+        val r = extractor.extract(text, "com.hsbc.hsbcclassic", now)!!
+        assertThat(r.amountMinor).isEqualTo(1300L)
+        assertThat(r.currency).isEqualTo("MYR")
+        assertThat(r.merchantRaw).isEqualTo(UNDEFINED_MERCHANT)
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
+
+    @Test
+    fun ddmmmyyyy_date_prefix_does_not_match_as_amount() {
+        // Defense-in-depth check for the HSBC date-prefix shape. Bare amtB+suffix scanning
+        // could in principle interpret "26MAY" inside "26MAY2026" as amount=26 / code=MAY.
+        // The trailing-fence lookahead `(?![A-Za-z0-9])` after the 3-letter code prevents
+        // this — the next char "2" is alphanumeric, so the match is rejected. The amount
+        // parser then continues and picks up "MYR 13.00" via the prefix form.
+        val text = "26MAY2026: Debited your A/C ending 0025 with MYR 13.00 " +
+            "for DuitNow Transfer via Mobile Banking."
+        val r = extractor.extract(text, "com.hsbc.hsbcclassic", now)!!
+        assertThat(r.amountMinor).isEqualTo(1300L)
+        assertThat(r.currency).isEqualTo("MYR")
+    }
+
+    @Test
     fun handles_billed_verb() {
         val text = "Your card was billed RM 30.00 at MERCHANT"
         val r = extractor.extract(text, "anything", now)!!
@@ -137,9 +173,14 @@ class HeuristicExtractorTest {
     }
 
     @Test
-    fun rejects_text_without_recipient_phrase() {
-        // Has amount + verb but no "to/at/@" merchant marker.
-        assertThat(extractor.extract("RM 5.00 was deducted.", "anything", now)).isNull()
+    fun captures_with_undefined_merchant_when_no_recipient_phrase() {
+        // Amount + out-verb but no recipient anchor — HSBC-shaped notifications and similar
+        // ambient bank messages. Previously rejected; now captured with UNDEFINED_MERCHANT
+        // so the user can label manually without the parser inventing a merchant name.
+        val r = extractor.extract("RM 5.00 was deducted.", "anything", now)!!
+        assertThat(r.amountMinor).isEqualTo(500L)
+        assertThat(r.merchantRaw).isEqualTo(UNDEFINED_MERCHANT)
+        assertThat(r.direction).isEqualTo(Direction.OUT)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package cy.txtracker.parsing
 
 import cy.txtracker.data.Direction
+import cy.txtracker.data.UNDEFINED_MERCHANT
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.datetime.Instant
@@ -63,8 +64,11 @@ class HeuristicExtractor @Inject constructor() {
         TAP_CTA_SUFFIX.replace(text, "").trimEnd().trimEnd('.', ',', ';')
 
     /**
-     * Tries the card-spend shape first (no verb required), then falls back to the
-     * verb+recipient shape. Returns null if neither shape matches.
+     * Tries the card-spend shape first (no verb required), then the verb+recipient shape.
+     * If an out-verb is present but no recipient anchor matched (HSBC SMS shape, where the
+     * bank doesn't include who you paid), returns `UNDEFINED_MERCHANT` so the transaction
+     * is still captured for manual labeling. Returns null only when there's no out-verb at
+     * all (i.e. the text is not an outgoing-payment notification).
      */
     private fun resolveMerchant(text: String): String? {
         CARD_SPEND_PATTERN.matchEntire(text)?.groups?.get("merchant")?.value?.trim()?.let {
@@ -78,7 +82,7 @@ class HeuristicExtractor @Inject constructor() {
                 ?.trimEnd('.', ',', ';')
             if (!raw.isNullOrEmpty()) return raw
         }
-        return null
+        return UNDEFINED_MERCHANT
     }
 
     companion object {
