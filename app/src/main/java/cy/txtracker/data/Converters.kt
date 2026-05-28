@@ -29,4 +29,11 @@ class Converters {
     @TypeConverter
     fun stringToCaptureDisposition(value: String?): CaptureDisposition? =
         value?.let(CaptureDisposition::valueOf)
+
+    @TypeConverter
+    fun fundingSourceKindToString(value: FundingSourceKind?): String? = value?.name
+
+    @TypeConverter
+    fun stringToFundingSourceKind(value: String?): FundingSourceKind? =
+        value?.let(FundingSourceKind::valueOf)
 }
