@@ -30,8 +30,9 @@ import cy.txtracker.data.FundingSourceKind
 
 /**
  * Returns the human-readable bucket label for a [FundingSourceKind].
- * Used in the picker section headers, the Settings funding-sources screen,
- * and the CSV export column — kept here so all surfaces share one definition.
+ * Used in the picker section headers, the Settings funding-sources screen, the Edit /
+ * AddManual picker rows, and the Home filter chips. The CSV export keeps a local copy
+ * to avoid an export -> ui dependency, so the labels there must match the strings here.
  */
 fun fundingBucketLabel(kind: FundingSourceKind): String = when (kind) {
     FundingSourceKind.CREDIT_CARD -> "Credit Card"
