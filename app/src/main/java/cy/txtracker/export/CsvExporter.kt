@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSource
+import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
@@ -19,11 +21,17 @@ import kotlinx.datetime.toLocalDateTime
 /**
  * Wide-format CSV export. Columns:
  *
- *     date, description, <each category in sortOrder>, Unverified
+ *     date, description, Source, <each category in sortOrder>, Unverified
  *
  * Each transaction row places its amount in exactly one category column (or `Unverified`
  * when categoryId is null); the other category columns are blank. This makes summing each
  * column in a spreadsheet give per-category totals directly.
+ *
+ * The `Source` column shows the funding-source bucket label(s) for all transactions in that
+ * day. When all transactions share the same bucket, the single label is shown (e.g.
+ * `Credit Card`). When the day has transactions from multiple buckets, the distinct labels
+ * are joined with `"/"` in canonical kind order. Unlinked transactions contribute nothing to
+ * the Source cell.
  */
 @Singleton
 class CsvExporter @Inject constructor(
@@ -37,9 +45,10 @@ class CsvExporter @Inject constructor(
     suspend fun exportCsv(currency: String): Uri {
         val transactions = repository.getAllTransactionsOnceForCurrency(currency)
         val categories = repository.getAllCategoriesOnce()
+        val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
         val dir = exportDir()
         val file = File(dir, "transactions-$currency-${System.currentTimeMillis()}.csv")
-        file.outputStream().use { writeCsv(transactions, categories, it) }
+        file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, it) }
         return uriFor(file)
     }
 
@@ -50,6 +59,7 @@ class CsvExporter @Inject constructor(
      */
     suspend fun exportAllCurrenciesZip(): Uri {
         val categories = repository.getAllCategoriesOnce()
+        val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
         val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
         val codes = (listOf("MYR") + trackedCodes).distinct()
 
@@ -60,7 +70,7 @@ class CsvExporter @Inject constructor(
                 val rows = repository.getAllTransactionsOnceForCurrency(code)
                 if (rows.isEmpty()) continue
                 zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
-                writeCsv(rows, categories, zip)
+                writeCsv(rows, categories, fundingSourcesById, zip)
                 zip.closeEntry()
             }
         }
@@ -86,8 +96,13 @@ class CsvExporter @Inject constructor(
  * Writes CSV bytes for [transactions] / [categories] to [output].
  * The stream is NOT closed here — callers own the lifecycle.
  */
-fun writeCsv(transactions: List<Transaction>, categories: List<Category>, output: OutputStream) {
-    val csv = buildCsv(transactions, categories)
+fun writeCsv(
+    transactions: List<Transaction>,
+    categories: List<Category>,
+    fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
+    output: OutputStream,
+) {
+    val csv = buildCsv(transactions, categories, fundingSourcesById)
     output.write(csv.toByteArray(Charsets.UTF_8))
 }
 
@@ -101,12 +116,19 @@ fun writeCsv(transactions: List<Transaction>, categories: List<Category>, output
  * **One row per day**, not per transaction. For each day:
  *   - The `description` column joins all non-blank descriptions with `", "`, in
  *     chronological order. Blanks are skipped.
+ *   - The `Source` column shows the distinct funding-source bucket label(s) for all
+ *     transactions in that day, joined with `"/"` in canonical kind order. Unlinked
+ *     transactions (null fundingSourceId or unresolved id) are excluded from the cell.
  *   - Each category column is empty if the day had no tx in that category; the literal
  *     amount if exactly one; a spreadsheet formula `=A+B+C` if more than one. The formula
  *     evaluates to the sum but a single click on the cell reveals the individual values,
  *     which matches the user's mental model of "see the total but keep the details".
  */
-fun buildCsv(transactions: List<Transaction>, categories: List<Category>): String {
+fun buildCsv(
+    transactions: List<Transaction>,
+    categories: List<Category>,
+    fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
+): String {
     val orderedCategories = categories.sortedWith(
         compareBy<Category> { it.sortOrder }.thenBy { it.name },
     )
@@ -115,7 +137,7 @@ fun buildCsv(transactions: List<Transaction>, categories: List<Category>): Strin
     val sb = StringBuilder()
 
     // Header.
-    sb.append("date,description")
+    sb.append("date,description,Source")
     for (c in orderedCategories) {
         sb.append(',').append(csvEscape(c.name))
     }
@@ -134,6 +156,14 @@ fun buildCsv(transactions: List<Transaction>, categories: List<Category>): Strin
         // Description column.
         val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }
         sb.append(',').append(csvEscape(descriptions.joinToString(", ")))
+
+        // Source column: distinct bucket labels for the day, in canonical kind order.
+        val dayBuckets = txs
+            .mapNotNull { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } }
+            .distinct()
+            .sortedBy { CANONICAL_KIND_ORDER.indexOf(it) }
+        val sourceCell = dayBuckets.joinToString("/") { bucketLabel(it) }
+        sb.append(',').append(csvEscape(sourceCell))
 
         // Per-category columns.
         for (c in orderedCategories) {
@@ -154,6 +184,26 @@ fun buildCsv(transactions: List<Transaction>, categories: List<Category>): Strin
 
     return sb.toString()
 }
+
+/**
+ * Returns the human-readable bucket label for a [FundingSourceKind].
+ * Duplicated from `cy.txtracker.ui.common.fundingBucketLabel` to keep the export package
+ * free of UI dependencies. The label values are part of the CSV spec contract.
+ */
+private fun bucketLabel(kind: FundingSourceKind): String = when (kind) {
+    FundingSourceKind.CREDIT_CARD -> "Credit Card"
+    FundingSourceKind.E_WALLET -> "E-Wallet"
+    FundingSourceKind.DEBIT_BANK -> "Debit/Transfer"
+    FundingSourceKind.CASH -> "Cash"
+}
+
+/** Canonical order for bucket labels within the Source cell of a multi-bucket day. */
+private val CANONICAL_KIND_ORDER = listOf(
+    FundingSourceKind.CREDIT_CARD,
+    FundingSourceKind.E_WALLET,
+    FundingSourceKind.DEBIT_BANK,
+    FundingSourceKind.CASH,
+)
 
 /**
  * Builds the contents of a single category column for a single day:
