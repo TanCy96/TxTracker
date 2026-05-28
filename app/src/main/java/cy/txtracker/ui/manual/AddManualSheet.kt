@@ -162,7 +162,7 @@ private fun Content(
         Spacer(Modifier.height(8.dp))
         AssistChip(
             onClick = { showFundingSourcePicker = true },
-            label = { Text(state.fundingSource?.displayName ?: "Cash") },
+            label = { Text(state.fundingSource?.displayName ?: "None") },
         )
         Spacer(Modifier.height(8.dp))
 
