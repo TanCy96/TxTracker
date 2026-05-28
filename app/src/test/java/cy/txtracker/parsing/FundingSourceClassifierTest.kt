@@ -27,6 +27,7 @@ class FundingSourceClassifierTest {
         assertThat(detected.kind).isEqualTo(FundingSourceKind.CREDIT_CARD)
         assertThat(detected.last4).isEqualTo("1868")
         assertThat(detected.displayName).isEqualTo("HSBC card 1868")
+        assertThat(detected.sourceAppHint).isEqualTo("com.hsbc.hsbcclassic")
     }
 
     @Test
@@ -38,6 +39,7 @@ class FundingSourceClassifierTest {
         assertThat(detected.kind).isEqualTo(FundingSourceKind.CREDIT_CARD)
         assertThat(detected.last4).isEqualTo("1234")
         assertThat(detected.displayName).isEqualTo("CIMB card 1234")
+        assertThat(detected.sourceAppHint).isEqualTo("com.cimbmalaysia")
     }
 
     @Test
@@ -50,5 +52,6 @@ class FundingSourceClassifierTest {
         assertThat(detected.kind).isEqualTo(FundingSourceKind.DEBIT_BANK)
         assertThat(detected.last4).isEqualTo("0025")
         assertThat(detected.displayName).isEqualTo("HSBC account 0025")
+        assertThat(detected.sourceAppHint).isEqualTo("com.hsbc.hsbcclassic")
     }
 }

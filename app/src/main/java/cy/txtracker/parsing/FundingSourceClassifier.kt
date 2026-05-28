@@ -1,5 +1,6 @@
 package cy.txtracker.parsing
 
+import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceDao
 import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.MANUAL_SOURCE_APP
@@ -34,7 +35,7 @@ class FundingSourceClassifier @Inject constructor(
         val detected = detect(rawText, sourceApp)
         fundingSourceDao.findByKey(detected.sourceAppHint, detected.last4)?.let { return it.id }
         return fundingSourceDao.insert(
-            cy.txtracker.data.FundingSource(
+            FundingSource(
                 kind = detected.kind,
                 displayName = detected.displayName,
                 last4 = detected.last4,
@@ -55,7 +56,7 @@ class FundingSourceClassifier @Inject constructor(
         )
 
         // Rule 2: bullets/asterisks immediately preceding a last-4, no card name preamble.
-        private val RULE_2 = Regex("""[•*]+\s*(?<last4>\d{4})""")
+        private val RULE_2 = Regex("""[•*]+\s*(?<last4>\d{4})\b""")
 
         // Rule 3: literal "card ending 1234" or "card 1234" in body text.
         private val RULE_3 = Regex(
