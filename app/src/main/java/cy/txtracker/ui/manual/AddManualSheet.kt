@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
+import cy.txtracker.ui.common.FundingSourcePickerSheet
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
 import kotlinx.datetime.Instant
@@ -85,6 +86,7 @@ fun AddManualSheet(
             onTimeChange = viewModel::setTime,
             onCurrencyChange = viewModel::setCurrency,
             onAddCurrency = viewModel::addCurrency,
+            onFundingSourceChange = { viewModel.setFundingSource(it) },
             onSave = { viewModel.save(onSaved = onDismiss) },
             onCancel = onDismiss,
         )
@@ -103,6 +105,7 @@ private fun Content(
     onTimeChange: (LocalTime) -> Unit,
     onCurrencyChange: (String) -> Unit,
     onAddCurrency: (String) -> Unit,
+    onFundingSourceChange: (Long?) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -110,6 +113,7 @@ private fun Content(
     var showTimePicker by remember { mutableStateOf(false) }
     var showCurrencyPicker by remember { mutableStateOf(false) }
     var showAddCurrencyDialog by remember { mutableStateOf(false) }
+    var showFundingSourcePicker by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -151,6 +155,14 @@ private fun Content(
         AssistChip(
             onClick = { showCurrencyPicker = true },
             label = { Text(state.currency) },
+        )
+        Spacer(Modifier.height(8.dp))
+
+        Text("Funding source", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        AssistChip(
+            onClick = { showFundingSourcePicker = true },
+            label = { Text(state.fundingSource?.displayName ?: "Cash") },
         )
         Spacer(Modifier.height(8.dp))
 
@@ -247,6 +259,16 @@ private fun Content(
                 onCurrencyChange(code)
             },
             onDismiss = { showAddCurrencyDialog = false },
+        )
+    }
+    if (showFundingSourcePicker) {
+        FundingSourcePickerSheet(
+            sources = state.availableFundingSources,
+            selected = state.fundingSource,
+            onDismiss = { showFundingSourcePicker = false },
+            onPick = { picked ->
+                onFundingSourceChange(picked?.id)
+            },
         )
     }
 }

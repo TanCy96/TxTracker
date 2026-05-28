@@ -530,6 +530,9 @@ class TransactionRepository @Inject constructor(
      * captured notification), `direction = OUT`, and the user-supplied fields. The merchant
      * string is normalized via [normalizeMerchant], and the time bucket is computed from
      * [occurredAt] in the supplied [Instant]. Returns the new row id.
+     *
+     * [fundingSourceId] is the user-selected funding source from the picker. Defaults to null
+     * so callers that pre-date the funding-source feature are unaffected.
      */
     suspend fun addManualTransaction(
         amountMinor: Long,
@@ -538,6 +541,7 @@ class TransactionRepository @Inject constructor(
         description: String?,
         occurredAt: Instant,
         currency: String = "MYR",
+        fundingSourceId: Long? = null,
         now: Instant = Clock.System.now(),
     ): Long? {
         val needsCurrencyConfirmation = if (currency == "MYR") {
@@ -562,6 +566,7 @@ class TransactionRepository @Inject constructor(
             notificationDedupeKey = "manual:${UUID.randomUUID()}",
             needsVerification = false,
             needsCurrencyConfirmation = needsCurrencyConfirmation,
+            fundingSourceId = fundingSourceId,
         )
         return insert(tx)
     }

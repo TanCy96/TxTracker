@@ -3,6 +3,8 @@ package cy.txtracker.ui.manual
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSource
+import cy.txtracker.data.FundingSourceDao
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
@@ -33,6 +35,9 @@ data class AddManualUiState(
     val currency: String = "MYR",
     val trackedCurrencies: List<TrackedCurrency> = emptyList(),
     val isSaving: Boolean = false,
+    val availableFundingSources: List<FundingSource> = emptyList(),
+    /** Pre-selected to the seeded Cash row on first load; user can change via the picker. */
+    val fundingSource: FundingSource? = null,
 ) {
     val amountMinor: Long? get() = parseAmountMinor(amountText)
     val canSave: Boolean
@@ -42,6 +47,7 @@ data class AddManualUiState(
 @HiltViewModel
 class AddManualViewModel @Inject constructor(
     private val repository: TransactionRepository,
+    private val fundingSourceDao: FundingSourceDao,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddManualUiState())
@@ -52,6 +58,9 @@ class AddManualViewModel @Inject constructor(
      * Called every time the sheet opens — without the full reset, the previous entry's
      * text fields and category selection would persist (Hilt scopes the ViewModel to the
      * parent NavGraph, so the same instance is reused across sheet openings).
+     *
+     * Also refreshes the funding-source list and pre-selects the seeded Cash row so
+     * manual entries are linked to a source out of the box.
      *
      * @param initialCurrency optional pre-selected currency code (the Foreign tab uses
      *   this to anchor manual entries to the currently-viewed trip). Falls back to MYR.
@@ -65,13 +74,28 @@ class AddManualViewModel @Inject constructor(
             val anchor = (initialOccurredAt ?: Clock.System.now()).toLocalDateTime(zone)
             val categories = repository.observeAllCategories().first()
             val trackedCurrencies = repository.observeTrackedCurrencies().first()
+            val sources = fundingSourceDao.getAll()
+            val defaultCash = fundingSourceDao.getDefaultCash()
             _state.value = AddManualUiState(
                 date = anchor.date,
                 time = LocalTime(anchor.hour, anchor.minute),
                 categories = categories,
                 currency = initialCurrency ?: "MYR",
                 trackedCurrencies = trackedCurrencies,
+                availableFundingSources = sources,
+                fundingSource = defaultCash,
             )
+        }
+    }
+
+    /**
+     * Updates the selected funding source. Pass null to clear the selection.
+     * Resolves the new selection from [AddManualUiState.availableFundingSources] by id
+     * so the state always holds a fully-populated object (or null).
+     */
+    fun setFundingSource(id: Long?) {
+        _state.update { s ->
+            s.copy(fundingSource = id?.let { s.availableFundingSources.find { src -> src.id == it } })
         }
     }
 
@@ -118,6 +142,7 @@ class AddManualViewModel @Inject constructor(
                 description = s.descriptionText.takeIf { it.isNotBlank() },
                 occurredAt = occurredAt,
                 currency = s.currency,
+                fundingSourceId = s.fundingSource?.id,
             )
             _state.update { it.copy(isSaving = false) }
             onSaved()
