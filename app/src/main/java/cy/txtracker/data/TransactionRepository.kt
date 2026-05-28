@@ -354,7 +354,7 @@ class TransactionRepository @Inject constructor(
     suspend fun deleteFundingSource(id: Long) {
         // UI only enables delete when count == 0; defend here too.
         if (fundingSourceDao.txCountFor(id) > 0) return
-        val src = fundingSourceDao.getById(id) ?: return
+        fundingSourceDao.getById(id) ?: return
         val defaultCashId = fundingSourceDao.getDefaultCash()?.id
         if (defaultCashId != null && id == defaultCashId) return   // seeded Cash is non-deletable
         fundingSourceDao.deleteById(id)
@@ -367,17 +367,16 @@ class TransactionRepository @Inject constructor(
     /**
      * Settings -> "Classify existing transactions" backfill. Iterates rows with NULL FK,
      * runs the classifier, writes the link. Manual entries (rawText IS NULL) get linked
-     * to the Cash source. Returns (linked, total).
+     * to the Cash source via the classifier's MANUAL_SOURCE_APP short-circuit. Returns the
+     * count of rows linked. Idempotent — re-running picks up where it left off.
      */
-    suspend fun classifyAllUnlinkedTransactions(now: Instant = Clock.System.now()): Pair<Int, Int> {
+    suspend fun classifyAllUnlinkedTransactions(now: Instant = Clock.System.now()): Int {
         val rows = transactionDao.getUnlinkedFundingSourceRows()
-        var linked = 0
         for (tx in rows) {
             val id = fundingSourceClassifier.classify(tx.rawText, tx.sourceApp, now)
             transactionDao.updateFundingSource(tx.id, id)
-            linked++
         }
-        return linked to rows.size
+        return rows.size
     }
 
     suspend fun getTransaction(id: Long): Transaction? = transactionDao.getById(id)
