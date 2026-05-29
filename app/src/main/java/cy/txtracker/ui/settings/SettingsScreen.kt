@@ -62,6 +62,7 @@ fun SettingsScreen(
     onNotificationPoolClick: () -> Unit,
     onTrackedAppsClick: () -> Unit,
     onFundingSourcesClick: () -> Unit,
+    onSlDebitClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -263,6 +264,12 @@ fun SettingsScreen(
                     Text("Cards, wallets, and accounts that funded your transactions.")
                 },
                 modifier = Modifier.fillMaxWidth().clickableRow(onFundingSourcesClick),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("SL Debit") },
+                supportingContent = { Text("Prepaid pool — deposits, balance, and default share %.") },
+                modifier = Modifier.fillMaxWidth().clickableRow(onSlDebitClick),
             )
             HorizontalDivider()
             ListItem(

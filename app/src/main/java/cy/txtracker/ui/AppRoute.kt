@@ -46,6 +46,7 @@ import cy.txtracker.ui.settings.funding.FundingSourcesScreen
 import cy.txtracker.ui.settings.merchants.MerchantMappingsScreen
 import cy.txtracker.ui.settings.rewrites.RewritesScreen
 import cy.txtracker.ui.settings.notifications.NotificationsScreen
+import cy.txtracker.ui.settings.sldebit.SlDebitScreen
 import cy.txtracker.ui.settings.sources.NotificationPriorityScreen
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -71,6 +72,7 @@ private object Routes {
     const val SETTINGS_POOL_PACKAGE = "settings/pool/{packageName}"
     const val SETTINGS_TRACKED_APPS = "settings/tracked-apps"
     const val SETTINGS_FUNDING_SOURCES = "settings/funding-sources"
+    const val SETTINGS_SL_DEBIT = "settings/sl-debit"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
@@ -195,7 +197,10 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             },
         ) {
             composable(Routes.HOME) {
-                HomeRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
+                HomeRoute(
+                    onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) },
+                    onSlDebitClick = { nav.navigate(Routes.SETTINGS_SL_DEBIT) },
+                )
             }
             composable(Routes.FOREIGN) {
                 ForeignRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
@@ -216,6 +221,7 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                     onNotificationPoolClick = { nav.navigate(Routes.SETTINGS_POOL) },
                     onTrackedAppsClick = { nav.navigate(Routes.SETTINGS_TRACKED_APPS) },
                     onFundingSourcesClick = { nav.navigate(Routes.SETTINGS_FUNDING_SOURCES) },
+                    onSlDebitClick = { nav.navigate(Routes.SETTINGS_SL_DEBIT) },
                 )
             }
             composable(Routes.SETTINGS_CATEGORIES) {
@@ -265,6 +271,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             }
             composable(Routes.SETTINGS_FUNDING_SOURCES) {
                 FundingSourcesScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS_SL_DEBIT) {
+                SlDebitScreen(onBack = { nav.popBackStack() })
             }
         }
     }
