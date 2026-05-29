@@ -12,6 +12,7 @@ import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.PackageTextRewriteDao
 import cy.txtracker.data.RejectedSourceDao
+import cy.txtracker.data.SlDebitDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import cy.txtracker.data.ApprovedSourceDao
@@ -43,6 +44,7 @@ object DatabaseModule {
                                 "VALUES('CASH', 'Cash', NULL, NULL, 0, ?, ?)",
                             arrayOf<Any?>(now, now),
                         )
+                        TxDatabase.seedSlDebitAccount(db)
                     }
 
                     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -71,6 +73,7 @@ object DatabaseModule {
                                 arrayOf<Any?>(now, now),
                             )
                         }
+                        TxDatabase.seedSlDebitAccount(db)
                     }
                 },
             )
@@ -88,6 +91,7 @@ object DatabaseModule {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
+                MIGRATION_11_12,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -136,6 +140,9 @@ object DatabaseModule {
 
     @Provides
     fun provideFundingSourceDao(db: TxDatabase): FundingSourceDao = db.fundingSourceDao()
+
+    @Provides
+    fun provideSlDebitDao(db: TxDatabase): SlDebitDao = db.slDebitDao()
 }
 
 /**
@@ -433,6 +440,51 @@ private val MIGRATION_10_11 = object : Migration(10, 11) {
         db.execSQL(
             "CREATE UNIQUE INDEX IF NOT EXISTS `index_captured_notifications_dedupeKey` " +
                 "ON `captured_notifications`(`dedupeKey`)",
+        )
+    }
+}
+
+/**
+ * v12 adds the SL Debit feature: a nullable `slShareMinor` column on `transactions`, the
+ * singleton `sl_debit_account` config table (seeded with id=1, "SL Debit", 40%), and the
+ * `sl_debit_deposit` ledger table. Existing rows keep slShareMinor = NULL (not shared).
+ * Schema mirrors what Room generates for a fresh v12 install.
+ */
+private val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `transactions` ADD COLUMN `slShareMinor` INTEGER DEFAULT NULL")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `sl_debit_account` (
+                `id` INTEGER NOT NULL,
+                `displayName` TEXT NOT NULL,
+                `defaultSharePercent` INTEGER NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `sl_debit_deposit` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `amountMinor` INTEGER NOT NULL,
+                `occurredAt` INTEGER NOT NULL,
+                `note` TEXT,
+                `createdAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_sl_debit_deposit_occurredAt` " +
+                "ON `sl_debit_deposit`(`occurredAt`)",
+        )
+        val now = System.currentTimeMillis()
+        db.execSQL(
+            "INSERT INTO sl_debit_account(id, displayName, defaultSharePercent, createdAt, updatedAt) " +
+                "VALUES(1, 'SL Debit', 40, ?, ?)",
+            arrayOf<Any?>(now, now),
         )
     }
 }

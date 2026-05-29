@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    version = 11,
+    version = 12,
     exportSchema = true,
     entities = [
         Transaction::class,
@@ -23,6 +23,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TripWindow::class,
         PackageTextRewrite::class,
         FundingSource::class,
+        SlDebitAccount::class,
+        SlDebitDeposit::class,
     ],
 )
 @TypeConverters(Converters::class)
@@ -40,6 +42,7 @@ abstract class TxDatabase : RoomDatabase() {
     abstract fun tripWindowDao(): TripWindowDao
     abstract fun packageTextRewriteDao(): PackageTextRewriteDao
     abstract fun fundingSourceDao(): FundingSourceDao
+    abstract fun slDebitDao(): SlDebitDao
 
     companion object {
         const val DB_NAME = "txtracker.db"
@@ -57,6 +60,23 @@ abstract class TxDatabase : RoomDatabase() {
                     VALUES (?, ?, 0, ?, ?)
                     """.trimIndent(),
                     arrayOf<Any?>(seed.name, seed.color, seed.sortOrder, pattern),
+                )
+            }
+        }
+
+        /**
+         * Seeds the singleton SL Debit account row (id = 1) if absent. Idempotent.
+         * Called from the Room creation/open callbacks and from the v11->v12 migration.
+         */
+        fun seedSlDebitAccount(db: SupportSQLiteDatabase) {
+            val cursor = db.query("SELECT COUNT(*) FROM sl_debit_account WHERE id = 1")
+            val count = cursor.use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+            if (count == 0) {
+                val now = System.currentTimeMillis()
+                db.execSQL(
+                    "INSERT INTO sl_debit_account(id, displayName, defaultSharePercent, createdAt, updatedAt) " +
+                        "VALUES(1, 'SL Debit', 40, ?, ?)",
+                    arrayOf<Any?>(now, now),
                 )
             }
         }
