@@ -61,6 +61,7 @@ import cy.txtracker.ui.currency.TripCreationDialog
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
+import cy.txtracker.ui.manual.parseAmountMinor
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.plus
@@ -337,7 +338,7 @@ private fun EditingContent(
 
             val shareEnabled = tx.slShareMinor != null
             val defaultPercent = state.slDebitAccount?.defaultSharePercent ?: 40
-            var shareText by remember(tx.id, tx.slShareMinor) {
+            var shareText by remember(tx.id) {
                 mutableStateOf(tx.slShareMinor?.let { formatMyr(it).removePrefix("RM ") } ?: "")
             }
 
@@ -377,7 +378,7 @@ private fun EditingContent(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 LaunchedEffect(shareText) {
-                    val parsed = cy.txtracker.ui.manual.parseAmountMinor(shareText)
+                    val parsed = parseAmountMinor(shareText)
                     if (parsed != null && isValidShareMinor(parsed, tx.amountMinor) && parsed != tx.slShareMinor) {
                         onShareChange(parsed)
                     }
