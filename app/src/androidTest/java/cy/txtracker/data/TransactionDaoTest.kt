@@ -139,6 +139,51 @@ class TransactionDaoTest {
     }
 
     @Test
+    fun slShare_netted_from_category_and_total_aggregates() = runTest {
+        val start = Instant.parse("2026-05-01T00:00:00Z")
+        val end = Instant.parse("2026-06-01T00:00:00Z")
+        val food = foodCategoryId()
+
+        // tx A: amountMinor=10_000, slShareMinor=4_000 → nets to 6_000
+        dbRule.transactionDao.insert(
+            txAt(
+                Instant.parse("2026-05-10T10:00:00Z"),
+                amountMinor = 10_000,
+                categoryId = food,
+                dedupeKey = "sl-a",
+            ).copy(slShareMinor = 4_000),
+        )
+        // tx B: amountMinor=5_000, slShareMinor=null → nets to 5_000
+        dbRule.transactionDao.insert(
+            txAt(
+                Instant.parse("2026-05-11T10:00:00Z"),
+                amountMinor = 5_000,
+                categoryId = food,
+                dedupeKey = "sl-b",
+            ),
+        )
+
+        // Category total for food: 6_000 + 5_000 = 11_000
+        dbRule.transactionDao.observeCategoryTotalsBetween(start, end).test {
+            val totals = awaitItem().associateBy { it.categoryId }
+            assertThat(totals[food]?.totalMinor).isEqualTo(11_000)
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        // Home headline total: same 11_000
+        dbRule.transactionDao.observeTotalBetween(start, end).test {
+            assertThat(awaitItem()).isEqualTo(11_000L)
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        // Share sum: only tx A's 4_000
+        dbRule.transactionDao.observeShareSum().test {
+            assertThat(awaitItem()).isEqualTo(4_000L)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun updateCategory_changes_only_category_field() = runTest {
         val food = dbRule.categoryDao.getAll().first { it.name == "Food" }
         val txId = dbRule.transactionDao.insert(

@@ -77,7 +77,7 @@ interface TransactionDao {
     // bleed into the Home month total or its per-category breakdown.
     @Query(
         """
-        SELECT categoryId, SUM(amountMinor) AS totalMinor
+        SELECT categoryId, SUM(amountMinor - COALESCE(slShareMinor, 0)) AS totalMinor
         FROM transactions
         WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
           AND direction = 'OUT'
@@ -92,7 +92,7 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT COALESCE(SUM(amountMinor), 0)
+        SELECT COALESCE(SUM(amountMinor - COALESCE(slShareMinor, 0)), 0)
         FROM transactions
         WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
           AND direction = 'OUT'
@@ -323,6 +323,19 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET fundingSourceId = :fundingSourceId WHERE id = :txId")
     suspend fun updateFundingSource(txId: Long, fundingSourceId: Long?)
+
+    @Query("UPDATE transactions SET slShareMinor = :slShareMinor WHERE id = :id")
+    suspend fun updateShare(id: Long, slShareMinor: Long?)
+
+    /** Lifetime sum of all SL Debit shares (MYR, OUT). Drives the pool balance. */
+    @Query(
+        """
+        SELECT COALESCE(SUM(slShareMinor), 0)
+        FROM transactions
+        WHERE slShareMinor IS NOT NULL AND direction = 'OUT' AND currency = 'MYR'
+        """
+    )
+    fun observeShareSum(): Flow<Long>
 
     @Query("UPDATE transactions SET fundingSourceId = :newId WHERE fundingSourceId = :oldId")
     suspend fun relinkFundingSource(oldId: Long, newId: Long)
