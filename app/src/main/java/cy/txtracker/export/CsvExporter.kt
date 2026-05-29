@@ -22,7 +22,7 @@ import kotlinx.datetime.toLocalDateTime
 /**
  * Wide-format CSV export. Columns:
  *
- *     date, description, Source, <each category in sortOrder>, Unverified
+ *     date, description, Source, <each category in sortOrder>, Unverified, SL Debit
  *
  * Each transaction row places its amount in exactly one category column (or `Unverified`
  * when categoryId is null); the other category columns are blank. This makes summing each
@@ -71,9 +71,9 @@ class CsvExporter @Inject constructor(
         java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zip ->
             for (code in codes) {
                 val rows = repository.getAllTransactionsOnceForCurrency(code)
-                if (rows.isEmpty()) continue
-                zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
                 val deposits = if (code == "MYR") allDeposits else emptyList()
+                if (rows.isEmpty() && deposits.isEmpty()) continue
+                zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
                 writeCsv(rows, categories, fundingSourcesById, deposits, zip)
                 zip.closeEntry()
             }
@@ -128,6 +128,10 @@ fun writeCsv(
  *     amount if exactly one; a spreadsheet formula `=A+B+C` if more than one. The formula
  *     evaluates to the sum but a single click on the cell reveals the individual values,
  *     which matches the user's mental model of "see the total but keep the details".
+ *   - The `SL Debit` column accumulates deposits (positive) and shares (negative) for the
+ *     day. A single deposit with no shares renders as a bare positive literal (`500.00`); a
+ *     single share with no deposit renders as a bare negative literal (`-40.00`); when there
+ *     is more than one term the cell is a spreadsheet formula (`=500.00-40.00`).
  */
 fun buildCsv(
     transactions: List<Transaction>,
@@ -199,7 +203,7 @@ fun buildCsv(
         sb.append(',')
         val depositTerms = (depositsByDate[date] ?: emptyList()).map { "+${formatAmount(it.amountMinor)}" }
         val shareTerms = txs.mapNotNull { it.slShareMinor?.let { s -> "-${formatAmount(s)}" } }
-        sb.append(buildSlDebitCell(depositTerms + shareTerms))
+        sb.append(csvEscape(buildSlDebitCell(depositTerms + shareTerms)))
 
         sb.append('\n')
     }

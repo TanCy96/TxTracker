@@ -63,6 +63,12 @@ class CsvExporterTest {
         assertTrue(dayLine, dayLine.contains("Credit Card / Debit/Transfer"))
     }
 
+    @Test fun `share-only day with no deposit emits bare negative literal in SL Debit`() {
+        val csv = buildCsv(listOf(tx(amount = 10_000, share = 4000)), listOf(cat))
+        val dayLine = csv.lineSequence().first { it.startsWith("2026-01-05") }
+        assertTrue(dayLine, dayLine.endsWith(",-40.00"))
+    }
+
     @Test fun `deposit-only day with no transactions still emits a row`() {
         val deposits = listOf(
             SlDebitDeposit(id = 1, amountMinor = 50_000, occurredAt = Instant.parse("2026-02-10T02:00:00Z"), note = null, createdAt = Instant.parse("2026-02-10T02:00:00Z")),
