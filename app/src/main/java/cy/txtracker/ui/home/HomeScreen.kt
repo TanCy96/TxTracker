@@ -462,11 +462,7 @@ internal fun TransactionRow(
                         )
                     }
                 }
-                Text(
-                    text = amountFormatter(row.transaction.amountMinor),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                RowAmount(transaction = row.transaction)
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -495,6 +491,41 @@ internal fun TransactionRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RowAmount(transaction: Transaction) {
+    val share = transaction.slShareMinor
+    if (share == null) {
+        Text(
+            text = formatMyr(transaction.amountMinor),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+    } else {
+        val net = transaction.amountMinor - share
+        Column(horizontalAlignment = Alignment.End) {
+            // Net "what you actually paid" — emphasized.
+            Text(
+                text = formatMyr(net),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            // Original amount, de-emphasized + struck through.
+            Text(
+                text = formatMyr(transaction.amountMinor),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+            )
+            // SL Debit share — "money coming back" accent.
+            Text(
+                text = "−${formatMyr(share)} SL",
+                style = MaterialTheme.typography.bodySmall,
+                color = cy.txtracker.ui.theme.SlShareGreen,
+            )
         }
     }
 }
