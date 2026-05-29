@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -51,6 +52,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.data.Transaction
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.domain.isValidShareMinor
+import cy.txtracker.domain.slDebitDefaultShareMinor
 import cy.txtracker.ui.common.FundingSourcePickerSheet
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
@@ -90,6 +93,9 @@ fun EditTransactionSheet(
                 },
                 onFundingSourceChange = { fundingSourceId ->
                     viewModel.setFundingSource(transactionId, fundingSourceId)
+                },
+                onShareChange = { shareMinor ->
+                    viewModel.setShare(transactionId, shareMinor)
                 },
                 onDescriptionChange = { description ->
                     viewModel.setDescription(transactionId, description, learn = true)
@@ -136,6 +142,7 @@ private fun EditingContent(
     viewModel: EditTransactionViewModel,
     onCategoryChange: (Long?) -> Unit,
     onFundingSourceChange: (Long?) -> Unit,
+    onShareChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
     onMerchantNoteChange: (String?) -> Unit,
     onMerchantChange: (String) -> Unit,
@@ -323,6 +330,63 @@ private fun EditingContent(
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
+
+        if (tx.currency == "MYR") {
+            Text(text = "Share with SL Debit", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+
+            val shareEnabled = tx.slShareMinor != null
+            val defaultPercent = state.slDebitAccount?.defaultSharePercent ?: 40
+            var shareText by remember(tx.id, tx.slShareMinor) {
+                mutableStateOf(tx.slShareMinor?.let { formatMyr(it).removePrefix("RM ") } ?: "")
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (shareEnabled) "Sharing ${formatMyr(tx.slShareMinor!!)} of ${formatMyr(tx.amountMinor)}"
+                    else "Off",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Switch(
+                    checked = shareEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            val def = slDebitDefaultShareMinor(tx.amountMinor, defaultPercent)
+                            shareText = formatMyr(def).removePrefix("RM ")
+                            onShareChange(def)
+                        } else {
+                            shareText = ""
+                            onShareChange(null)
+                        }
+                    },
+                )
+            }
+            if (shareEnabled) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = shareText,
+                    onValueChange = { shareText = it },
+                    label = { Text("Share amount (RM)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                LaunchedEffect(shareText) {
+                    val parsed = cy.txtracker.ui.manual.parseAmountMinor(shareText)
+                    if (parsed != null && isValidShareMinor(parsed, tx.amountMinor) && parsed != tx.slShareMinor) {
+                        onShareChange(parsed)
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+        }
 
         Text(text = "Category", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))

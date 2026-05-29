@@ -29,6 +29,8 @@ sealed interface EditUiState {
         val availableFundingSources: List<FundingSource> = emptyList(),
         /** Resolved from [Transaction.fundingSourceId] against [availableFundingSources]. */
         val fundingSource: FundingSource? = null,
+        /** SL Debit account (for the default %), or null if unavailable. */
+        val slDebitAccount: cy.txtracker.data.SlDebitAccount? = null,
     ) : EditUiState
 }
 
@@ -47,6 +49,7 @@ class EditTransactionViewModel @Inject constructor(
                 EditUiState.Missing
             } else {
                 val sources = repository.observeFundingSources().first()
+                val slAccount = repository.getSlDebitAccount()
                 EditUiState.Editing(
                     transaction = tx,
                     categories = repository.observeAllCategories().first(),
@@ -54,6 +57,7 @@ class EditTransactionViewModel @Inject constructor(
                     trackedCurrencies = repository.observeTrackedCurrencies().first(),
                     availableFundingSources = sources,
                     fundingSource = sources.find { it.id == tx.fundingSourceId },
+                    slDebitAccount = slAccount,
                 )
             }
         }
@@ -90,6 +94,18 @@ class EditTransactionViewModel @Inject constructor(
                 now = Clock.System.now(),
             )
             // Refresh local state so the sheet's selection ticks over to the new category.
+            val refreshed = repository.getTransaction(transactionId) ?: return@launch
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                _state.value = current.copy(transaction = refreshed)
+            }
+        }
+    }
+
+    /** Sets (or clears, when [shareMinor] is null) the SL Debit share on this transaction. */
+    fun setShare(transactionId: Long, shareMinor: Long?) {
+        viewModelScope.launch {
+            repository.setTransactionShare(transactionId, shareMinor)
             val refreshed = repository.getTransaction(transactionId) ?: return@launch
             val current = _state.value
             if (current is EditUiState.Editing) {
