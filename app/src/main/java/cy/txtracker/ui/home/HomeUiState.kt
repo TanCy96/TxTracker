@@ -68,4 +68,8 @@ data class HomeUiState(
     /** Count of transactions per funding bucket in the current month (unfiltered by bucket).
      *  Used to show counts on each chip and hide chips with zero transactions. */
     val fundingBucketCounts: Map<FundingSourceKind, Int> = emptyMap(),
+    /** Current SL Debit pool balance (deposits − shares). */
+    val slDebitBalanceMinor: Long = 0L,
+    /** SL Debit account display name (for the balance card label). */
+    val slDebitName: String = "SL Debit",
 )

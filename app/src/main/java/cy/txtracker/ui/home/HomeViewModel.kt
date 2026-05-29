@@ -61,6 +61,21 @@ class HomeViewModel @Inject constructor(
                 initialValue = 0,
             )
 
+    private val _slDebitBalance: StateFlow<Long> =
+        repository.observeSlDebitBalance().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = 0L,
+        )
+    private val _slDebitName: StateFlow<String> =
+        repository.observeSlDebitAccount()
+            .map { it?.displayName ?: "SL Debit" }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = "SL Debit",
+            )
+
     init {
         // Deep-link arrives via DeeplinkBus from MainActivity intent extras (e.g. user
         // taps a pending-row notification). Each Deeplink maps to a Home filter switch.
@@ -92,7 +107,9 @@ class HomeViewModel @Inject constructor(
             },
             _fundingBucketFilter,
             repository.observeFundingSources(),
-        ) { params, bucketFilter, fundingSources ->
+            _slDebitBalance,
+            _slDebitName,
+        ) { params, bucketFilter, fundingSources, slBalance, slName ->
             object {
                 val yearMonth = params.yearMonth
                 val filter = params.filter
@@ -101,6 +118,8 @@ class HomeViewModel @Inject constructor(
                 val currencyReviewCount = params.currencyReviewCount
                 val fundingBucketFilter = bucketFilter
                 val fundingSourcesById = fundingSources.associateBy { it.id }
+                val slBalance = slBalance
+                val slName = slName
             }
         }.flatMapLatest { params ->
             val ym = params.yearMonth
@@ -110,6 +129,8 @@ class HomeViewModel @Inject constructor(
             val currencyReviewCount = params.currencyReviewCount
             val fundingBucketFilter = params.fundingBucketFilter
             val fundingSourcesById = params.fundingSourcesById
+            val slBalance = params.slBalance
+            val slName = params.slName
 
             if (filter == HomeFilter.CurrencyReview) {
                 // Currency-review filter: show all parked rows regardless of month
@@ -126,6 +147,8 @@ class HomeViewModel @Inject constructor(
                         currencyReviewCount = currencyReviewCount,
                         fundingBucketFilter = fundingBucketFilter,
                         fundingSourcesById = fundingSourcesById,
+                        slDebitBalanceMinor = slBalance,
+                        slDebitName = slName,
                     )
                 }
             } else {
@@ -149,6 +172,8 @@ class HomeViewModel @Inject constructor(
                         currencyReviewCount = currencyReviewCount,
                         fundingBucketFilter = fundingBucketFilter,
                         fundingSourcesById = fundingSourcesById,
+                        slDebitBalanceMinor = slBalance,
+                        slDebitName = slName,
                     )
                 }
             }
@@ -210,6 +235,8 @@ class HomeViewModel @Inject constructor(
         currencyReviewCount: Int,
         fundingBucketFilter: Set<FundingSourceKind>,
         fundingSourcesById: Map<Long, FundingSource>,
+        slDebitBalanceMinor: Long,
+        slDebitName: String,
     ): HomeUiState {
         val byId = categories.associateBy { it.id }
         val joined = transactions.map { TransactionWithCategory(it, it.categoryId?.let(byId::get)) }
@@ -269,6 +296,8 @@ class HomeViewModel @Inject constructor(
             bannerCurrency = banner,
             fundingBucketFilter = fundingBucketFilter,
             fundingBucketCounts = fundingBucketCounts,
+            slDebitBalanceMinor = slDebitBalanceMinor,
+            slDebitName = slDebitName,
         )
     }
 
@@ -281,6 +310,8 @@ class HomeViewModel @Inject constructor(
         currencyReviewCount: Int,
         fundingBucketFilter: Set<FundingSourceKind>,
         fundingSourcesById: Map<Long, FundingSource>,
+        slDebitBalanceMinor: Long,
+        slDebitName: String,
     ): HomeUiState {
         if (transactions.isEmpty() && _filter.value == HomeFilter.CurrencyReview) {
             _filter.value = HomeFilter.All
@@ -320,6 +351,8 @@ class HomeViewModel @Inject constructor(
             bannerCurrency = banner,
             fundingBucketFilter = fundingBucketFilter,
             fundingBucketCounts = fundingBucketCounts,
+            slDebitBalanceMinor = slDebitBalanceMinor,
+            slDebitName = slDebitName,
         )
     }
 

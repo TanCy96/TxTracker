@@ -66,6 +66,7 @@ import kotlinx.datetime.plus
 @Composable
 fun HomeRoute(
     onSettingsClick: () -> Unit = {},
+    onSlDebitClick: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -82,6 +83,7 @@ fun HomeRoute(
         onTransactionClick = { tx -> editingTxId = tx.id },
         onAddClick = { showAddSheet = true },
         onSettingsClick = onSettingsClick,
+        onSlDebitClick = onSlDebitClick,
         onDismissBanner = { currency -> viewModel.dismissBanner(currency) },
         onStartTrip = { offer -> tripDialogOffer = offer },
     )
@@ -120,6 +122,7 @@ fun HomeScreen(
     onTransactionClick: (Transaction) -> Unit,
     onAddClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onSlDebitClick: () -> Unit = {},
     onDismissBanner: (String) -> Unit = {},
     onStartTrip: (BannerOffer) -> Unit = {},
 ) {
@@ -155,6 +158,12 @@ fun HomeScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             MonthTotalHeader(totalMinor = state.totalMinor, transactionCount = state.transactionCount)
+
+            SlDebitBalanceCard(
+                name = state.slDebitName,
+                balanceMinor = state.slDebitBalanceMinor,
+                onClick = onSlDebitClick,
+            )
 
             val onChipTap: (HomeFilter) -> Unit = { target ->
                 onFilterChange(if (state.filter == target) HomeFilter.All else target)
@@ -221,6 +230,27 @@ fun HomeScreen(
                     onTransactionClick = onTransactionClick,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SlDebitBalanceCard(name: String, balanceMinor: Long, onClick: () -> Unit) {
+    androidx.compose.material3.ElevatedCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(name, style = MaterialTheme.typography.titleMedium)
+            Text(
+                cy.txtracker.ui.format.formatMyr(balanceMinor),
+                style = MaterialTheme.typography.titleMedium,
+                color = if (balanceMinor < 0) MaterialTheme.colorScheme.error else cy.txtracker.ui.theme.SlShareGreen,
+            )
         }
     }
 }
