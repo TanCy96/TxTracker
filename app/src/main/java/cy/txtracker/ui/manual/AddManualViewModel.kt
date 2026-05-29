@@ -127,7 +127,13 @@ class AddManualViewModel @Inject constructor(
             parts.size == 2 -> parts[0] + "." + parts[1].take(2)
             else -> parts[0] + "." + parts.drop(1).joinToString("").take(2)
         }
-        _state.update { it.copy(amountText = cleaned) }
+        _state.update { s ->
+            val newAmount = parseAmountMinor(cleaned) ?: 0L
+            s.copy(
+                amountText = cleaned,
+                slShareMinor = s.slShareMinor?.takeIf { isValidShareMinor(it, newAmount) },
+            )
+        }
     }
 
     /** Toggles the SL Debit share on/off. On enable, prefills the default % of the current amount. */
@@ -138,7 +144,7 @@ class AddManualViewModel @Inject constructor(
             } else {
                 val amount = s.amountMinor ?: 0
                 val def = slDebitDefaultShareMinor(amount, s.slDefaultPercent)
-                s.copy(slShareMinor = def.takeIf { it > 0 }, slShareText = formatShare(def))
+                s.copy(slShareMinor = def.takeIf { it > 0 }, slShareText = if (def > 0) formatShare(def) else "")
             }
         }
     }
