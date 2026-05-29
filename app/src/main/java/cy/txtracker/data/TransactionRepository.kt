@@ -5,6 +5,8 @@ import cy.txtracker.domain.CategorizationEngine
 import cy.txtracker.domain.DescriptionEngine
 import cy.txtracker.domain.TimeBucket
 import cy.txtracker.domain.bucketOf
+import cy.txtracker.domain.isValidShareMinor
+import cy.txtracker.domain.slDebitBalanceMinor
 import cy.txtracker.export.Backup
 import cy.txtracker.export.ImportResult
 import cy.txtracker.parsing.FundingSourceClassifier
@@ -80,6 +82,7 @@ class TransactionRepository @Inject constructor(
     private val tripWindowDao: TripWindowDao,
     private val packageTextRewriteDao: PackageTextRewriteDao,
     private val fundingSourceDao: FundingSourceDao,
+    private val slDebitDao: SlDebitDao,
     private val categorizationEngine: CategorizationEngine,
     private val descriptionEngine: DescriptionEngine,
     private val heuristicExtractor: HeuristicExtractor,
@@ -112,6 +115,7 @@ class TransactionRepository @Inject constructor(
         tripWindowDao = tripWindowDao,
         packageTextRewriteDao = database.packageTextRewriteDao(),
         fundingSourceDao = database.fundingSourceDao(),
+        slDebitDao = database.slDebitDao(),
         categorizationEngine = CategorizationEngine(merchantMappingDao, categoryDao),
         descriptionEngine = DescriptionEngine(descriptionMappingDao),
         heuristicExtractor = HeuristicExtractor(),
@@ -382,6 +386,73 @@ class TransactionRepository @Inject constructor(
             transactionDao.updateFundingSource(tx.id, id)
         }
         return rows.size
+    }
+
+    // SL Debit -----------------------------------------------------------
+
+    fun observeSlDebitAccount(): Flow<SlDebitAccount?> = slDebitDao.observeAccount()
+
+    fun observeSlDebitDeposits(): Flow<List<SlDebitDeposit>> = slDebitDao.observeDeposits()
+
+    /** Derived pool balance: total deposited minus total shared. May be negative. */
+    fun observeSlDebitBalance(): Flow<Long> =
+        combine(slDebitDao.observeDepositSum(), transactionDao.observeShareSum()) { deposits, shares ->
+            slDebitBalanceMinor(deposits, shares)
+        }
+
+    suspend fun getSlDebitAccount(): SlDebitAccount? = slDebitDao.getAccount()
+
+    suspend fun getSlDebitDepositsOnce(): List<SlDebitDeposit> = slDebitDao.getDepositsOnce()
+
+    suspend fun renameSlDebitAccount(displayName: String, now: Instant = Clock.System.now()) {
+        val account = slDebitDao.getAccount() ?: return
+        val cleaned = displayName.trim().takeIf { it.isNotEmpty() } ?: return
+        slDebitDao.updateAccount(account.copy(displayName = cleaned, updatedAt = now))
+    }
+
+    suspend fun setSlDebitDefaultPercent(percent: Int, now: Instant = Clock.System.now()) {
+        val account = slDebitDao.getAccount() ?: return
+        slDebitDao.updateAccount(account.copy(defaultSharePercent = percent.coerceIn(0, 100), updatedAt = now))
+    }
+
+    suspend fun addSlDebitDeposit(
+        amountMinor: Long,
+        occurredAt: Instant,
+        note: String?,
+        now: Instant = Clock.System.now(),
+    ): Long? {
+        if (amountMinor <= 0) return null
+        return slDebitDao.insertDeposit(
+            SlDebitDeposit(
+                amountMinor = amountMinor,
+                occurredAt = occurredAt,
+                note = note?.trim()?.takeIf { it.isNotEmpty() },
+                createdAt = now,
+            ),
+        )
+    }
+
+    suspend fun updateSlDebitDeposit(deposit: SlDebitDeposit) {
+        if (deposit.amountMinor <= 0) return
+        slDebitDao.updateDeposit(deposit.copy(note = deposit.note?.trim()?.takeIf { it.isNotEmpty() }))
+    }
+
+    suspend fun deleteSlDebitDeposit(id: Long) = slDebitDao.deleteDeposit(id)
+
+    /**
+     * Sets (or clears, when [shareMinor] is null) the SL Debit share on a transaction.
+     * A non-null share is rejected (no-op) unless it is in `1..amountMinor` and the row is
+     * MYR / direction OUT — the share only makes sense on real MYR spending.
+     */
+    suspend fun setTransactionShare(txId: Long, shareMinor: Long?) {
+        if (shareMinor == null) {
+            transactionDao.updateShare(txId, null)
+            return
+        }
+        val tx = transactionDao.getById(txId) ?: return
+        if (tx.currency != "MYR" || tx.direction != Direction.OUT) return
+        if (!isValidShareMinor(shareMinor, tx.amountMinor)) return
+        transactionDao.updateShare(txId, shareMinor)
     }
 
     suspend fun getTransaction(id: Long): Transaction? = transactionDao.getById(id)
