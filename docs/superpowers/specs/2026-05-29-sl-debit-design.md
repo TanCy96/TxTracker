@@ -1,10 +1,42 @@
 # SL Debit — Design
 
 **Date:** 2026-05-29
-**Status:** Approved (brainstorming complete; pending implementation plan)
+**Status:** Implemented on branch `feature/share-debit` (DB schema v12, backup v9).
 **Scope:** Personal-use feature. This document is the reference of record for the
 SL Debit branch so future features that touch transactions, totals, CSV export, or
 backup can reason about the conflicts this branch introduces.
+
+---
+
+## 0. Branch & integration policy (READ FIRST)
+
+**`feature/share-debit` is a long-lived personal branch. It MUST NOT be merged into `main`.**
+
+The SL Debit feature is intentionally kept off `main`. Integration flows **one way only**:
+
+- ❌ **Never** merge / PR `feature/share-debit` → `main`.
+- ✅ When new features land on `main`, merge **`main` → `feature/share-debit`** and resolve
+  any conflicts **in favour of keeping the SL Debit feature intact** (do not let a `main`
+  change silently drop `slShareMinor`, the SL Debit DAO/entities, the net-total SQL, the
+  CSV `SL Debit` column, the v12 migration, or backup v9).
+
+**Conflict-resolution checklist when merging `main` into this branch** — verify each of these
+survives the merge (see §9 for the full conflict surface):
+
+- `Transaction.slShareMinor` column + the v11→v12 migration (and any *newer* migration on
+  `main` must be re-sequenced so v12 still applies; bump again if `main` also added a version).
+- `TransactionDao.observeCategoryTotalsBetween` / `observeTotalBetween` keep the
+  `SUM(amountMinor - COALESCE(slShareMinor, 0))` netting.
+- `CsvExporter.buildCsv` keeps the `SL Debit` column, subtraction-aware category cells, and
+  the `Debit/Transfer` source-label synthesis.
+- `Backup` stays at the SL Debit-aware version (≥ v9) carrying `slShareMinor` + account +
+  deposits; re-bump if `main` changed the backup format.
+- The SL Debit UI (edit/add-manual share toggle, Home balance card + row display,
+  Settings SL Debit screen + nav) stays wired.
+
+After every `main → feature/share-debit` merge, re-run the gates:
+`./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin :app:compileDebugAndroidTestKotlin :app:testDebugUnitTest`
+(device/migration tests are run on-device by the user).
 
 ---
 
