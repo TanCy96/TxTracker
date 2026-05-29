@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.ui.common.FundingSourcePickerSheet
+import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
 import kotlinx.datetime.Instant
@@ -87,6 +89,8 @@ fun AddManualSheet(
             onCurrencyChange = viewModel::setCurrency,
             onAddCurrency = viewModel::addCurrency,
             onFundingSourceChange = { viewModel.setFundingSource(it) },
+            onShareEnabledChange = viewModel::setShareEnabled,
+            onShareTextChange = viewModel::setShareText,
             onSave = { viewModel.save(onSaved = onDismiss) },
             onCancel = onDismiss,
         )
@@ -106,6 +110,8 @@ private fun Content(
     onCurrencyChange: (String) -> Unit,
     onAddCurrency: (String) -> Unit,
     onFundingSourceChange: (Long?) -> Unit,
+    onShareEnabledChange: (Boolean) -> Unit,
+    onShareTextChange: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -165,6 +171,47 @@ private fun Content(
             label = { Text(state.fundingSource?.displayName ?: "None") },
         )
         Spacer(Modifier.height(8.dp))
+
+        if (state.currency == "MYR") {
+            val shareOn = state.slShareMinor != null || state.slShareText.isNotEmpty()
+            Text("Share with SL Debit", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val share = state.slShareMinor
+                val amount = state.amountMinor
+                Text(
+                    text = if (shareOn && share != null && amount != null) {
+                        "Sharing ${formatMyr(share)} of ${formatMyr(amount)}"
+                    } else if (shareOn) {
+                        "On"
+                    } else {
+                        "Off"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Switch(
+                    checked = shareOn,
+                    onCheckedChange = onShareEnabledChange,
+                )
+            }
+            if (shareOn) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.slShareText,
+                    onValueChange = onShareTextChange,
+                    label = { Text("Share amount (RM)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         Text("Category", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))

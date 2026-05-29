@@ -8,6 +8,8 @@ import cy.txtracker.data.FundingSourceDao
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.domain.isValidShareMinor
+import cy.txtracker.domain.slDebitDefaultShareMinor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +40,11 @@ data class AddManualUiState(
     val availableFundingSources: List<FundingSource> = emptyList(),
     /** Pre-selected to the seeded Cash row on first load; user can change via the picker. */
     val fundingSource: FundingSource? = null,
+    /** SL Debit default % (from the account); used to prefill the share when toggled on. */
+    val slDefaultPercent: Int = 40,
+    /** Non-null when the user has enabled "Share with SL Debit"; the share in minor units. */
+    val slShareMinor: Long? = null,
+    val slShareText: String = "",
 ) {
     val amountMinor: Long? get() = parseAmountMinor(amountText)
     val canSave: Boolean
@@ -76,6 +83,7 @@ class AddManualViewModel @Inject constructor(
             val trackedCurrencies = repository.observeTrackedCurrencies().first()
             val sources = fundingSourceDao.getAll()
             val defaultCash = fundingSourceDao.getDefaultCash()
+            val slAccount = repository.getSlDebitAccount()
             _state.value = AddManualUiState(
                 date = anchor.date,
                 time = LocalTime(anchor.hour, anchor.minute),
@@ -84,6 +92,7 @@ class AddManualViewModel @Inject constructor(
                 trackedCurrencies = trackedCurrencies,
                 availableFundingSources = sources,
                 fundingSource = defaultCash,
+                slDefaultPercent = slAccount?.defaultSharePercent ?: 40,
             )
         }
     }
@@ -121,6 +130,31 @@ class AddManualViewModel @Inject constructor(
         _state.update { it.copy(amountText = cleaned) }
     }
 
+    /** Toggles the SL Debit share on/off. On enable, prefills the default % of the current amount. */
+    fun setShareEnabled(enabled: Boolean) {
+        _state.update { s ->
+            if (!enabled) {
+                s.copy(slShareMinor = null, slShareText = "")
+            } else {
+                val amount = s.amountMinor ?: 0
+                val def = slDebitDefaultShareMinor(amount, s.slDefaultPercent)
+                s.copy(slShareMinor = def.takeIf { it > 0 }, slShareText = formatShare(def))
+            }
+        }
+    }
+
+    fun setShareText(text: String) {
+        val sanitized = text.filter { it.isDigit() || it == '.' }
+        _state.update { s ->
+            val parsed = parseAmountMinor(sanitized)
+            val amount = s.amountMinor ?: 0
+            s.copy(
+                slShareText = sanitized,
+                slShareMinor = parsed?.takeIf { isValidShareMinor(it, amount) },
+            )
+        }
+    }
+
     fun setMerchant(text: String) = _state.update { it.copy(merchantText = text) }
     fun setCategoryId(id: Long?) = _state.update { it.copy(categoryId = id) }
     fun setDescription(text: String) = _state.update { it.copy(descriptionText = text) }
@@ -135,7 +169,7 @@ class AddManualViewModel @Inject constructor(
 
         _state.update { it.copy(isSaving = true) }
         viewModelScope.launch {
-            repository.addManualTransaction(
+            val newId = repository.addManualTransaction(
                 amountMinor = amount,
                 merchantRaw = s.merchantText.trim(),
                 categoryId = s.categoryId,
@@ -144,11 +178,19 @@ class AddManualViewModel @Inject constructor(
                 currency = s.currency,
                 fundingSourceId = s.fundingSource?.id,
             )
+            val share = s.slShareMinor
+            if (newId != null && s.currency == "MYR" && share != null && isValidShareMinor(share, amount)) {
+                repository.setTransactionShare(newId, share)
+            }
             _state.update { it.copy(isSaving = false) }
             onSaved()
         }
     }
 }
+
+/** "1250" minor -> "12.50" plain string (no currency prefix), for the share text field. */
+private fun formatShare(amountMinor: Long): String =
+    "${amountMinor / 100}.${(amountMinor % 100).toString().padStart(2, '0')}"
 
 /** "12.50" → 1250. Returns null on invalid input. Assumes input has at most 2 decimal places. */
 internal fun parseAmountMinor(text: String): Long? {
