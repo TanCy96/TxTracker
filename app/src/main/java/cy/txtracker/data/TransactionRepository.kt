@@ -984,6 +984,9 @@ class TransactionRepository @Inject constructor(
                 notificationDedupeKey = newDedupeKey,
                 needsCurrencyConfirmation = parked,
             )
+            if (currency != "MYR") {
+                transactionDao.updateShare(txId, null)
+            }
             true
         } catch (e: android.database.sqlite.SQLiteConstraintException) {
             false
