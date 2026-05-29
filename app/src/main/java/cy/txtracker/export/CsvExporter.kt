@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import cy.txtracker.data.Category
 import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.SlDebitDeposit
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
@@ -46,9 +47,10 @@ class CsvExporter @Inject constructor(
         val transactions = repository.getAllTransactionsOnceForCurrency(currency)
         val categories = repository.getAllCategoriesOnce()
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
+        val deposits = if (currency == "MYR") repository.getSlDebitDepositsOnce() else emptyList()
         val dir = exportDir()
         val file = File(dir, "transactions-$currency-${System.currentTimeMillis()}.csv")
-        file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, it) }
+        file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, deposits, it) }
         return uriFor(file)
     }
 
@@ -62,6 +64,7 @@ class CsvExporter @Inject constructor(
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
         val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
         val codes = (listOf("MYR") + trackedCodes).distinct()
+        val allDeposits = repository.getSlDebitDepositsOnce()
 
         val dir = exportDir()
         val zipFile = File(dir, "transactions-all-${System.currentTimeMillis()}.zip")
@@ -70,7 +73,8 @@ class CsvExporter @Inject constructor(
                 val rows = repository.getAllTransactionsOnceForCurrency(code)
                 if (rows.isEmpty()) continue
                 zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
-                writeCsv(rows, categories, fundingSourcesById, zip)
+                val deposits = if (code == "MYR") allDeposits else emptyList()
+                writeCsv(rows, categories, fundingSourcesById, deposits, zip)
                 zip.closeEntry()
             }
         }
@@ -100,9 +104,10 @@ fun writeCsv(
     transactions: List<Transaction>,
     categories: List<Category>,
     fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
+    deposits: List<SlDebitDeposit> = emptyList(),
     output: OutputStream,
 ) {
-    val csv = buildCsv(transactions, categories, fundingSourcesById)
+    val csv = buildCsv(transactions, categories, fundingSourcesById, deposits)
     output.write(csv.toByteArray(Charsets.UTF_8))
 }
 
@@ -128,6 +133,7 @@ fun buildCsv(
     transactions: List<Transaction>,
     categories: List<Category>,
     fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
+    deposits: List<SlDebitDeposit> = emptyList(),
 ): String {
     val orderedCategories = categories.sortedWith(
         compareBy<Category> { it.sortOrder }.thenBy { it.name },
@@ -141,15 +147,18 @@ fun buildCsv(
     for (c in orderedCategories) {
         sb.append(',').append(csvEscape(c.name))
     }
-    sb.append(",Unverified\n")
+    sb.append(",Unverified,SL Debit\n")
 
-    // Group by day (Asia/Kuala_Lumpur). Sorted ascending so the export reads chronologically.
-    val byDate: Map<LocalDate, List<Transaction>> = transactions
+    // Group by day (Asia/Kuala_Lumpur). The export iterates the union of transaction days and
+    // deposit days so a deposit-only day still emits a row. Sorted so it reads chronologically.
+    val txByDate: Map<LocalDate, List<Transaction>> = transactions
         .groupBy { it.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
-        .toSortedMap()
+    val depositsByDate: Map<LocalDate, List<SlDebitDeposit>> = deposits
+        .groupBy { it.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
+    val allDates = (txByDate.keys + depositsByDate.keys).toSortedSet()
 
-    for ((date, daysTransactions) in byDate) {
-        val txs = daysTransactions.sortedBy { it.occurredAt }
+    for (date in allDates) {
+        val txs = (txByDate[date] ?: emptyList()).sortedBy { it.occurredAt }
 
         sb.append(formatDate(date))
 
@@ -157,9 +166,16 @@ fun buildCsv(
         val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }
         sb.append(',').append(csvEscape(descriptions.joinToString(", ")))
 
-        // Source column: distinct bucket labels for the day, in canonical kind order.
-        val dayBuckets = txs
+        // Source column: distinct bucket labels for the day, in canonical kind order. A day with
+        // any SL Debit-shared transaction synthesizes a DEBIT_BANK bucket (the Debit/Transfer
+        // inflow that funds the share), even though there is no real funding source row for it.
+        val dayKinds = txs
             .mapNotNull { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } }
+            .toMutableList()
+        if (txs.any { it.slShareMinor != null }) {
+            dayKinds.add(FundingSourceKind.DEBIT_BANK)
+        }
+        val dayBuckets = dayKinds
             .distinct()
             .sortedBy { CANONICAL_KIND_ORDER.indexOf(it) }
         val sourceCell = dayBuckets.joinToString(" / ") { bucketLabel(it) }
@@ -168,16 +184,22 @@ fun buildCsv(
         // Per-category columns.
         for (c in orderedCategories) {
             sb.append(',')
-            val amounts = txs.filter { it.categoryId == c.id }.map { it.amountMinor }
-            sb.append(buildAmountCell(amounts))
+            val terms = txs.filter { it.categoryId == c.id }.map { categoryTerm(it) }
+            sb.append(buildCategoryCell(terms))
         }
 
         // Unverified column: null categoryId OR a categoryId pointing at a deleted category.
         sb.append(',')
-        val unverifiedAmounts = txs
+        val unverifiedTerms = txs
             .filter { it.categoryId == null || categoryById[it.categoryId] == null }
-            .map { it.amountMinor }
-        sb.append(buildAmountCell(unverifiedAmounts))
+            .map { categoryTerm(it) }
+        sb.append(buildCategoryCell(unverifiedTerms))
+
+        // SL Debit column: deposits (positive) and shares (negative) for the day.
+        sb.append(',')
+        val depositTerms = (depositsByDate[date] ?: emptyList()).map { "+${formatAmount(it.amountMinor)}" }
+        val shareTerms = txs.mapNotNull { it.slShareMinor?.let { s -> "-${formatAmount(s)}" } }
+        sb.append(buildSlDebitCell(depositTerms + shareTerms))
 
         sb.append('\n')
     }
@@ -205,16 +227,34 @@ private val CANONICAL_KIND_ORDER = listOf(
     FundingSourceKind.CASH,
 )
 
+/** Per-transaction term for a category cell: "amount" or "amount-share" for shared rows. */
+private fun categoryTerm(tx: Transaction): String =
+    tx.slShareMinor?.let { "${formatAmount(tx.amountMinor)}-${formatAmount(it)}" }
+        ?: formatAmount(tx.amountMinor)
+
 /**
- * Builds the contents of a single category column for a single day:
- *   - empty list  → blank
- *   - one amount  → "12.50"
- *   - many amounts → "=12.50+4.00+5.00"  (a spreadsheet formula)
+ * Category cell from a day's terms:
+ *   empty                       -> ""
+ *   one plain term ("50.00")    -> "50.00"
+ *   anything with subtraction
+ *     or more than one term     -> "=t1+t2+..."  (a spreadsheet formula)
  */
-private fun buildAmountCell(amountsMinor: List<Long>): String = when {
-    amountsMinor.isEmpty() -> ""
-    amountsMinor.size == 1 -> formatAmount(amountsMinor[0])
-    else -> amountsMinor.joinToString(prefix = "=", separator = "+") { formatAmount(it) }
+private fun buildCategoryCell(terms: List<String>): String = when {
+    terms.isEmpty() -> ""
+    terms.size == 1 && !terms[0].contains('-') -> terms[0]
+    else -> terms.joinToString(prefix = "=", separator = "+")
+}
+
+/**
+ * SL Debit cell from signed terms ("+500.00", "-40.00"):
+ *   empty      -> ""
+ *   one term   -> the term without a leading '+'  ("500.00" or "-40.00")
+ *   many terms -> "=" + concatenation with the leading '+' stripped  ("=500.00-40.00")
+ */
+private fun buildSlDebitCell(signedTerms: List<String>): String = when {
+    signedTerms.isEmpty() -> ""
+    signedTerms.size == 1 -> signedTerms[0].removePrefix("+")
+    else -> "=" + signedTerms.joinToString(separator = "").removePrefix("+")
 }
 
 /** ISO-8601 date. */
