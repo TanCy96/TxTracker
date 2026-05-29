@@ -462,7 +462,7 @@ internal fun TransactionRow(
                         )
                     }
                 }
-                RowAmount(transaction = row.transaction)
+                RowAmount(transaction = row.transaction, amountFormatter = amountFormatter)
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -496,11 +496,11 @@ internal fun TransactionRow(
 }
 
 @Composable
-private fun RowAmount(transaction: Transaction) {
+private fun RowAmount(transaction: Transaction, amountFormatter: (Long) -> String) {
     val share = transaction.slShareMinor
     if (share == null) {
         Text(
-            text = formatMyr(transaction.amountMinor),
+            text = amountFormatter(transaction.amountMinor),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -509,20 +509,20 @@ private fun RowAmount(transaction: Transaction) {
         Column(horizontalAlignment = Alignment.End) {
             // Net "what you actually paid" — emphasized.
             Text(
-                text = formatMyr(net),
+                text = amountFormatter(net),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             // Original amount, de-emphasized + struck through.
             Text(
-                text = formatMyr(transaction.amountMinor),
+                text = amountFormatter(transaction.amountMinor),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
             )
             // SL Debit share — "money coming back" accent.
             Text(
-                text = "−${formatMyr(share)} SL",
+                text = "−${amountFormatter(share)} SL",
                 style = MaterialTheme.typography.bodySmall,
                 color = cy.txtracker.ui.theme.SlShareGreen,
             )
