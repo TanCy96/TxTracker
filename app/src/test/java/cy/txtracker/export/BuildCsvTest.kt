@@ -5,6 +5,7 @@ import cy.txtracker.data.Category
 import cy.txtracker.data.Direction
 import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.SlDebitDeposit
 import cy.txtracker.data.Transaction
 import cy.txtracker.domain.TimeBucket
 import kotlinx.datetime.Instant
@@ -23,6 +24,7 @@ class BuildCsvTest {
         categoryId: Long? = null,
         occurredAt: Instant = Instant.parse("2026-05-09T04:30:00Z"),  // 12:30 KL
         fundingSourceId: Long? = null,
+        slShareMinor: Long? = null,
     ) = Transaction(
         id = 0,
         amountMinor = amountMinor,
@@ -39,12 +41,13 @@ class BuildCsvTest {
         createdAt = occurredAt,
         notificationDedupeKey = "k-$merchant-$amountMinor",
         fundingSourceId = fundingSourceId,
+        slShareMinor = slShareMinor,
     )
 
     @Test
     fun header_lists_source_then_categories_in_sortOrder_then_unverified() {
         val csv = buildCsv(transactions = emptyList(), categories = categories, fundingSourcesById = emptyMap())
-        assertThat(csv.lines().first()).isEqualTo("date,description,Source,Food,Transport,Unverified")
+        assertThat(csv.lines().first()).isEqualTo("date,description,Source,Food,Transport,Unverified,SL Debit")
     }
 
     @Test
@@ -55,7 +58,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,,12.50,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,,12.50,,,")
     }
 
     @Test
@@ -66,7 +69,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,,,,15.00")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,,,15.00,")
     }
 
     @Test
@@ -92,9 +95,9 @@ class BuildCsvTest {
         )
         val rows = csv.trimEnd().lines()
         assertThat(rows).hasSize(4)  // header + 3 days
-        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,,10.00,,")
-        assertThat(rows[2]).isEqualTo("2026-05-10,ride,,,25.00,")
-        assertThat(rows[3]).isEqualTo("2026-05-11,,,,,7.00")
+        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,,10.00,,,")
+        assertThat(rows[2]).isEqualTo("2026-05-10,ride,,,25.00,,")
+        assertThat(rows[3]).isEqualTo("2026-05-11,,,,,7.00,")
     }
 
     // ─── Same-day grouping ──────────────────────────────────────────────────────────────
@@ -114,7 +117,7 @@ class BuildCsvTest {
         val rows = csv.trimEnd().lines()
         assertThat(rows).hasSize(2)  // header + 1 day
         // Description joins; Food column is a formula in chronological order.
-        assertThat(rows[1]).isEqualTo("2026-05-09,\"lunch, coffee\",,=12.50+4.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,\"lunch, coffee\",,=12.50+4.00,,,")
     }
 
     @Test
@@ -132,7 +135,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,\"lunch, ride, snack\",,12.50,25.00,7.00")
+        assertThat(rows[1]).isEqualTo("2026-05-09,\"lunch, ride, snack\",,12.50,25.00,7.00,")
     }
 
     @Test
@@ -150,7 +153,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,,=1.00+2.00+3.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=1.00+2.00+3.00,,,")
     }
 
     @Test
@@ -168,7 +171,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,,=1.00+2.00+3.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,lunch,,=1.00+2.00+3.00,,,")
     }
 
     @Test
@@ -183,7 +186,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,,=1.00+2.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=1.00+2.00,,,")
     }
 
     @Test
@@ -199,7 +202,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,,,,=5.00+15.00")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,,,=5.00+15.00,")
     }
 
     // ─── Existing behaviors that still hold ─────────────────────────────────────────────
@@ -218,7 +221,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,,=0.05+1.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=0.05+1.00,,,")
     }
 
     @Test
@@ -229,7 +232,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,\"coffee, fast\",,10.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,\"coffee, fast\",,10.00,,,")
     }
 
     @Test
@@ -240,7 +243,7 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,\"she said \"\"hi\"\"\",,10.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,\"she said \"\"hi\"\"\",,10.00,,,")
     }
 
     @Test
@@ -251,14 +254,14 @@ class BuildCsvTest {
             fundingSourcesById = emptyMap(),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,,,,5.00")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,,,5.00,")
     }
 
     @Test
     fun custom_category_added_appears_in_header() {
         val custom = Category(id = 3, name = "Pets", color = 0, isCustom = true, sortOrder = 2)
         val csv = buildCsv(transactions = emptyList(), categories = categories + custom, fundingSourcesById = emptyMap())
-        assertThat(csv.lines().first()).isEqualTo("date,description,Source,Food,Transport,Pets,Unverified")
+        assertThat(csv.lines().first()).isEqualTo("date,description,Source,Food,Transport,Pets,Unverified,SL Debit")
     }
 
     // ─── Funding source bucket column ───────────────────────────────────────────────────
@@ -303,7 +306,7 @@ class BuildCsvTest {
             ),
         )
         val rows = csv.trimEnd().lines()
-        assertThat(rows[1]).isEqualTo("2026-05-09,,Credit Card,=10.00+5.00,,")
+        assertThat(rows[1]).isEqualTo("2026-05-09,,Credit Card,=10.00+5.00,,,")
     }
 
     @Test
@@ -347,6 +350,104 @@ class BuildCsvTest {
         val rows = csv.trimEnd().lines()
         // Day 1 row should contain the padded-slash join, unambiguous from the embedded slash.
         assertThat(rows[1]).contains("Credit Card / Debit/Transfer")
+    }
+
+    // ─── SL Debit column (deposits + shared-transaction splits) ─────────────────────────
+
+    @Test
+    fun header_gains_sl_debit_column_after_unverified() {
+        val csv = buildCsv(
+            transactions = listOf(tx(amountMinor = 5000, merchant = "A", categoryId = food.id)),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        assertThat(csv.lines().first()).isEqualTo("date,description,Source,Food,Transport,Unverified,SL Debit")
+    }
+
+    @Test
+    fun shared_tx_category_cell_shows_the_subtraction() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10_000, merchant = "A", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-06-01T04:00:00Z"), slShareMinor = 4000),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        assertThat(csv).contains("=100.00-40.00")
+    }
+
+    @Test
+    fun sl_debit_column_combines_deposits_and_shares() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10_000, merchant = "A", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-06-02T04:00:00Z"), slShareMinor = 4000),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+            deposits = listOf(
+                SlDebitDeposit(
+                    id = 1,
+                    amountMinor = 50_000,
+                    occurredAt = Instant.parse("2026-06-02T04:00:00Z"),
+                    note = null,
+                    createdAt = Instant.parse("2026-06-02T04:00:00Z"),
+                ),
+            ),
+        )
+        val dayLine = csv.lines().first { it.startsWith("2026-06-02") }
+        assertThat(dayLine).endsWith("=500.00-40.00")
+    }
+
+    @Test
+    fun shared_day_adds_debit_transfer_to_the_source_cell_alongside_the_card() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10_000, merchant = "A", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-06-03T04:00:00Z"), fundingSourceId = 9L, slShareMinor = 4000),
+            ),
+            categories = categories,
+            fundingSourcesById = mapOf(
+                9L to fixtureFundingSource(id = 9L, kind = FundingSourceKind.CREDIT_CARD),
+            ),
+        )
+        val dayLine = csv.lines().first { it.startsWith("2026-06-03") }
+        assertThat(dayLine).contains("Credit Card / Debit/Transfer")
+    }
+
+    @Test
+    fun share_only_day_with_no_deposit_emits_bare_negative_literal_in_sl_debit() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10_000, merchant = "A", categoryId = food.id,
+                    occurredAt = Instant.parse("2026-06-04T04:00:00Z"), slShareMinor = 4000),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        val dayLine = csv.lines().first { it.startsWith("2026-06-04") }
+        assertThat(dayLine).endsWith(",-40.00")
+    }
+
+    @Test
+    fun deposit_only_day_with_no_transactions_still_emits_a_row() {
+        val csv = buildCsv(
+            transactions = emptyList(),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+            deposits = listOf(
+                SlDebitDeposit(
+                    id = 1,
+                    amountMinor = 50_000,
+                    occurredAt = Instant.parse("2026-06-05T04:00:00Z"),
+                    note = null,
+                    createdAt = Instant.parse("2026-06-05T04:00:00Z"),
+                ),
+            ),
+        )
+        val dayLine = csv.lines().first { it.startsWith("2026-06-05") }
+        assertThat(dayLine).endsWith("500.00")
     }
 }
 
