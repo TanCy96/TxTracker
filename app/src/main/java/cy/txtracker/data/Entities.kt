@@ -87,6 +87,13 @@ data class Transaction(
      * "unknown account" source).
      */
     val fundingSourceId: Long? = null,
+    /**
+     * The SL Debit share of this transaction, in minor units. null = not shared with SL Debit.
+     * Invariant (enforced by repository/UI, not the schema): 0 < slShareMinor <= amountMinor.
+     * Only set on MYR, direction = OUT rows. The negative DEBIT_BANK inflow line in CSV export
+     * and the netting in Home totals are both derived from this field; it is never a real row.
+     */
+    val slShareMinor: Long? = null,
 )
 
 @Entity(
