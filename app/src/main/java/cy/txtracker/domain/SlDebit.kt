@@ -11,12 +11,13 @@ package cy.txtracker.domain
  * value can never produce a share outside `[0, amountMinor]`.
  */
 fun slDebitDefaultShareMinor(amountMinor: Long, percent: Int): Long {
+    require(amountMinor >= 0) { "amountMinor must be >= 0, got $amountMinor" }
     val p = percent.coerceIn(0, 100)
     val raw = Math.round(amountMinor * p / 100.0)
     return raw.coerceIn(0L, amountMinor)
 }
 
-/** A share is valid (the toggle may be saved) when it is in `1..amountMinor`. */
+/** A share is valid (the toggle may be saved) when it is in `(0, amountMinor]` — i.e. `1..amountMinor`. */
 fun isValidShareMinor(shareMinor: Long, amountMinor: Long): Boolean =
     shareMinor in 1L..amountMinor
 
