@@ -1384,9 +1384,41 @@ class TransactionRepository @Inject constructor(
                     needsVerification = bt.needsVerification,
                     needsCurrencyConfirmation = bt.needsCurrencyConfirmation,
                     fundingSourceId = fundingSourceId,
+                    slShareMinor = bt.slShareMinor,
                 ),
             )
             if (rowId >= 0) transactionsAdded++
+        }
+
+        // 13. SL Debit account: if the backup carries one, adopt its name/percent on the
+        //     singleton row (id = 1). Deposits: dedupe by (amountMinor, occurredAt) at the
+        //     app level since the PK is an autoincrement id.
+        backup.slDebitAccount?.let { acc ->
+            val now = Clock.System.now()
+            val existing = slDebitDao.getAccount()
+            slDebitDao.upsertAccount(
+                SlDebitAccount(
+                    id = 1,
+                    displayName = acc.displayName,
+                    defaultSharePercent = acc.defaultSharePercent.coerceIn(0, 100),
+                    createdAt = existing?.createdAt ?: now,
+                    updatedAt = now,
+                ),
+            )
+        }
+        val existingDeposits = slDebitDao.getDepositsOnce()
+            .map { it.amountMinor to it.occurredAt }
+            .toSet()
+        for (bd in backup.slDebitDeposits) {
+            if (bd.amountMinor to bd.occurredAt in existingDeposits) continue
+            slDebitDao.insertDeposit(
+                SlDebitDeposit(
+                    amountMinor = bd.amountMinor,
+                    occurredAt = bd.occurredAt,
+                    note = bd.note,
+                    createdAt = bd.createdAt,
+                ),
+            )
         }
 
         ImportResult(

@@ -30,6 +30,7 @@ data class BackupFundingSource(
  *   v6 – added [trackedCurrencies] and [tripWindows] (foreign-currency tracking)
  *   v7 – added [keywordPattern] on [BackupCategory]
  *   v8 – added [fundingSources] and [BackupTransaction.fundingSourceLookupKey]
+ *   v9 – added [BackupTransaction.slShareMinor], [slDebitAccount], [slDebitDeposits]
  */
 @Serializable
 data class Backup(
@@ -48,9 +49,11 @@ data class Backup(
     val trackedCurrencies: List<BackupTrackedCurrency> = emptyList(),
     val tripWindows: List<BackupTripWindow> = emptyList(),
     val fundingSources: List<BackupFundingSource> = emptyList(),
+    val slDebitAccount: BackupSlDebitAccount? = null,
+    val slDebitDeposits: List<BackupSlDebitDeposit> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 8
+        const val CURRENT_VERSION = 9
     }
 }
 
@@ -140,4 +143,19 @@ data class BackupTransaction(
     val needsCurrencyConfirmation: Boolean = false,
     /** "<sourceAppHint>|<last4>" — null when unlinked. Empty strings for null parts (e.g. Cash = "|"). */
     val fundingSourceLookupKey: String? = null,
+    val slShareMinor: Long? = null,
+)
+
+@Serializable
+data class BackupSlDebitAccount(
+    val displayName: String,
+    val defaultSharePercent: Int,
+)
+
+@Serializable
+data class BackupSlDebitDeposit(
+    val amountMinor: Long,
+    val occurredAt: Instant,
+    val note: String? = null,
+    val createdAt: Instant,
 )

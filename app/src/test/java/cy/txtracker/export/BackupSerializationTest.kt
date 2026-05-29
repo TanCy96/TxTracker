@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(8)
+        assertThat(parsed.version).isEqualTo(9)
     }
 
     @Test
@@ -147,7 +147,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.approvedSources).hasSize(1)
         assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
-        assertThat(parsed.version).isEqualTo(8)
+        assertThat(parsed.version).isEqualTo(9)
     }
 
     @Test
@@ -195,7 +195,7 @@ class BackupSerializationTest {
         assertThat(note.merchant).isEqualTo("WARUNG UNCLE")
         assertThat(note.note).isEqualTo("SS15 kopitiam, only takes cash")
         assertThat(note.updatedAt).isEqualTo(Instant.parse("2026-05-10T10:00:00Z"))
-        assertThat(parsed.version).isEqualTo(8)
+        assertThat(parsed.version).isEqualTo(9)
     }
 
     @Test
@@ -250,7 +250,7 @@ class BackupSerializationTest {
         val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
 
-        assertThat(parsed.version).isEqualTo(8)
+        assertThat(parsed.version).isEqualTo(9)
         assertThat(parsed.transactions).hasSize(1)
         val tx = parsed.transactions.single()
         assertThat(tx.merchantRaw).isEqualTo("GRAB")
@@ -345,5 +345,36 @@ class BackupSerializationTest {
 
         assertThat(parsed.transactions).isEmpty()
         assertThat(parsed.transactionCutoff).isNull()
+    }
+
+    @Test
+    fun `v9 round-trips slShareMinor, account and deposits`() {
+        val backup = Backup(
+            exportedAt = Instant.parse("2026-05-29T00:00:00Z"),
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            slDebitAccount = BackupSlDebitAccount(displayName = "SL Debit", defaultSharePercent = 40),
+            slDebitDeposits = listOf(
+                BackupSlDebitDeposit(amountMinor = 50_000, occurredAt = Instant.parse("2026-05-01T00:00:00Z"), note = "advance", createdAt = Instant.parse("2026-05-01T00:00:00Z")),
+            ),
+        )
+        val text = BackupExporter.JSON.encodeToString(Backup.serializer(), backup)
+        val decoded = BackupImporter.JSON.decodeFromString(Backup.serializer(), text)
+        assertThat(decoded.version).isEqualTo(9)
+        assertThat(decoded.slDebitAccount?.displayName).isEqualTo("SL Debit")
+        assertThat(decoded.slDebitAccount?.defaultSharePercent).isEqualTo(40)
+        assertThat(decoded.slDebitDeposits).hasSize(1)
+        assertThat(decoded.slDebitDeposits[0].amountMinor).isEqualTo(50_000L)
+    }
+
+    @Test
+    fun `a v8 backup with no SL Debit fields still decodes`() {
+        val v8Json = """{"version":8,"exportedAt":"2026-05-29T00:00:00Z","categories":[],"merchantMappings":[],"merchantDescriptionMappings":[],"categoryDescriptionMappings":[]}"""
+        val decoded = BackupImporter.JSON.decodeFromString(Backup.serializer(), v8Json)
+        assertThat(decoded.version).isEqualTo(8)
+        assertThat(decoded.slDebitAccount).isNull()
+        assertThat(decoded.slDebitDeposits).hasSize(0)
     }
 }

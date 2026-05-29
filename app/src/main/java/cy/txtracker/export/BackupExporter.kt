@@ -39,6 +39,7 @@ class BackupExporter @Inject constructor(
     private val trackedCurrencyDao: TrackedCurrencyDao,
     private val tripWindowDao: TripWindowDao,
     private val fundingSourceDao: FundingSourceDao,
+    private val slDebitDao: cy.txtracker.data.SlDebitDao,
 ) {
     suspend fun export(): Uri {
         val json = exportToJsonString(transactionCutoff = null)
@@ -143,6 +144,7 @@ class BackupExporter @Inject constructor(
                     needsVerification = tx.needsVerification,
                     needsCurrencyConfirmation = tx.needsCurrencyConfirmation,
                     fundingSourceLookupKey = tx.fundingSourceId?.let { fundingSourceKeyById[it] },
+                    slShareMinor = tx.slShareMinor,
                 )
             },
             fundingSources = fundingSources.map { fs ->
@@ -169,6 +171,17 @@ class BackupExporter @Inject constructor(
                     currency = it.currency,
                     startAt = it.startAt,
                     endAt = it.endAt,
+                    createdAt = it.createdAt,
+                )
+            },
+            slDebitAccount = slDebitDao.getAccount()?.let {
+                BackupSlDebitAccount(displayName = it.displayName, defaultSharePercent = it.defaultSharePercent)
+            },
+            slDebitDeposits = slDebitDao.getDepositsOnce().map {
+                BackupSlDebitDeposit(
+                    amountMinor = it.amountMinor,
+                    occurredAt = it.occurredAt,
+                    note = it.note,
                     createdAt = it.createdAt,
                 )
             },
