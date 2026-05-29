@@ -310,7 +310,7 @@ private fun PercentDialog(
         confirmButton = {
             TextButton(
                 onClick = { parsed?.let { onConfirm(it.coerceIn(0, 100)) } },
-                enabled = parsed != null,
+                enabled = parsed != null && parsed in 0..100,
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -329,9 +329,9 @@ private fun DepositEditorDialog(
         initial?.occurredAt?.toLocalDateTime(MalaysiaTimeZone)?.date
             ?: Clock.System.now().toLocalDateTime(MalaysiaTimeZone).date
     }
-    var amountText by remember { mutableStateOf(initial?.let { formatAmountInput(it.amountMinor) } ?: "") }
-    var noteText by remember { mutableStateOf(initial?.note ?: "") }
-    var date by remember { mutableStateOf(initialDate) }
+    var amountText by remember(initial) { mutableStateOf(initial?.let { formatAmountInput(it.amountMinor) } ?: "") }
+    var noteText by remember(initial) { mutableStateOf(initial?.note ?: "") }
+    var date by remember(initial) { mutableStateOf(initialDate) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     val amountMinor = parseAmountMinor(amountText)
