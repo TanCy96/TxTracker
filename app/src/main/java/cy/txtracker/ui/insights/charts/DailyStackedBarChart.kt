@@ -1,28 +1,36 @@
 package cy.txtracker.ui.insights.charts
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import cy.txtracker.ui.format.formatMyr
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.stacked
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
+import com.patrykandpatrick.vico.compose.common.fill
+import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.core.cartesian.data.columnSeries
+import com.patrykandpatrick.vico.core.cartesian.layer.ColumnCartesianLayer
 import cy.txtracker.ui.insights.BreakdownSlice
 import cy.txtracker.ui.insights.DayBucket
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 
 /**
- * One column per day in [days], stacked by [series] (same keys/colours as the pie's breakdown).
- * Heights are scaled to the peak day. X axis is summarised by the first/last day labels (per-bar
- * labels don't fit a month of bars); a [BreakdownLegend] names the stacked series.
+ * Vico stacked-column chart: one column per day in [days], stacked by [series] (same keys/colours
+ * as the pie's breakdown). Series values are pushed in ringgit so the Y axis reads in RM; the X
+ * axis maps each column index back to its day. A [BreakdownLegend] names the stacked series.
  */
 @Composable
 fun DailyStackedBarChart(
@@ -30,52 +38,37 @@ fun DailyStackedBarChart(
     series: List<BreakdownSlice>,
     modifier: Modifier = Modifier,
 ) {
-    val maxTotal = days.maxOfOrNull { it.totalMinor } ?: 0L
-    if (days.isEmpty() || maxTotal <= 0L) {
+    if (days.isEmpty() || series.isEmpty() || days.all { it.totalMinor == 0L }) {
         EmptyChart("No spending to chart in this range", modifier)
         return
     }
-    Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "Peak day ${formatMyr(maxTotal)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(4.dp))
-        Canvas(modifier = Modifier.fillMaxWidth().height(180.dp)) {
-            val slot = size.width / days.size
-            val gap = slot * 0.15f
-            val barWidth = slot - gap * 2f
-            days.forEachIndexed { i, day ->
-                val x = i * slot + gap
-                var yBottom = size.height
-                series.forEach { s ->
-                    val value = day.totalsByKey[s.key] ?: 0L
-                    if (value > 0L) {
-                        val h = (value.toFloat() / maxTotal.toFloat()) * size.height
-                        drawRect(
-                            color = Color(s.colorArgb),
-                            topLeft = Offset(x, yBottom - h),
-                            size = Size(barWidth, h),
-                        )
-                        yBottom -= h
-                    }
+    val producer = remember { CartesianChartModelProducer() }
+    LaunchedEffect(days, series) {
+        producer.runTransaction {
+            columnSeries {
+                series.forEach { slice ->
+                    series(days.map { (it.totalsByKey[slice.key] ?: 0L) / 100.0 })
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                text = dayMonthLabel(days.first().date),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = dayMonthLabel(days.last().date),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    }
+    val columns = series.map { slice -> rememberLineComponent(fill = fill(Color(slice.colorArgb)), thickness = 10.dp) }
+    val dayFormatter = CartesianValueFormatter { _, value, _ ->
+        days.getOrNull(value.toInt())?.date?.let(::dayMonthLabel) ?: ""
+    }
+    Column(modifier = modifier.fillMaxWidth()) {
+        CartesianChartHost(
+            rememberCartesianChart(
+                rememberColumnCartesianLayer(
+                    columnProvider = ColumnCartesianLayer.ColumnProvider.series(columns),
+                    mergeMode = { ColumnCartesianLayer.MergeMode.stacked() },
+                ),
+                startAxis = VerticalAxis.rememberStart(valueFormatter = RinggitAxisFormatter),
+                bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = dayFormatter),
+            ),
+            producer,
+            modifier = Modifier.fillMaxWidth().height(200.dp),
+        )
         Spacer(Modifier.height(12.dp))
         BreakdownLegend(series)
     }

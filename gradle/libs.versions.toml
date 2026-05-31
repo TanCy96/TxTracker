@@ -14,6 +14,9 @@ kotlinxDatetime = "0.6.1"
 kotlinxCoroutines = "1.9.0"
 kotlinxSerialization = "1.7.3"
 reorderable = "2.4.0"
+# Pinned to the 2.0.x line (Compose 1.7.x, matching composeBom 2024.10.01). Needs compileSdk 35
+# (its androidx.core 1.15). Vico 2.1.x would additionally force Compose 1.8 + AGP 8.6.
+vico = "2.0.3"
 biometric = "1.1.0"
 playServicesAuth = "21.2.0"
 okhttp = "4.12.0"
@@ -67,6 +70,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
 reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.ref = "reorderable" }
+vico-compose-m3 = { group = "com.patrykandpatrick.vico", name = "compose-m3", version.ref = "vico" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
