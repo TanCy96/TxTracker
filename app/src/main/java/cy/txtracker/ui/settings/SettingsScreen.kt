@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,6 +34,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,7 +49,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.BuildConfig
 import cy.txtracker.data.TrackedCurrency
+import cy.txtracker.export.ExportDateRange
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.toLocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -418,13 +427,13 @@ fun SettingsScreen(
         if (showExportChooser) {
             ExportCsvChooserSheet(
                 trackedCurrencies = trackedCurrencies,
-                onExportCurrency = { currency ->
+                onExportCurrency = { currency, range ->
                     showExportChooser = false
-                    viewModel.exportCsv(currency)
+                    viewModel.exportCsv(currency, range)
                 },
-                onExportAllZip = {
+                onExportAllZip = { range ->
                     showExportChooser = false
-                    viewModel.exportAllZip()
+                    viewModel.exportAllZip(range)
                 },
                 onDismiss = { showExportChooser = false },
             )
@@ -539,6 +548,7 @@ private fun Modifier.clickableRow(
 
 /**
  * Bottom-sheet chooser for the CSV export action. Shows:
+ *  - An optional "Date range" filter (blank = all time) applied to whichever export is tapped
  *  - "Export MYR" (always)
  *  - "Export <code>" for each tracked currency
  *  - "Export all currencies (zip)" when more than one currency is available
@@ -547,10 +557,13 @@ private fun Modifier.clickableRow(
 @Composable
 private fun ExportCsvChooserSheet(
     trackedCurrencies: List<TrackedCurrency>,
-    onExportCurrency: (String) -> Unit,
-    onExportAllZip: () -> Unit,
+    onExportCurrency: (String, ExportDateRange?) -> Unit,
+    onExportAllZip: (ExportDateRange?) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var range by remember { mutableStateOf<ExportDateRange?>(null) }
+    var showRangePicker by remember { mutableStateOf(false) }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Text(
@@ -558,14 +571,30 @@ private fun ExportCsvChooserSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
+
+            // Optional date-range filter. Blank = all time (today's default behavior).
+            ListItem(
+                headlineContent = { Text("Date range") },
+                supportingContent = {
+                    Text(range?.let { "${it.start} → ${it.end}" } ?: "All time")
+                },
+                trailingContent = {
+                    if (range != null) {
+                        TextButton(onClick = { range = null }) { Text("Clear") }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().clickable { showRangePicker = true },
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
             ListItem(
                 headlineContent = { Text("Export MYR") },
-                modifier = Modifier.fillMaxWidth().clickable { onExportCurrency("MYR") },
+                modifier = Modifier.fillMaxWidth().clickable { onExportCurrency("MYR", range) },
             )
             for (tc in trackedCurrencies) {
                 ListItem(
                     headlineContent = { Text("Export ${tc.code}") },
-                    modifier = Modifier.fillMaxWidth().clickable { onExportCurrency(tc.code) },
+                    modifier = Modifier.fillMaxWidth().clickable { onExportCurrency(tc.code, range) },
                 )
             }
             if (trackedCurrencies.isNotEmpty()) {
@@ -573,9 +602,66 @@ private fun ExportCsvChooserSheet(
                 ListItem(
                     headlineContent = { Text("Export all currencies (zip)") },
                     supportingContent = { Text("One CSV per currency in a single zip file.") },
-                    modifier = Modifier.fillMaxWidth().clickable { onExportAllZip() },
+                    modifier = Modifier.fillMaxWidth().clickable { onExportAllZip(range) },
                 )
             }
         }
     }
+
+    if (showRangePicker) {
+        ExportRangePickerDialog(
+            initial = range,
+            onConfirm = {
+                range = it
+                showRangePicker = false
+            },
+            onDismiss = { showRangePicker = false },
+        )
+    }
 }
+
+/**
+ * Material3 date-range picker dialog. Material reports selections as UTC-midnight epoch millis,
+ * so we read the tapped calendar date via [TimeZone.UTC]; the exporter re-interprets those dates
+ * in Malaysia time. If only a start is picked, the end defaults to the start (single-day export).
+ * Confirming with no selection clears the filter (null = all time).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportRangePickerDialog(
+    initial: ExportDateRange?,
+    onConfirm: (ExportDateRange?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val state = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initial?.start?.toUtcMidnightMillis(),
+        initialSelectedEndDateMillis = initial?.end?.toUtcMidnightMillis(),
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                val start = state.selectedStartDateMillis?.toUtcLocalDate()
+                if (start == null) {
+                    onConfirm(null)
+                } else {
+                    val end = state.selectedEndDateMillis?.toUtcLocalDate() ?: start
+                    onConfirm(ExportDateRange(start, end))
+                }
+            }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    ) {
+        DateRangePicker(state = state, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Epoch millis from Material's UTC-based picker → the calendar date the user tapped. */
+private fun Long.toUtcLocalDate(): LocalDate =
+    Instant.fromEpochMilliseconds(this).toLocalDateTime(TimeZone.UTC).date
+
+/** A calendar date → UTC-midnight epoch millis, to seed the picker's initial selection. */
+private fun LocalDate.toUtcMidnightMillis(): Long =
+    this.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
