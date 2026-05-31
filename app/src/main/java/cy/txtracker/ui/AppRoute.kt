@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.ui.MainActivity.Deeplink
 import cy.txtracker.ui.foreign.ForeignRoute
 import cy.txtracker.ui.home.HomeRoute
+import cy.txtracker.ui.insights.InsightsRoute
 import cy.txtracker.ui.lock.LockScreen
 import cy.txtracker.ui.onboarding.OnboardingScreen
 import cy.txtracker.ui.onboarding.openListenerSettings
@@ -58,6 +60,7 @@ private const val NAV_ANIMATION_MS = 300
 private object Routes {
     const val HOME = "home"
     const val FOREIGN = "foreign"
+    const val INSIGHTS = "insights"
     const val SETTINGS = "settings"
     const val SETTINGS_CATEGORIES = "settings/categories"
     const val SETTINGS_MERCHANTS = "settings/merchants"
@@ -73,7 +76,7 @@ private object Routes {
     const val SETTINGS_FUNDING_SOURCES = "settings/funding-sources"
 }
 
-private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.SETTINGS)
+private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.INSIGHTS, Routes.SETTINGS)
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
@@ -161,6 +164,12 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                         label = { Text("Foreign") },
                     )
                     NavigationBarItem(
+                        selected = currentRoute == Routes.INSIGHTS,
+                        onClick = { navigateTopLevel(nav, Routes.INSIGHTS) },
+                        icon = { Icon(Icons.Outlined.Insights, contentDescription = null) },
+                        label = { Text("Insights") },
+                    )
+                    NavigationBarItem(
                         selected = currentRoute == Routes.SETTINGS,
                         onClick = { navigateTopLevel(nav, Routes.SETTINGS) },
                         icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
@@ -199,6 +208,9 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             }
             composable(Routes.FOREIGN) {
                 ForeignRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
+            }
+            composable(Routes.INSIGHTS) {
+                InsightsRoute()
             }
             composable(Routes.SETTINGS) {
                 SettingsScreen(
