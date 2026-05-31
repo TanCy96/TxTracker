@@ -1,0 +1,234 @@
+package cy.txtracker.ui.insights
+
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import cy.txtracker.domain.InsightsPeriod
+import cy.txtracker.ui.format.formatMyr
+import cy.txtracker.ui.insights.charts.BudgetProgressCard
+import cy.txtracker.ui.insights.charts.CategoryPieChart
+import cy.txtracker.ui.insights.charts.DailyStackedBarChart
+import cy.txtracker.ui.insights.charts.EmptyChart
+import cy.txtracker.ui.insights.charts.SpendTrendLineChart
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun InsightsScreen(
+    state: InsightsUiState,
+    onSelectPeriod: (InsightsPeriod) -> Unit,
+    onSetGroupBy: (GroupBy) -> Unit,
+    onSetChartType: (InsightsChartType) -> Unit,
+    onSelectCategory: (Long) -> Unit,
+    onEditOverallBudget: () -> Unit,
+    onEditCategoryBudget: (Long) -> Unit,
+    onAddCategoryBudget: () -> Unit,
+) {
+    Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text("Insights") }) }) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (state) {
+                InsightsUiState.Loading ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                is InsightsUiState.Loaded -> LoadedContent(
+                    state = state,
+                    onSelectPeriod = onSelectPeriod,
+                    onSetGroupBy = onSetGroupBy,
+                    onSetChartType = onSetChartType,
+                    onSelectCategory = onSelectCategory,
+                    onEditOverallBudget = onEditOverallBudget,
+                    onEditCategoryBudget = onEditCategoryBudget,
+                    onAddCategoryBudget = onAddCategoryBudget,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadedContent(
+    state: InsightsUiState.Loaded,
+    onSelectPeriod: (InsightsPeriod) -> Unit,
+    onSetGroupBy: (GroupBy) -> Unit,
+    onSetChartType: (InsightsChartType) -> Unit,
+    onSelectCategory: (Long) -> Unit,
+    onEditOverallBudget: () -> Unit,
+    onEditCategoryBudget: (Long) -> Unit,
+    onAddCategoryBudget: () -> Unit,
+) {
+    // Range + grouping apply only to the snapshot charts (pie / daily bar); trends use a fixed
+    // rolling 6-month window and budget is always current-month, so their controls are hidden.
+    val usesRangeAndGrouping = state.chartType == InsightsChartType.CATEGORY_PIE ||
+        state.chartType == InsightsChartType.DAILY_BAR
+
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+    ) {
+        ChipRow {
+            InsightsChartType.entries.forEach { type ->
+                FilterChip(
+                    selected = state.chartType == type,
+                    onClick = { onSetChartType(type) },
+                    label = { Text(chartTypeLabel(type)) },
+                )
+            }
+        }
+
+        if (usesRangeAndGrouping) {
+            Spacer(Modifier.height(8.dp))
+            ChipRow {
+                InsightsPeriod.entries.forEach { period ->
+                    FilterChip(
+                        selected = state.period == period,
+                        onClick = { onSelectPeriod(period) },
+                        label = { Text(periodLabel(period)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            ChipRow {
+                GroupBy.entries.forEach { group ->
+                    FilterChip(
+                        selected = state.groupBy == group,
+                        onClick = { onSetGroupBy(group) },
+                        label = { Text(groupByLabel(group)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "Spent · ${state.rangeLabel}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = formatMyr(state.totalMinor),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        when (state.chartType) {
+            InsightsChartType.CATEGORY_PIE -> CategoryPieChart(state.breakdown)
+            InsightsChartType.DAILY_BAR -> DailyStackedBarChart(state.daily, state.breakdown)
+            InsightsChartType.MONTHLY_TREND -> {
+                Text(
+                    text = "Monthly spend · last 6 months",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                SpendTrendLineChart(state.monthly, lineColor = MaterialTheme.colorScheme.primary)
+            }
+            InsightsChartType.CATEGORY_TREND -> CategoryTrendSection(state, onSelectCategory)
+            InsightsChartType.BUDGET -> BudgetProgressCard(
+                overall = state.budget,
+                categoryBudgets = state.categoryBudgets,
+                onEditOverall = onEditOverallBudget,
+                onEditCategory = onEditCategoryBudget,
+                onAddCategoryBudget = onAddCategoryBudget,
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun CategoryTrendSection(state: InsightsUiState.Loaded, onSelectCategory: (Long) -> Unit) {
+    if (state.categories.isEmpty()) {
+        EmptyChart("No categories yet")
+        return
+    }
+    val selected = state.categories.firstOrNull { it.id == state.selectedCategoryId }
+    var expanded by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Category", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.width(12.dp))
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(selected?.name ?: "Select")
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                state.categories.forEach { category ->
+                    DropdownMenuItem(
+                        text = { Text(category.name) },
+                        onClick = {
+                            onSelectCategory(category.id)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+    SpendTrendLineChart(
+        points = state.categoryTrend,
+        lineColor = selected?.let { Color(it.color) } ?: MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
+private fun ChipRow(content: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) { content() }
+}
+
+private fun chartTypeLabel(type: InsightsChartType): String = when (type) {
+    InsightsChartType.CATEGORY_PIE -> "Breakdown"
+    InsightsChartType.DAILY_BAR -> "Daily"
+    InsightsChartType.MONTHLY_TREND -> "Trend"
+    InsightsChartType.CATEGORY_TREND -> "Category trend"
+    InsightsChartType.BUDGET -> "Budget"
+}
+
+private fun periodLabel(period: InsightsPeriod): String = when (period) {
+    InsightsPeriod.THIS_MONTH -> "This month"
+    InsightsPeriod.LAST_MONTH -> "Last month"
+    InsightsPeriod.LAST_3_MONTHS -> "Last 3 mo"
+    InsightsPeriod.LAST_6_MONTHS -> "Last 6 mo"
+    InsightsPeriod.THIS_YEAR -> "This year"
+    InsightsPeriod.ALL_TIME -> "All time"
+    InsightsPeriod.CUSTOM -> "Custom…"
+}
+
+private fun groupByLabel(group: GroupBy): String = when (group) {
+    GroupBy.CATEGORY -> "By category"
+    GroupBy.FUNDING_SOURCE -> "By source"
+}
