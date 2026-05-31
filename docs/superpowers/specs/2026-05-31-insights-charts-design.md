@@ -34,14 +34,13 @@ choices persist across launches.
    (by category vs by funding-source) + a **chart-type switch**. Chosen defaults persist
    via an `InsightsPrefs` (SharedPreferences, the project's existing pattern).
 3. **Chart types for v1:** all five listed above (the budget view was the user's addition).
-4. **Library:** **hand-rolled Compose `Canvas`** for all charts (pie, stacked bar, trend lines).
-   Vico was evaluated and dropped: its 2.0.x line transitively pulls Compose 1.8 / `androidx.core`
-   1.15 (which require compileSdk 35 + AGP 8.6), conflicting with the project's compileSdk 34.
-   Pinning Vico to 2.0.x + forcing `androidx.core` back to 1.13.1 compiled, but its styling /
-   stacking API couldn't be visually verified in this environment (no emulator), and with default
-   Vico colours the bars wouldn't match the pie's category colours. Canvas gives full control of
-   category colours, stacked segments, and date/month labels with APIs that compile-verify
-   reliably. (FUTURE.md's assumption that Vico ships a pie was also wrong — Vico is cartesian-only.)
+4. **Library:** **Vico** (`com.patrykandpatrick.vico:compose-m3`, pinned to the 2.0.x line) for the
+   stacked daily bar and the trend lines; the **pie is hand-rolled Compose `Canvas`** (Vico is
+   cartesian-only — no pie). Using Vico required bumping **compileSdk 34 → 35** (Vico 2.0.x's
+   transitive `androidx.core` 1.15 needs it); AGP stays 8.5.2 with
+   `android.suppressUnsupportedCompileSdk=35` in `gradle.properties`. We stay on Vico 2.0.x because
+   2.1.x would additionally force Compose 1.8 + AGP 8.6 (a wider toolchain bump). Columns/lines are
+   coloured from `Category.color` to stay consistent with the pie.
 5. **Branch policy (unchanged):** built on `main`; `main` later merges **into**
    `feature/share-debit`, resolving conflicts in favour of SL Debit. See the dedicated
    section below — the feature is designed so that merge is a one-line edit.
@@ -61,10 +60,10 @@ split used by `ui/foreign/` and `ui/home/`. All calendar/range logic lives in `d
 | `ui/insights/InsightsUiState.kt` | `InsightsUiState` sealed interface + option enums + chart data-model types. |
 | `ui/insights/InsightsAggregator.kt` | **Pure** functions: `List<Transaction>` + lookup maps → chart models. The other unit-test surface. |
 | `ui/insights/charts/CategoryPieChart.kt` | Hand-rolled `Canvas` pie + legend. |
-| `ui/insights/charts/DailyStackedBarChart.kt` | Hand-rolled `Canvas` stacked-column chart. |
-| `ui/insights/charts/SpendTrendLineChart.kt` | Hand-rolled `Canvas` line chart, reused for the month-over-month total and the per-category trend. |
+| `ui/insights/charts/DailyStackedBarChart.kt` | Vico stacked-column chart (category-coloured columns). |
+| `ui/insights/charts/SpendTrendLineChart.kt` | Vico line chart, reused for the month-over-month total and the per-category trend. |
 | `ui/insights/charts/BudgetProgressCard.kt` | Material3 `LinearProgressIndicator` + spend/budget rows (overall + per-category). |
-| `ui/insights/charts/ChartTheme.kt` | Shared chart helpers: legend, colour dot, empty-state, month/day labels. |
+| `ui/insights/charts/ChartTheme.kt` | Shared helpers: legend, colour dot, empty-state, month/day labels, RM axis formatter. |
 | `service/InsightsPrefs.kt` | `@Singleton @Inject` SharedPreferences wrapper — copy of `NotificationPrefs`. No Hilt module needed. |
 
 Edits to existing files: `ui/AppRoute.kt` (nav wiring), `gradle/libs.versions.toml` +
@@ -209,18 +208,17 @@ Kinds have no stored color, so they draw from a small fixed palette (mirroring
   per `BreakdownSlice`, `sweep = 360f * slice.minor / total`. A separate legend column shows
   label + `formatMyr` + percentage (reusing `CategoryBreakdownRow` styling). Null/Unverified
   slice = `colorScheme.outline`. No dependency.
-- **Daily bar** (`DailyStackedBarChart.kt`) — `Canvas` `drawRect` per series segment, stacked
-  bottom-up per day, scaled to the peak day. X axis summarised by first/last day labels (per-bar
-  labels don't fit a month of bars); a shared `BreakdownLegend` names the stacked series.
-- **Monthly / category trend** (`SpendTrendLineChart.kt`) — `Canvas` `drawLine` polyline +
-  `drawCircle` points over `List<MonthBucket>`, with month labels beneath. One composable, reused
-  for the total trend (primary colour) and the per-category trend (the category's colour); the
-  parent owns the category dropdown.
+- **Daily bar** (`DailyStackedBarChart.kt`) — Vico `rememberColumnCartesianLayer` with
+  `MergeMode.stacked()`, one series per grouping key, each column coloured from the slice via
+  `rememberLineComponent(fill(Color(...)))`. Values pushed in ringgit; the X axis maps each column
+  index to its day via a `CartesianValueFormatter`. A shared `BreakdownLegend` names the series.
+- **Monthly / category trend** (`SpendTrendLineChart.kt`) — Vico `rememberLineCartesianLayer`, one
+  composable reused for the total trend (primary colour) and the per-category trend (the category's
+  colour, via `LineFill.single(fill(...))`); the parent owns the category dropdown.
 - **Budget** — see below.
 
-Charts pull colours from `MaterialTheme.colorScheme` and `Category.color` — never hardcoded — so
-they stay correct under dynamic colour / dark mode (`ui/theme/Theme.kt`). Labels and legends are
-plain Compose `Text` laid out around the `Canvas` (no `TextMeasurer`).
+Pie/budget colours come from `Category.color`; the Vico charts read the same colours, and the RM
+Y-axis formatter lives in `ChartTheme.kt`. The pie is `Canvas` (`drawArc`) since Vico has no pie.
 
 ## Budget (the user's addition) — overall + per-category
 
@@ -274,8 +272,9 @@ fun categoryBudgetProgress(
 
 ## Charting & navigation
 
-**No new dependency.** All charts are hand-rolled on Compose `Canvas` (see the Library decision
-above for why Vico was dropped), so there are no Gradle changes for charting.
+**Vico (`compose-m3` 2.0.3)** for the bar/line charts (`gradle/libs.versions.toml` +
+`app/build.gradle.kts`); the pie is `Canvas`. This required **compileSdk 35** (AGP stays 8.5.2 +
+`android.suppressUnsupportedCompileSdk=35` in `gradle.properties`).
 
 **Navigation** — four edits to `ui/AppRoute.kt`, matching the "add a tab" recipe the file
 already documents:

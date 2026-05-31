@@ -1,27 +1,33 @@
 package cy.txtracker.ui.insights.charts
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
-import cy.txtracker.ui.format.formatMyr
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.common.fill
+import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import cy.txtracker.ui.insights.MonthBucket
 
 /**
- * Simple month-over-month line of [points] in [lineColor], with month labels beneath. The points
- * span the full width (first at the left edge, last at the right), so an evenly-spaced label row
- * lines up under them.
+ * Vico line chart of month-over-month spend in [lineColor]. Values are pushed in ringgit (RM Y
+ * axis); the X axis maps each point index to its month label. Reused for the total trend (primary
+ * colour) and the per-category trend (the category's colour).
  */
 @Composable
 fun SpendTrendLineChart(
@@ -29,48 +35,29 @@ fun SpendTrendLineChart(
     lineColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    val maxVal = points.maxOfOrNull { it.totalMinor } ?: 0L
-    if (points.isEmpty() || maxVal <= 0L) {
+    if (points.isEmpty() || points.all { it.totalMinor == 0L }) {
         EmptyChart("No data for this period", modifier)
         return
     }
+    val producer = remember { CartesianChartModelProducer() }
+    LaunchedEffect(points) {
+        producer.runTransaction {
+            lineSeries { series(points.map { it.totalMinor / 100.0 }) }
+        }
+    }
+    val monthFormatter = CartesianValueFormatter { _, value, _ ->
+        points.getOrNull(value.toInt())?.yearMonth?.let(::shortMonthLabel) ?: ""
+    }
+    val line = LineCartesianLayer.rememberLine(fill = LineCartesianLayer.LineFill.single(fill(lineColor)))
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "Peak month ${formatMyr(maxVal)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        CartesianChartHost(
+            rememberCartesianChart(
+                rememberLineCartesianLayer(lineProvider = LineCartesianLayer.LineProvider.series(line)),
+                startAxis = VerticalAxis.rememberStart(valueFormatter = RinggitAxisFormatter),
+                bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = monthFormatter),
+            ),
+            producer,
+            modifier = Modifier.fillMaxWidth().height(200.dp),
         )
-        Spacer(Modifier.height(4.dp))
-        Canvas(modifier = Modifier.fillMaxWidth().height(180.dp)) {
-            val n = points.size
-            fun xFor(i: Int): Float = if (n == 1) size.width / 2f else i.toFloat() / (n - 1) * size.width
-            fun yFor(value: Long): Float = size.height - (value.toFloat() / maxVal.toFloat()) * size.height
-
-            for (i in 0 until n - 1) {
-                drawLine(
-                    color = lineColor,
-                    start = Offset(xFor(i), yFor(points[i].totalMinor)),
-                    end = Offset(xFor(i + 1), yFor(points[i + 1].totalMinor)),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-            points.forEachIndexed { i, p ->
-                drawCircle(color = lineColor, radius = 4.dp.toPx(), center = Offset(xFor(i), yFor(p.totalMinor)))
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (points.size == 1) Arrangement.Center else Arrangement.SpaceBetween,
-        ) {
-            points.forEach { p ->
-                Text(
-                    text = shortMonthLabel(p.yearMonth),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
     }
 }

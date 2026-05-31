@@ -18,11 +18,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import cy.txtracker.domain.YearMonth
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.insights.BreakdownSlice
 import kotlinx.datetime.LocalDate
 import kotlin.math.roundToInt
+
+/** Y-axis formatter for the Vico charts. Series values are pushed in ringgit, so this just adds "RM". */
+internal val RinggitAxisFormatter = CartesianValueFormatter { _, value, _ -> "RM ${value.roundToInt()}" }
 
 private val SHORT_MONTHS = listOf(
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

@@ -9,7 +9,7 @@
 
 android {
     namespace = "cy.txtracker"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "cy.txtracker"
@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.reorderable)
+    implementation(libs.vico.compose.m3)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
