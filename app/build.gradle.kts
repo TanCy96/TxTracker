@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.reorderable)
+    implementation(libs.vico.compose.m3)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
@@ -118,4 +119,14 @@ dependencies {
     androidTestImplementation(libs.turbine)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Vico 2.0.x transitively requests androidx.core 1.15.0, which targets compileSdk 35. Pin core
+// back to the project's declared 1.13.1 (compileSdk 34) so the SDK level stays put. Vico's use of
+// androidx.core is minimal, so the downgrade is safe.
+configurations.all {
+    resolutionStrategy {
+        force("androidx.core:core:1.13.1")
+        force("androidx.core:core-ktx:1.13.1")
+    }
 }
