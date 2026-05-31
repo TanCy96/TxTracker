@@ -654,7 +654,7 @@ private fun ExportRangePickerDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     ) {
-        DateRangePicker(state = state, modifier = Modifier.weight(1f))
+        DateRangePicker(state = state)
     }
 }
 
