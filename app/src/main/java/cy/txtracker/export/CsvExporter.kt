@@ -15,7 +15,11 @@ import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -91,6 +95,36 @@ class CsvExporter @Inject constructor(
 // ---------------------------------------------------------------------------
 // Pure helpers — separated from file I/O for unit-testability
 // ---------------------------------------------------------------------------
+
+/**
+ * Optional CSV export date filter. [start] and [end] are inclusive and interpreted as
+ * Malaysia-local calendar days, matching how [buildCsv] groups rows by day.
+ */
+data class ExportDateRange(val start: LocalDate, val end: LocalDate)
+
+/**
+ * Converts an [ExportDateRange] to its instant bounds: `[start-of-start-day,
+ * start-of-(end+1)-day)` in [MalaysiaTimeZone]. The upper bound is exclusive so the entire
+ * [end] day is included. Pure — no I/O. MYT has no DST, so the bounds are unambiguous.
+ */
+fun malaysiaDateRangeBounds(range: ExportDateRange): Pair<Instant, Instant> {
+    val start = range.start.atStartOfDayIn(MalaysiaTimeZone)
+    val endExclusive = range.end.plus(1, DateTimeUnit.DAY).atStartOfDayIn(MalaysiaTimeZone)
+    return start to endExclusive
+}
+
+/**
+ * Returns [transactions] filtered to [range]; a null range returns the list unchanged
+ * (the all-time export path). Keeps rows whose `occurredAt` is in `[start, endExclusive)`.
+ */
+fun filterByRange(
+    transactions: List<Transaction>,
+    range: ExportDateRange?,
+): List<Transaction> {
+    if (range == null) return transactions
+    val (start, endExclusive) = malaysiaDateRangeBounds(range)
+    return transactions.filter { it.occurredAt >= start && it.occurredAt < endExclusive }
+}
 
 /**
  * Writes CSV bytes for [transactions] / [categories] to [output].
