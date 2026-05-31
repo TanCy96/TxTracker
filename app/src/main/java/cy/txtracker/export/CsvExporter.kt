@@ -16,7 +16,11 @@ import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -43,13 +47,19 @@ class CsvExporter @Inject constructor(
      * Exports transactions for [currency] as a CSV, writes to cacheDir, and returns a
      * content URI sharable via Intent.
      */
-    suspend fun exportCsv(currency: String): Uri {
-        val transactions = repository.getAllTransactionsOnceForCurrency(currency)
+    suspend fun exportCsv(currency: String, range: ExportDateRange? = null): Uri {
+        val transactions = filterByRange(
+            repository.getAllTransactionsOnceForCurrency(currency),
+            range,
+        )
         val categories = repository.getAllCategoriesOnce()
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
-        val deposits = if (currency == "MYR") repository.getSlDebitDepositsOnce() else emptyList()
+        val deposits = filterDepositsByRange(
+            if (currency == "MYR") repository.getSlDebitDepositsOnce() else emptyList(),
+            range,
+        )
         val dir = exportDir()
-        val file = File(dir, "transactions-$currency-${System.currentTimeMillis()}.csv")
+        val file = File(dir, csvFileName(currency, range))
         file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, deposits, it) }
         return uriFor(file)
     }
@@ -59,18 +69,18 @@ class CsvExporter @Inject constructor(
      * single zip file. Returns a content URI sharable via Intent.
      * Currencies with zero rows are skipped so the zip contains no empty CSVs.
      */
-    suspend fun exportAllCurrenciesZip(): Uri {
+    suspend fun exportAllCurrenciesZip(range: ExportDateRange? = null): Uri {
         val categories = repository.getAllCategoriesOnce()
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
         val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
         val codes = (listOf("MYR") + trackedCodes).distinct()
-        val allDeposits = repository.getSlDebitDepositsOnce()
+        val allDeposits = filterDepositsByRange(repository.getSlDebitDepositsOnce(), range)
 
         val dir = exportDir()
-        val zipFile = File(dir, "transactions-all-${System.currentTimeMillis()}.zip")
+        val zipFile = File(dir, zipFileName(range))
         java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zip ->
             for (code in codes) {
-                val rows = repository.getAllTransactionsOnceForCurrency(code)
+                val rows = filterByRange(repository.getAllTransactionsOnceForCurrency(code), range)
                 val deposits = if (code == "MYR") allDeposits else emptyList()
                 if (rows.isEmpty() && deposits.isEmpty()) continue
                 zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
@@ -85,6 +95,16 @@ class CsvExporter @Inject constructor(
      *  compatibility during the transition. */
     suspend fun export(): Uri = exportCsv("MYR")
 
+    private fun csvFileName(currency: String, range: ExportDateRange?): String {
+        val suffix = if (range == null) "" else "-${range.start}_to_${range.end}"
+        return "transactions-$currency$suffix-${System.currentTimeMillis()}.csv"
+    }
+
+    private fun zipFileName(range: ExportDateRange?): String {
+        val suffix = if (range == null) "" else "-${range.start}_to_${range.end}"
+        return "transactions-all$suffix-${System.currentTimeMillis()}.zip"
+    }
+
     private fun exportDir(): File =
         File(context.cacheDir, "exports").apply { mkdirs() }
 
@@ -95,6 +115,52 @@ class CsvExporter @Inject constructor(
 // ---------------------------------------------------------------------------
 // Pure helpers — separated from file I/O for unit-testability
 // ---------------------------------------------------------------------------
+
+/**
+ * Optional CSV export date filter. [start] and [end] are inclusive and interpreted as
+ * Malaysia-local calendar days, matching how [buildCsv] groups rows by day.
+ */
+data class ExportDateRange(val start: LocalDate, val end: LocalDate) {
+    init { require(start <= end) { "start ($start) must be <= end ($end)" } }
+}
+
+/**
+ * Converts an [ExportDateRange] to its instant bounds: `[start-of-start-day,
+ * start-of-(end+1)-day)` in [MalaysiaTimeZone]. The upper bound is exclusive so the entire
+ * [end] day is included. Pure — no I/O. MYT has no DST, so the bounds are unambiguous.
+ */
+fun malaysiaDateRangeBounds(range: ExportDateRange): Pair<Instant, Instant> {
+    val start = range.start.atStartOfDayIn(MalaysiaTimeZone)
+    val endExclusive = range.end.plus(1, DateTimeUnit.DAY).atStartOfDayIn(MalaysiaTimeZone)
+    return start to endExclusive
+}
+
+/**
+ * Returns [transactions] filtered to [range]; a null range returns the list unchanged
+ * (the all-time export path). Keeps rows whose `occurredAt` is in `[start, endExclusive)`.
+ */
+fun filterByRange(
+    transactions: List<Transaction>,
+    range: ExportDateRange?,
+): List<Transaction> {
+    if (range == null) return transactions
+    val (start, endExclusive) = malaysiaDateRangeBounds(range)
+    return transactions.filter { it.occurredAt >= start && it.occurredAt < endExclusive }
+}
+
+/**
+ * Returns [deposits] filtered to [range]; a null range returns the list unchanged. Keeps
+ * deposits whose `occurredAt` is in `[start, endExclusive)` (Malaysia-local days), so a
+ * date-range export windows SL Debit deposits the same way [filterByRange] windows transactions.
+ */
+fun filterDepositsByRange(
+    deposits: List<SlDebitDeposit>,
+    range: ExportDateRange?,
+): List<SlDebitDeposit> {
+    if (range == null) return deposits
+    val (start, endExclusive) = malaysiaDateRangeBounds(range)
+    return deposits.filter { it.occurredAt >= start && it.occurredAt < endExclusive }
+}
 
 /**
  * Writes CSV bytes for [transactions] / [categories] to [output].

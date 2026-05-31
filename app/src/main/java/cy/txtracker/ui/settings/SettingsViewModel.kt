@@ -14,6 +14,7 @@ import cy.txtracker.data.TransactionRepository
 import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
 import cy.txtracker.export.CsvExporter
+import cy.txtracker.export.ExportDateRange
 import cy.txtracker.export.ImportResult
 import cy.txtracker.export.YearMonth
 import cy.txtracker.service.CloudSyncPrefs
@@ -151,12 +152,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** Export transactions for [currency] as a CSV file and share via ACTION_SEND. */
-    fun exportCsv(currency: String) {
+    fun exportCsv(currency: String, range: ExportDateRange? = null) {
         if (_exportStatus.value is ExportStatus.Running) return
         _exportStatus.value = ExportStatus.Running
         viewModelScope.launch {
             try {
-                val uri = csvExporter.exportCsv(currency)
+                val uri = csvExporter.exportCsv(currency, range)
                 _exportStatus.value = ExportStatus.Ready(uri.toString())
             } catch (t: Throwable) {
                 _exportStatus.value = ExportStatus.Error(t.message ?: "Export failed")
@@ -165,12 +166,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** Export all currencies as a zip of per-currency CSVs and share via ACTION_SEND. */
-    fun exportAllZip() {
+    fun exportAllZip(range: ExportDateRange? = null) {
         if (_exportStatus.value is ExportStatus.Running) return
         _exportStatus.value = ExportStatus.Running
         viewModelScope.launch {
             try {
-                val uri = csvExporter.exportAllCurrenciesZip()
+                val uri = csvExporter.exportAllCurrenciesZip(range)
                 _exportStatus.value = ExportStatus.ZipReady(uri.toString())
             } catch (t: Throwable) {
                 _exportStatus.value = ExportStatus.Error(t.message ?: "Export failed")
