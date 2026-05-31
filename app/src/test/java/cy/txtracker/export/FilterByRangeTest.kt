@@ -6,6 +6,7 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.domain.TimeBucket
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class FilterByRangeTest {
@@ -82,5 +83,17 @@ class FilterByRangeTest {
     fun null_range_returns_input_unchanged() {
         val txs = listOf(tx(Instant.parse("2020-06-15T00:00:00Z")))
         assertThat(filterByRange(txs, null)).isEqualTo(txs)
+    }
+
+    @Test
+    fun empty_list_with_range_returns_empty() {
+        assertThat(filterByRange(emptyList(), january)).isEmpty()
+    }
+
+    @Test
+    fun inverted_range_is_rejected() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ExportDateRange(LocalDate(2026, 1, 31), LocalDate(2026, 1, 1))
+        }
     }
 }

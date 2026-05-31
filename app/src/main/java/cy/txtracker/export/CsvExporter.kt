@@ -100,7 +100,9 @@ class CsvExporter @Inject constructor(
  * Optional CSV export date filter. [start] and [end] are inclusive and interpreted as
  * Malaysia-local calendar days, matching how [buildCsv] groups rows by day.
  */
-data class ExportDateRange(val start: LocalDate, val end: LocalDate)
+data class ExportDateRange(val start: LocalDate, val end: LocalDate) {
+    init { require(start <= end) { "start ($start) must be <= end ($end)" } }
+}
 
 /**
  * Converts an [ExportDateRange] to its instant bounds: `[start-of-start-day,
