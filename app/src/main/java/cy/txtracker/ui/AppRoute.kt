@@ -32,6 +32,8 @@ import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.ui.MainActivity.Deeplink
 import cy.txtracker.ui.foreign.ForeignRoute
 import cy.txtracker.ui.home.HomeRoute
+import cy.txtracker.ui.insights.InsightsChartType
+import cy.txtracker.ui.insights.InsightsPrefs
 import cy.txtracker.ui.insights.InsightsRoute
 import cy.txtracker.ui.lock.LockScreen
 import cy.txtracker.ui.onboarding.OnboardingScreen
@@ -95,6 +97,23 @@ private fun rememberDeeplinkBus(): DeeplinkBus {
     }
 }
 
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface InsightsPrefsEntryPoint {
+    fun insightsPrefs(): InsightsPrefs
+}
+
+@Composable
+private fun rememberInsightsPrefs(): InsightsPrefs {
+    val context = LocalContext.current
+    return remember(context) {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            InsightsPrefsEntryPoint::class.java,
+        ).insightsPrefs()
+    }
+}
+
 /**
  * Top-level routing.
  *
@@ -137,12 +156,17 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
     // tap (or other intent) emits a Deeplink. HomeViewModel also collects from the bus
     // independently to update its filter state.
     val deeplinkBus = rememberDeeplinkBus()
+    val insightsPrefs = rememberInsightsPrefs()
     LaunchedEffect(deeplinkBus, nav) {
         deeplinkBus.forAppRoute.collect { deeplink ->
             when (deeplink) {
                 Deeplink.PendingFilter,
                 Deeplink.CurrencyReview,
                 -> navigateTopLevel(nav, Routes.HOME)
+                Deeplink.InsightsBudget -> {
+                    insightsPrefs.setChartType(InsightsChartType.BUDGET)
+                    navigateTopLevel(nav, Routes.INSIGHTS)
+                }
             }
         }
     }

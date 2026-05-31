@@ -9,4 +9,5 @@ object NotificationIds {
     const val PENDING = 1001
     const val FOREIGN = 1002
     const val SUMMARY = 1003
+    const val BUDGET = 1004
 }

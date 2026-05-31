@@ -73,6 +73,7 @@ class HomeViewModel @Inject constructor(
                     MainActivity.Deeplink.CurrencyReview -> {
                         _filter.value = HomeFilter.CurrencyReview
                     }
+                    else -> Unit
                 }
             }
         }

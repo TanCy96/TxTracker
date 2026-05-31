@@ -8,10 +8,15 @@ import androidx.work.WorkerParameters
 import cy.txtracker.data.Direction
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.domain.InsightsPeriod
+import cy.txtracker.domain.resolveInsightsPeriod
 import cy.txtracker.service.NotificationPrefs
 import cy.txtracker.service.SummaryCadence
+import cy.txtracker.ui.insights.InsightsPrefs
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Clock
 
 @HiltWorker
@@ -20,6 +25,7 @@ class SummaryWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val repository: TransactionRepository,
     private val prefs: NotificationPrefs,
+    private val insightsPrefs: InsightsPrefs,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -36,6 +42,17 @@ class SummaryWorker @AssistedInject constructor(
 
         val total = rows.sumOf { it.amountMinor }
         val topCategories = topByCategory(rows, take = 2)
+        val budgetLine = insightsPrefs.overallBudgetMinor.value?.let { budget ->
+            val month = resolveInsightsPeriod(InsightsPeriod.THIS_MONTH)
+            val monthSpend = repository.observeTotalBetween(month.startInclusive, month.endExclusive).first()
+            val pct = (100.0 * monthSpend / budget).roundToInt()
+            val remaining = budget - monthSpend
+            if (remaining >= 0) {
+                "Monthly budget: RM ${formatMinor(remaining)} left of RM ${formatMinor(budget)} ($pct%)"
+            } else {
+                "Monthly budget: RM ${formatMinor(-remaining)} over RM ${formatMinor(budget)} ($pct%)"
+            }
+        }
 
         mgr.notify(
             NotificationIds.SUMMARY,
@@ -45,6 +62,7 @@ class SummaryWorker @AssistedInject constructor(
                 txCount = rows.size,
                 totalMinor = total,
                 topCategories = topCategories,
+                budgetLine = budgetLine,
             ),
         )
         return Result.success()

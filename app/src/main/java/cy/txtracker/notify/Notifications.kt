@@ -13,6 +13,7 @@ private const val REQ_PENDING_DISMISS = 101
 private const val REQ_SUMMARY_TAP = 102
 private const val REQ_FOREIGN_TAP = 103
 private const val REQ_FOREIGN_DISMISS = 104
+private const val REQ_BUDGET_TAP = 105
 
 /**
  * Builds the aggregated pending-row notification. [count] is the number of
@@ -56,6 +57,7 @@ fun buildSummaryNotification(
     txCount: Int,
     totalMinor: Long,
     topCategories: List<Pair<String, Long>>,
+    budgetLine: String? = null,
 ): Notification {
     val tapIntent = PendingIntent.getActivity(
         context, REQ_SUMMARY_TAP,
@@ -69,7 +71,8 @@ fun buildSummaryNotification(
     }
     val title = "$rangeLabel: RM ${formatMinor(totalMinor)} across $txCount " +
         (if (txCount == 1) "transaction" else "transactions")
-    val body = if (topCategories.isEmpty()) title else "$title.\nTop: $topSummary"
+    val baseBody = if (topCategories.isEmpty()) title else "$title.\nTop: $topSummary"
+    val body = if (budgetLine != null) "$baseBody\n$budgetLine" else baseBody
     return NotificationCompat.Builder(context, NotificationChannels.SUMMARY)
         .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle(title)
@@ -109,6 +112,37 @@ fun buildForeignNotification(context: Context, currency: String, count: Int): No
         .setDeleteIntent(dismissIntent)
         .setAutoCancel(true)
         .build()
+}
+
+/**
+ * Builds the budget-alert notification: one line per crossed budget (overall + per-category),
+ * `BigTextStyle` so they all show. Tap deep-links to Insights → Budget.
+ */
+fun buildBudgetAlertNotification(context: Context, alerts: List<BudgetAlert>): Notification {
+    val tapIntent = PendingIntent.getActivity(
+        context, REQ_BUDGET_TAP,
+        Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_DEEPLINK, MainActivity.Deeplink.InsightsBudget.tag)
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val lines = alerts.map(::budgetAlertLine)
+    val title = if (alerts.size == 1) lines.first() else "${alerts.size} budget alerts"
+    val body = lines.joinToString("\n")
+    return NotificationCompat.Builder(context, NotificationChannels.BUDGET)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setContentTitle(title)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        .setContentIntent(tapIntent)
+        .setAutoCancel(true)
+        .build()
+}
+
+private fun budgetAlertLine(alert: BudgetAlert): String {
+    val amounts = "RM ${formatMinor(alert.spentMinor)} / RM ${formatMinor(alert.budgetMinor)}"
+    return if (alert.threshold >= 100) "${alert.label}: over budget ($amounts)"
+    else "${alert.label}: ${alert.threshold}% used ($amounts)"
 }
 
 /** "180.50" for 18050 minor units. Two-decimal MYR-friendly. */

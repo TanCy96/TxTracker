@@ -133,6 +133,26 @@ fun NotificationsScreen(
                 enabled = state.summaryCadence != SummaryCadence.OFF,
                 onChange = viewModel::setSummaryHour,
             )
+
+            Spacer(Modifier.height(24.dp))
+
+            Text("Budget alerts", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Get a notification when you approach or exceed a monthly budget.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = state.budgetAlertsEnabled,
+                    onCheckedChange = viewModel::setBudgetAlertsEnabled,
+                )
+            }
         }
     }
 }

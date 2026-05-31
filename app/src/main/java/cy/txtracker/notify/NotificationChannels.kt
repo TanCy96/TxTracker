@@ -17,6 +17,7 @@ object NotificationChannels {
     const val PENDING = "txtracker.pending"
     const val FOREIGN = "txtracker.foreign"
     const val SUMMARY = "txtracker.summary"
+    const val BUDGET = "txtracker.budget"
 
     fun registerAll(context: Context) {
         val mgr = context.getSystemService(NotificationManager::class.java) ?: return
@@ -39,6 +40,13 @@ object NotificationChannels {
                 SUMMARY, "Spending summaries", NotificationManager.IMPORTANCE_LOW,
             ).apply {
                 description = "Periodic recap of how much you've spent."
+            },
+        )
+        mgr.createNotificationChannel(
+            NotificationChannel(
+                BUDGET, "Budget alerts", NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = "Alerts when you approach or exceed a monthly budget."
             },
         )
     }
