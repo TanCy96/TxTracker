@@ -34,9 +34,14 @@ choices persist across launches.
    (by category vs by funding-source) + a **chart-type switch**. Chosen defaults persist
    via an `InsightsPrefs` (SharedPreferences, the project's existing pattern).
 3. **Chart types for v1:** all five listed above (the budget view was the user's addition).
-4. **Library:** **Vico** (`com.patrykandpatrick.vico:compose-m3`) for the bar/line charts;
-   the pie is a hand-rolled Compose `Canvas` (~50 LOC) — Vico is cartesian-focused and has
-   no first-class pie. This corrects FUTURE.md's assumption that Vico ships a pie.
+4. **Library:** **hand-rolled Compose `Canvas`** for all charts (pie, stacked bar, trend lines).
+   Vico was evaluated and dropped: its 2.0.x line transitively pulls Compose 1.8 / `androidx.core`
+   1.15 (which require compileSdk 35 + AGP 8.6), conflicting with the project's compileSdk 34.
+   Pinning Vico to 2.0.x + forcing `androidx.core` back to 1.13.1 compiled, but its styling /
+   stacking API couldn't be visually verified in this environment (no emulator), and with default
+   Vico colours the bars wouldn't match the pie's category colours. Canvas gives full control of
+   category colours, stacked segments, and date/month labels with APIs that compile-verify
+   reliably. (FUTURE.md's assumption that Vico ships a pie was also wrong — Vico is cartesian-only.)
 5. **Branch policy (unchanged):** built on `main`; `main` later merges **into**
    `feature/share-debit`, resolving conflicts in favour of SL Debit. See the dedicated
    section below — the feature is designed so that merge is a one-line edit.
@@ -56,11 +61,10 @@ split used by `ui/foreign/` and `ui/home/`. All calendar/range logic lives in `d
 | `ui/insights/InsightsUiState.kt` | `InsightsUiState` sealed interface + option enums + chart data-model types. |
 | `ui/insights/InsightsAggregator.kt` | **Pure** functions: `List<Transaction>` + lookup maps → chart models. The other unit-test surface. |
 | `ui/insights/charts/CategoryPieChart.kt` | Hand-rolled `Canvas` pie + legend. |
-| `ui/insights/charts/DailyStackedBarChart.kt` | Vico stacked-column chart. |
-| `ui/insights/charts/MonthlyTrendLineChart.kt` | Vico line chart (total). |
-| `ui/insights/charts/CategoryTrendLineChart.kt` | Vico line chart (one category). |
-| `ui/insights/charts/BudgetProgressCard.kt` | Material3 `LinearProgressIndicator` + spend/budget text. |
-| `ui/insights/charts/ChartTheme.kt` | Maps Material3 `colorScheme` + `Category.color` into Vico styling. |
+| `ui/insights/charts/DailyStackedBarChart.kt` | Hand-rolled `Canvas` stacked-column chart. |
+| `ui/insights/charts/SpendTrendLineChart.kt` | Hand-rolled `Canvas` line chart, reused for the month-over-month total and the per-category trend. |
+| `ui/insights/charts/BudgetProgressCard.kt` | Material3 `LinearProgressIndicator` + spend/budget rows (overall + per-category). |
+| `ui/insights/charts/ChartTheme.kt` | Shared chart helpers: legend, colour dot, empty-state, month/day labels. |
 | `service/InsightsPrefs.kt` | `@Singleton @Inject` SharedPreferences wrapper — copy of `NotificationPrefs`. No Hilt module needed. |
 
 Edits to existing files: `ui/AppRoute.kt` (nav wiring), `gradle/libs.versions.toml` +
@@ -205,18 +209,18 @@ Kinds have no stored color, so they draw from a small fixed palette (mirroring
   per `BreakdownSlice`, `sweep = 360f * slice.minor / total`. A separate legend column shows
   label + `formatMyr` + percentage (reusing `CategoryBreakdownRow` styling). Null/Unverified
   slice = `colorScheme.outline`. No dependency.
-- **Daily bar** (`DailyStackedBarChart.kt`) — Vico `rememberColumnCartesianLayer` with a
-  stacking column provider, one series per grouping key. Bottom axis = day-of-month via a
-  `CartesianValueFormatter`; colors from the slices.
-- **Monthly trend** (`MonthlyTrendLineChart.kt`) — Vico `rememberLineCartesianLayer`, single
-  series; bottom-axis labels via `formatYearMonth`.
-- **Category trend** (`CategoryTrendLineChart.kt`) — same, single colored line; parent owns the
-  category dropdown.
+- **Daily bar** (`DailyStackedBarChart.kt`) — `Canvas` `drawRect` per series segment, stacked
+  bottom-up per day, scaled to the peak day. X axis summarised by first/last day labels (per-bar
+  labels don't fit a month of bars); a shared `BreakdownLegend` names the stacked series.
+- **Monthly / category trend** (`SpendTrendLineChart.kt`) — `Canvas` `drawLine` polyline +
+  `drawCircle` points over `List<MonthBucket>`, with month labels beneath. One composable, reused
+  for the total trend (primary colour) and the per-category trend (the category's colour); the
+  parent owns the category dropdown.
 - **Budget** — see below.
 
-Y-axis formatter divides minor units by 100 and reuses MYR formatting. All charts pull colors
-from `MaterialTheme.colorScheme` via `ChartTheme.kt` — never hardcoded — so they stay correct
-under dynamic color / dark mode (`ui/theme/Theme.kt`).
+Charts pull colours from `MaterialTheme.colorScheme` and `Category.color` — never hardcoded — so
+they stay correct under dynamic colour / dark mode (`ui/theme/Theme.kt`). Labels and legends are
+plain Compose `Text` laid out around the `Canvas` (no `TextMeasurer`).
 
 ## Budget (the user's addition) — overall + per-category
 
@@ -268,13 +272,10 @@ fun categoryBudgetProgress(
   to minor units via the existing `ui/manual` `parseAmountMinor` helper. Clearing the field removes
   the budget.
 
-## Charting library (Vico) & navigation
+## Charting & navigation
 
-**Gradle.** `gradle/libs.versions.toml`: add a `vico` version (confirm the current stable 2.x
-against the project's Compose BOM + Kotlin version before pinning) and a
-`vico-compose-m3 = { group = "com.patrykandpatrick.vico", name = "compose-m3", version.ref = "vico" }`
-library; `app/build.gradle.kts`: `implementation(libs.vico.compose.m3)`. No new plugin, no KSP
-impact, ~150 KB APK.
+**No new dependency.** All charts are hand-rolled on Compose `Canvas` (see the Library decision
+above for why Vico was dropped), so there are no Gradle changes for charting.
 
 **Navigation** — four edits to `ui/AppRoute.kt`, matching the "add a tab" recipe the file
 already documents:
