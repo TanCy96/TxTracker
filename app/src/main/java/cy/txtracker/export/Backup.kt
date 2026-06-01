@@ -30,6 +30,7 @@ data class BackupFundingSource(
  *   v6 – added [trackedCurrencies] and [tripWindows] (foreign-currency tracking)
  *   v7 – added [keywordPattern] on [BackupCategory]
  *   v8 – added [fundingSources] and [BackupTransaction.fundingSourceLookupKey]
+ *   v9 – added [BackupTransaction.reimbursedMinor] (reimbursed-by-others share)
  */
 @Serializable
 data class Backup(
@@ -50,7 +51,7 @@ data class Backup(
     val fundingSources: List<BackupFundingSource> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 8
+        const val CURRENT_VERSION = 9
     }
 }
 
@@ -140,4 +141,6 @@ data class BackupTransaction(
     val needsCurrencyConfirmation: Boolean = false,
     /** "<sourceAppHint>|<last4>" — null when unlinked. Empty strings for null parts (e.g. Cash = "|"). */
     val fundingSourceLookupKey: String? = null,
+    /** Portion others reimbursed, in minor units. null = not reimbursed. Default keeps v8 backups parseable. */
+    val reimbursedMinor: Long? = null,
 )

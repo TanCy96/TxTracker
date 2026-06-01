@@ -1319,6 +1319,7 @@ class TransactionRepository @Inject constructor(
                     needsVerification = bt.needsVerification,
                     needsCurrencyConfirmation = bt.needsCurrencyConfirmation,
                     fundingSourceId = fundingSourceId,
+                    reimbursedMinor = bt.reimbursedMinor,
                 ),
             )
             if (rowId >= 0) transactionsAdded++

@@ -143,6 +143,7 @@ class BackupExporter @Inject constructor(
                     needsVerification = tx.needsVerification,
                     needsCurrencyConfirmation = tx.needsCurrencyConfirmation,
                     fundingSourceLookupKey = tx.fundingSourceId?.let { fundingSourceKeyById[it] },
+                    reimbursedMinor = tx.reimbursedMinor,
                 )
             },
             fundingSources = fundingSources.map { fs ->
