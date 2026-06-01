@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
 import cy.txtracker.data.Direction
 import cy.txtracker.data.FundingSource
+import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.InsightsPeriod
@@ -39,6 +40,9 @@ class InsightsViewModel @Inject constructor(
     /** Active chart drill-down (a BreakdownSlice.key), or null. Session only. */
     private val _drillKey = MutableStateFlow<String?>(null)
 
+    /** Selected currency — MYR or a tracked foreign code. Session only. */
+    private val _selectedCurrency = MutableStateFlow("MYR")
+
     // Trend charts always show a fixed trailing 6-month window, independent of the range selector;
     // budgets are evaluated against the current calendar month (a subset of that window). "Now" is
     // captured once at construction, mirroring HomeViewModel's YearMonth.current().
@@ -50,11 +54,18 @@ class InsightsViewModel @Inject constructor(
     /** Selected-range rows. Re-subscribes only when the period / custom range changes. */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val rangeData: Flow<RangeData> =
-        combine(prefs.period, prefs.customRange) { period, custom -> period to custom }
-            .flatMapLatest { (period, custom) ->
+        combine(prefs.period, prefs.customRange, _selectedCurrency) { period, custom, currency ->
+            Triple(period, custom, currency)
+        }
+            .flatMapLatest { (period, custom, currency) ->
                 val range = resolveInsightsPeriod(period, custom?.start, custom?.end)
-                repository.observeMyrTransactionsBetween(range.startInclusive, range.endExclusive)
-                    .map { txs -> RangeData(period, custom, range, txs) }
+                val txFlow = if (currency == "MYR") {
+                    repository.observeMyrTransactionsBetween(range.startInclusive, range.endExclusive)
+                } else {
+                    // Per-currency range query (the repo method is named for its trip use).
+                    repository.observeTransactionsForTrip(currency, range.startInclusive, range.endExclusive)
+                }
+                txFlow.map { txs -> RangeData(period, custom, range, currency, txs) }
             }
 
     val state: StateFlow<InsightsUiState> =
@@ -63,11 +74,15 @@ class InsightsViewModel @Inject constructor(
             sixMonthTxs,
             combine(prefs.groupBy, prefs.chartType, _selectedCategoryId, _drillKey) { g, c, s, d -> Presentation(g, c, s, d) },
             combine(prefs.overallBudgetMinor, prefs.categoryBudgetsMinor) { o, c -> o to c },
-            combine(repository.observeAllCategories(), repository.observeFundingSources()) { cats, f -> cats to f },
+            combine(
+                repository.observeAllCategories(),
+                repository.observeFundingSources(),
+                repository.observeTrackedCurrencies(),
+            ) { cats, f, tc -> Triple(cats, f, tc) },
         ) { rd, sixMo, presentation, budgets, catsFunding ->
             val (groupBy, chartType, selectedCategoryId, drillKey) = presentation
             val (overallBudget, categoryBudgets) = budgets
-            val (categories, fundingSources) = catsFunding
+            val (categories, fundingSources, trackedCurrencies) = catsFunding
             buildLoaded(
                 rangeData = rd,
                 sixMoTxs = sixMo,
@@ -79,6 +94,7 @@ class InsightsViewModel @Inject constructor(
                 categoryBudgets = categoryBudgets,
                 categories = categories,
                 fundingSources = fundingSources,
+                trackedCurrencies = trackedCurrencies,
             )
         }.stateIn(
             scope = viewModelScope,
@@ -99,6 +115,10 @@ class InsightsViewModel @Inject constructor(
     fun selectCategory(categoryId: Long?) { _selectedCategoryId.value = categoryId }
     fun openDrill(key: String) { _drillKey.value = key }
     fun closeDrill() { _drillKey.value = null }
+    fun selectCurrency(code: String) {
+        _drillKey.value = null
+        _selectedCurrency.value = code
+    }
     fun setOverallBudget(minor: Long?) = prefs.setOverallBudget(minor)
     fun setCategoryBudget(categoryId: Long, minor: Long?) = prefs.setCategoryBudget(categoryId, minor)
 
@@ -113,10 +133,23 @@ class InsightsViewModel @Inject constructor(
         categoryBudgets: Map<Long, Long>,
         categories: List<Category>,
         fundingSources: List<FundingSource>,
+        trackedCurrencies: List<TrackedCurrency>,
     ): InsightsUiState {
         val categoriesById = categories.associateBy { it.id }
         val fundingById = fundingSources.associateBy { it.id }
         val rangeTxs = rangeData.txs
+        val currency = rangeData.currency
+        val currencies = listOf(CurrencyOption("MYR", "RM")) +
+            trackedCurrencies.map { CurrencyOption(it.code, it.displaySymbol) }
+        val currencySymbol = currencies.firstOrNull { it.code == currency }?.symbol ?: "RM"
+        // Trends + budget are MYR-only (fixed MYR windows); for a foreign currency restrict to the
+        // range-based charts so a persisted MYR chart-type doesn't render MYR data under a foreign symbol.
+        val effectiveChartType =
+            if (currency != "MYR" && chartType != InsightsChartType.CATEGORY_PIE && chartType != InsightsChartType.DAILY_BAR) {
+                InsightsChartType.CATEGORY_PIE
+            } else {
+                chartType
+            }
 
         // Snap a stale selection back, or default the per-category trend to the first category.
         val effectiveSelectedCategoryId =
@@ -139,15 +172,18 @@ class InsightsViewModel @Inject constructor(
             .mapValues { (_, rows) -> rows.sumOf { it.chartAmountMinor() } }
 
         val breakdown = groupedBreakdown(rangeTxs, groupBy, categoriesById, fundingById)
-        val drill = buildDrill(drillKey, rangeTxs, groupBy, categoriesById, fundingById, breakdown)
+        val drill = buildDrill(drillKey, rangeTxs, groupBy, categoriesById, fundingById, breakdown, currencySymbol)
 
         return InsightsUiState.Loaded(
-            chartType = chartType,
+            chartType = effectiveChartType,
             period = rangeData.period,
             rangeLabel = rangeLabel(rangeData.period, rangeData.customRange),
             groupBy = groupBy,
             categories = categories,
             selectedCategoryId = effectiveSelectedCategoryId,
+            currency = currency,
+            currencySymbol = currencySymbol,
+            currencies = currencies,
             breakdown = breakdown,
             daily = dailyStacked(rangeTxs, groupBy, categoriesById, fundingById),
             monthly = monthlyTotals(sixMoTxs),
@@ -167,6 +203,7 @@ class InsightsViewModel @Inject constructor(
         categoriesById: Map<Long, Category>,
         fundingById: Map<Long, FundingSource>,
         breakdown: List<BreakdownSlice>,
+        symbol: String,
     ): InsightsDrill? {
         val key = drillKey ?: return null
         val rows = transactionsForKey(rangeTxs, key, groupBy, categoriesById, fundingById)
@@ -181,7 +218,7 @@ class InsightsViewModel @Inject constructor(
             .toSortedMap(reverseOrder())
             .map { (date, list) -> DayGroup(date, list) }
         val label = breakdown.firstOrNull { it.key == key }?.label ?: key
-        return InsightsDrill(key = key, label = label, days = days)
+        return InsightsDrill(key = key, label = label, symbol = symbol, days = days)
     }
 
     private fun rangeLabel(period: InsightsPeriod, customRange: ExportDateRange?): String = when (period) {
@@ -198,6 +235,7 @@ class InsightsViewModel @Inject constructor(
         val period: InsightsPeriod,
         val customRange: ExportDateRange?,
         val range: InsightsRange,
+        val currency: String,
         val txs: List<Transaction>,
     )
 

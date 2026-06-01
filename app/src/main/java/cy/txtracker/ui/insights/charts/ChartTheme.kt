@@ -26,8 +26,9 @@ import cy.txtracker.ui.insights.BreakdownSlice
 import kotlinx.datetime.LocalDate
 import kotlin.math.roundToInt
 
-/** Y-axis formatter for the Vico charts. Series values are pushed in ringgit, so this just adds "RM". */
-internal val RinggitAxisFormatter = CartesianValueFormatter { _, value, _ -> "RM ${value.roundToInt()}" }
+/** Y-axis formatter for the Vico charts. Series values are pushed in major units, so prefix [symbol]. */
+internal fun amountAxisFormatter(symbol: String): CartesianValueFormatter =
+    CartesianValueFormatter { _, value, _ -> "$symbol ${value.roundToInt()}" }
 
 private val SHORT_MONTHS = listOf(
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -64,6 +65,7 @@ internal fun BreakdownLegend(
     slices: List<BreakdownSlice>,
     modifier: Modifier = Modifier,
     onKeyTap: ((String) -> Unit)? = null,
+    amountFormatter: (Long) -> String = { formatMyr(it) },
 ) {
     val total = slices.sumOf { it.totalMinor }
     Column(modifier = modifier.fillMaxWidth()) {
@@ -84,7 +86,7 @@ internal fun BreakdownLegend(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = "${formatMyr(slice.totalMinor)}  ·  $pct%",
+                    text = "${amountFormatter(slice.totalMinor)}  ·  $pct%",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

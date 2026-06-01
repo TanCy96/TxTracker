@@ -38,7 +38,7 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.domain.InsightsPeriod
 import cy.txtracker.export.ExportDateRange
 import cy.txtracker.ui.edit.EditTransactionSheet
-import cy.txtracker.ui.format.formatMyr
+import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.home.TransactionList
 import cy.txtracker.ui.insights.charts.ColorDot
 import cy.txtracker.ui.manual.parseAmountMinor
@@ -73,6 +73,7 @@ fun InsightsRoute(viewModel: InsightsViewModel = hiltViewModel()) {
         },
         onAddCategoryBudget = { showCategoryPicker = true },
         onDrill = viewModel::openDrill,
+        onSelectCurrency = viewModel::selectCurrency,
     )
 
     if (showCustomRange) {
@@ -268,7 +269,7 @@ private fun DrillSheet(
             days = drill.days,
             notesByMerchant = emptyMap(),
             contentPadding = PaddingValues(bottom = 24.dp),
-            amountFormatter = { formatMyr(it) },
+            amountFormatter = { formatAmount(it, drill.symbol) },
             onTransactionClick = onTransactionClick,
         )
     }

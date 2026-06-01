@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.insights.BreakdownSlice
 import kotlin.math.atan2
 import kotlin.math.min
@@ -31,6 +32,7 @@ fun CategoryPieChart(
     slices: List<BreakdownSlice>,
     modifier: Modifier = Modifier,
     onSliceTap: ((String) -> Unit)? = null,
+    amountFormatter: (Long) -> String = { formatMyr(it) },
 ) {
     val total = slices.sumOf { it.totalMinor }
     if (slices.isEmpty() || total <= 0L) {
@@ -76,7 +78,7 @@ fun CategoryPieChart(
             }
         }
         Spacer(Modifier.height(12.dp))
-        BreakdownLegend(slices, onKeyTap = onSliceTap)
+        BreakdownLegend(slices, onKeyTap = onSliceTap, amountFormatter = amountFormatter)
     }
 }
 

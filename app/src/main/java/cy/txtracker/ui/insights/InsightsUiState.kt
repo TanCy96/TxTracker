@@ -56,8 +56,12 @@ data class CategoryBudgetProgress(
 data class InsightsDrill(
     val key: String,
     val label: String,
+    val symbol: String,
     val days: List<DayGroup>,
 )
+
+/** A selectable currency for the Insights currency switcher. */
+data class CurrencyOption(val code: String, val symbol: String)
 
 sealed interface InsightsUiState {
     data object Loading : InsightsUiState
@@ -70,6 +74,11 @@ sealed interface InsightsUiState {
         val groupBy: GroupBy,
         val categories: List<Category>,
         val selectedCategoryId: Long?,
+        /** Selected currency (MYR or a tracked foreign code) + its display symbol. */
+        val currency: String,
+        val currencySymbol: String,
+        /** MYR + tracked currencies; the switcher is hidden when this has a single entry. */
+        val currencies: List<CurrencyOption>,
         val breakdown: List<BreakdownSlice>,
         val daily: List<DayBucket>,
         val monthly: List<MonthBucket>,

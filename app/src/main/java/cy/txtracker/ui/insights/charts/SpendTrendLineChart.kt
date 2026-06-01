@@ -34,6 +34,7 @@ fun SpendTrendLineChart(
     points: List<MonthBucket>,
     lineColor: Color,
     modifier: Modifier = Modifier,
+    axisFormatter: CartesianValueFormatter = amountAxisFormatter("RM"),
 ) {
     if (points.isEmpty() || points.all { it.totalMinor == 0L }) {
         EmptyChart("No data for this period", modifier)
@@ -53,7 +54,7 @@ fun SpendTrendLineChart(
         CartesianChartHost(
             rememberCartesianChart(
                 rememberLineCartesianLayer(lineProvider = LineCartesianLayer.LineProvider.series(line)),
-                startAxis = VerticalAxis.rememberStart(valueFormatter = RinggitAxisFormatter),
+                startAxis = VerticalAxis.rememberStart(valueFormatter = axisFormatter),
                 bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = monthFormatter),
             ),
             producer,

@@ -1,7 +1,7 @@
 # Insights follow-ups — design
 
 **Date:** 2026-05-31
-**Status:** Budget alerts (1) + tap-to-drill-down (2) implemented 2026-05-31; foreign charts (3) planned
+**Status:** All three follow-ups (budget alerts, drill-down, foreign-currency charts) implemented 2026-05-31
 
 Three improvements to the shipped Insights feature
 (`docs/superpowers/specs/2026-05-31-insights-charts-design.md`), chosen from the options menu:
@@ -97,7 +97,7 @@ tab is rejected: Home is month-scoped, the Insights range isn't.)
 
 ---
 
-## 3. Foreign-currency charts — X2
+## 3. Foreign-currency charts — X2 — ✅ implemented
 
 **Why.** Insights is MYR-only; the Foreign tab lists per-currency/per-trip rows but has no charts.
 Trip spend benefits from a category breakdown / daily bar in the trip's own currency.
