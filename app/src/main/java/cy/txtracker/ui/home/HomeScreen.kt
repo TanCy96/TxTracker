@@ -462,11 +462,7 @@ internal fun TransactionRow(
                         )
                     }
                 }
-                Text(
-                    text = amountFormatter(row.transaction.amountMinor),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                RowAmount(transaction = row.transaction, amountFormatter = amountFormatter)
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -495,6 +491,41 @@ internal fun TransactionRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RowAmount(transaction: Transaction, amountFormatter: (Long) -> String) {
+    val reimbursed = transaction.reimbursedMinor
+    if (reimbursed == null) {
+        Text(
+            text = amountFormatter(transaction.amountMinor),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+    } else {
+        val net = transaction.amountMinor - reimbursed
+        Column(horizontalAlignment = Alignment.End) {
+            // Net "what you actually paid" — emphasized.
+            Text(
+                text = amountFormatter(net),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            // Original amount — de-emphasized, struck through.
+            Text(
+                text = amountFormatter(transaction.amountMinor),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+            )
+            // Reimbursed portion — "money coming back" accent.
+            Text(
+                text = "−${amountFormatter(reimbursed)} Reimbursed",
+                style = MaterialTheme.typography.bodySmall,
+                color = cy.txtracker.ui.theme.ReimbursedAccent,
+            )
         }
     }
 }
