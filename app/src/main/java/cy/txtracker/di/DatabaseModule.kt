@@ -480,11 +480,10 @@ private val MIGRATION_11_12 = object : Migration(11, 12) {
             "CREATE INDEX IF NOT EXISTS `index_sl_debit_deposit_occurredAt` " +
                 "ON `sl_debit_deposit`(`occurredAt`)",
         )
-        val now = System.currentTimeMillis()
-        db.execSQL(
-            "INSERT INTO sl_debit_account(id, displayName, defaultSharePercent, createdAt, updatedAt) " +
-                "VALUES(1, 'SL Debit', 40, ?, ?)",
-            arrayOf<Any?>(now, now),
-        )
+        // Idempotent seed (a SELECT-COUNT guard, matching seedSlDebitAccount's documented use as
+        // the migration seeder). A raw INSERT crashes with a UNIQUE constraint when this migration
+        // runs against a DB that already has the row — reachable when switching between builds with
+        // .fallbackToDestructiveMigration() leaving the table present at version 11.
+        TxDatabase.seedSlDebitAccount(db)
     }
 }
