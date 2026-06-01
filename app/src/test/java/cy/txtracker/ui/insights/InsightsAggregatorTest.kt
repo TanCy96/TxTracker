@@ -19,6 +19,7 @@ class InsightsAggregatorTest {
         categoryId: Long? = null,
         fundingSourceId: Long? = null,
         direction: Direction = Direction.OUT,
+        reimbursedMinor: Long? = null,
     ) = Transaction(
         id = 0,
         amountMinor = amountMinor,
@@ -35,6 +36,7 @@ class InsightsAggregatorTest {
         createdAt = occurredAt,
         notificationDedupeKey = "k-$occurredAt-$amountMinor-$categoryId-$fundingSourceId-$direction",
         fundingSourceId = fundingSourceId,
+        reimbursedMinor = reimbursedMinor,
     )
 
     private fun category(id: Long, name: String, sortOrder: Int, color: Int = 0xFF000000.toInt()) =
@@ -163,6 +165,16 @@ class InsightsAggregatorTest {
     @Test
     fun chart_amount_is_amount_minor_on_main() {
         assertThat(tx(1234, may).chartAmountMinor()).isEqualTo(1234L)
+    }
+
+    @Test
+    fun chart_amount_subtracts_reimbursed_portion() {
+        assertThat(tx(10000, may, reimbursedMinor = 4000).chartAmountMinor()).isEqualTo(6000)
+    }
+
+    @Test
+    fun chart_amount_is_full_when_not_reimbursed() {
+        assertThat(tx(10000, may).chartAmountMinor()).isEqualTo(10000)
     }
 
     // ---- transactionsForKey (drill-down) ----

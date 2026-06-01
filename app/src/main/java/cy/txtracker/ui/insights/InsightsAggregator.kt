@@ -21,13 +21,15 @@ import kotlinx.datetime.toLocalDateTime
  */
 
 /**
- * Effective spend amount for charts, in minor units. On `main` this is just [Transaction.amountMinor].
+ * Effective spend amount for charts, in minor units. Subtracts [Transaction.reimbursedMinor] so
+ * charts show net-of-reimbursement spend rather than the gross transaction amount.
  *
  * MERGE-POINT(share-debit): on the feature/share-debit branch, change this to
- * `amountMinor - (slShareMinor ?: 0)` so charts show net-of-share spend, matching the netted Home
- * total. This single line is the only edit needed to make the whole Insights feature share-aware.
+ * `amountMinor - (reimbursedMinor ?: 0L) - (slShareMinor ?: 0)` so charts show net-of-share spend,
+ * matching the netted Home total. This single line is the only edit needed to make the whole
+ * Insights feature share-aware.
  */
-internal fun Transaction.chartAmountMinor(): Long = amountMinor
+internal fun Transaction.chartAmountMinor(): Long = amountMinor - (reimbursedMinor ?: 0L)
 
 // Fixed colors for buckets that have no DB-stored color (category slices use Category.color).
 private const val NEUTRAL_COLOR = 0xFF9E9E9E.toInt()
