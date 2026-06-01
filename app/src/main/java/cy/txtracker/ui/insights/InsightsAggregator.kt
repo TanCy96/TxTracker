@@ -21,13 +21,12 @@ import kotlinx.datetime.toLocalDateTime
  */
 
 /**
- * Effective spend amount for charts, in minor units. On `main` this is just [Transaction.amountMinor].
- *
- * MERGE-POINT(share-debit): on the feature/share-debit branch, change this to
- * `amountMinor - (slShareMinor ?: 0)` so charts show net-of-share spend, matching the netted Home
- * total. This single line is the only edit needed to make the whole Insights feature share-aware.
+ * Effective spend amount for charts, in minor units — net of the SL Debit share, matching the
+ * netted Home / `observeTotalBetween` queries. This is the feature/share-debit adaptation of the
+ * MERGE-POINT through which every chart spend sum flows (on `main` it is just `amountMinor`).
+ * Foreign-currency rows always have `slShareMinor == null`, so per-currency charts are unaffected.
  */
-internal fun Transaction.chartAmountMinor(): Long = amountMinor
+internal fun Transaction.chartAmountMinor(): Long = amountMinor - (slShareMinor ?: 0L)
 
 // Fixed colors for buckets that have no DB-stored color (category slices use Category.color).
 private const val NEUTRAL_COLOR = 0xFF9E9E9E.toInt()

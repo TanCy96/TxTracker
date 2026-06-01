@@ -19,6 +19,7 @@ class InsightsAggregatorTest {
         categoryId: Long? = null,
         fundingSourceId: Long? = null,
         direction: Direction = Direction.OUT,
+        slShareMinor: Long? = null,
     ) = Transaction(
         id = 0,
         amountMinor = amountMinor,
@@ -35,6 +36,7 @@ class InsightsAggregatorTest {
         createdAt = occurredAt,
         notificationDedupeKey = "k-$occurredAt-$amountMinor-$categoryId-$fundingSourceId-$direction",
         fundingSourceId = fundingSourceId,
+        slShareMinor = slShareMinor,
     )
 
     private fun category(id: Long, name: String, sortOrder: Int, color: Int = 0xFF000000.toInt()) =
@@ -161,8 +163,14 @@ class InsightsAggregatorTest {
     // ---- chartAmountMinor (MERGE-POINT guard) ----
 
     @Test
-    fun chart_amount_is_amount_minor_on_main() {
+    fun chart_amount_is_gross_when_no_share() {
         assertThat(tx(1234, may).chartAmountMinor()).isEqualTo(1234L)
+    }
+
+    @Test
+    fun chart_amount_nets_the_sl_debit_share() {
+        // feature/share-debit: charts show net-of-share spend, matching the netted Home total.
+        assertThat(tx(1000, may, slShareMinor = 400).chartAmountMinor()).isEqualTo(600L)
     }
 
     // ---- transactionsForKey (drill-down) ----
