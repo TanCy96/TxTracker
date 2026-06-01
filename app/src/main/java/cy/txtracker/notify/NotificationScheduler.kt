@@ -34,13 +34,15 @@ class NotificationScheduler @Inject constructor(
             prefs.foreignEnabled,
             prefs.summaryCadence,
             prefs.summaryHour,
-        ) { pending, foreign, cadence, hour ->
-            SchedulerSnapshot(pending, foreign, cadence, hour)
+            prefs.budgetAlertsEnabled,
+        ) { pending, foreign, cadence, hour, budget ->
+            SchedulerSnapshot(pending, foreign, cadence, hour, budget)
         }
             .onEach { snapshot ->
                 reconcilePending(snapshot.pendingEnabled)
                 reconcileForeign(snapshot.foreignEnabled)
                 reconcileSummary(snapshot.cadence, snapshot.hour)
+                reconcileBudget(snapshot.budgetEnabled)
             }
             .launchIn(scope)
     }
@@ -99,6 +101,24 @@ class NotificationScheduler @Inject constructor(
         }
     }
 
+    private fun reconcileBudget(enabled: Boolean) {
+        val wm = WorkManager.getInstance(context)
+        if (enabled) {
+            // Same evening anchor as the pending/foreign reminders.
+            val initialDelayMs = millisUntilNextFiring(SummaryCadence.DAILY, EVENING_HOUR, Clock.System.now())
+            val request = PeriodicWorkRequestBuilder<BudgetAlertWorker>(
+                /* repeatInterval = */ 24, TimeUnit.HOURS,
+                /* flexInterval = */ 1, TimeUnit.HOURS,
+            )
+                .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
+                .build()
+            wm.enqueueUniquePeriodicWork(BUDGET_WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        } else {
+            wm.cancelUniqueWork(BUDGET_WORK_NAME)
+            NotificationManagerCompat.from(context).cancel(NotificationIds.BUDGET)
+        }
+    }
+
     private fun reconcileSummary(cadence: SummaryCadence, hour: Int) {
         val wm = WorkManager.getInstance(context)
         if (cadence == SummaryCadence.OFF) {
@@ -137,12 +157,14 @@ class NotificationScheduler @Inject constructor(
         val foreignEnabled: Boolean,
         val cadence: SummaryCadence,
         val hour: Int,
+        val budgetEnabled: Boolean,
     )
 
     internal companion object {
         const val PENDING_WORK_NAME = "pending-reminder"
         const val FOREIGN_WORK_NAME = "foreign-currency"
         const val SUMMARY_WORK_NAME = "summary"
+        const val BUDGET_WORK_NAME = "budget-alert"
         /** 8pm MYT — evening anchor for pending and foreign reminders. */
         const val EVENING_HOUR = 20
 

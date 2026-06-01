@@ -24,6 +24,7 @@ import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.columnSeries
 import com.patrykandpatrick.vico.core.cartesian.layer.ColumnCartesianLayer
+import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.insights.BreakdownSlice
 import cy.txtracker.ui.insights.DayBucket
 
@@ -37,6 +38,9 @@ fun DailyStackedBarChart(
     days: List<DayBucket>,
     series: List<BreakdownSlice>,
     modifier: Modifier = Modifier,
+    onKeyTap: ((String) -> Unit)? = null,
+    amountFormatter: (Long) -> String = { formatMyr(it) },
+    axisFormatter: CartesianValueFormatter = amountAxisFormatter("RM"),
 ) {
     if (days.isEmpty() || series.isEmpty() || days.all { it.totalMinor == 0L }) {
         EmptyChart("No spending to chart in this range", modifier)
@@ -63,13 +67,13 @@ fun DailyStackedBarChart(
                     columnProvider = ColumnCartesianLayer.ColumnProvider.series(columns),
                     mergeMode = { ColumnCartesianLayer.MergeMode.stacked() },
                 ),
-                startAxis = VerticalAxis.rememberStart(valueFormatter = RinggitAxisFormatter),
+                startAxis = VerticalAxis.rememberStart(valueFormatter = axisFormatter),
                 bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = dayFormatter),
             ),
             producer,
             modifier = Modifier.fillMaxWidth().height(200.dp),
         )
         Spacer(Modifier.height(12.dp))
-        BreakdownLegend(series)
+        BreakdownLegend(series, onKeyTap = onKeyTap, amountFormatter = amountFormatter)
     }
 }

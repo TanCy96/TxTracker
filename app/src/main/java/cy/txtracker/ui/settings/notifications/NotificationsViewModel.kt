@@ -24,6 +24,7 @@ data class NotificationsUiState(
     val foreignEnabled: Boolean,
     val summaryCadence: SummaryCadence,
     val summaryHour: Int,
+    val budgetAlertsEnabled: Boolean,
     val osNotificationsDisabled: Boolean,
 )
 
@@ -49,8 +50,11 @@ class NotificationsViewModel @Inject constructor(
             foreignEnabled = f,
             summaryCadence = c,
             summaryHour = h,
+            budgetAlertsEnabled = false,
             osNotificationsDisabled = osDisabled,
         )
+    }.combine(prefs.budgetAlertsEnabled) { st, budget ->
+        st.copy(budgetAlertsEnabled = budget)
     }.stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5_000),
         NotificationsUiState(
@@ -58,6 +62,7 @@ class NotificationsViewModel @Inject constructor(
             foreignEnabled = false,
             summaryCadence = SummaryCadence.OFF,
             summaryHour = 20,
+            budgetAlertsEnabled = false,
             osNotificationsDisabled = false,
         ),
     )
@@ -92,6 +97,11 @@ class NotificationsViewModel @Inject constructor(
 
     fun setSummaryHour(hour: Int) {
         prefs.setSummaryHour(hour)
+    }
+
+    fun setBudgetAlertsEnabled(value: Boolean) {
+        if (value) requestPermissionThen { prefs.setBudgetAlertsEnabled(true) }
+        else prefs.setBudgetAlertsEnabled(false)
     }
 
     fun openSystemSettings(): Intent =

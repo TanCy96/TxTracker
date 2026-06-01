@@ -3,6 +3,7 @@ package cy.txtracker.ui.insights
 import cy.txtracker.data.Category
 import cy.txtracker.domain.InsightsPeriod
 import cy.txtracker.domain.YearMonth
+import cy.txtracker.ui.home.DayGroup
 import kotlinx.datetime.LocalDate
 
 /** Dimension the pie/bar charts group spend by. */
@@ -51,6 +52,17 @@ data class CategoryBudgetProgress(
     val progress: BudgetProgress,
 )
 
+/** Drill-down target: the transactions behind a tapped chart series, grouped by day. */
+data class InsightsDrill(
+    val key: String,
+    val label: String,
+    val symbol: String,
+    val days: List<DayGroup>,
+)
+
+/** A selectable currency for the Insights currency switcher. */
+data class CurrencyOption(val code: String, val symbol: String)
+
 sealed interface InsightsUiState {
     data object Loading : InsightsUiState
 
@@ -62,6 +74,11 @@ sealed interface InsightsUiState {
         val groupBy: GroupBy,
         val categories: List<Category>,
         val selectedCategoryId: Long?,
+        /** Selected currency (MYR or a tracked foreign code) + its display symbol. */
+        val currency: String,
+        val currencySymbol: String,
+        /** MYR + tracked currencies; the switcher is hidden when this has a single entry. */
+        val currencies: List<CurrencyOption>,
         val breakdown: List<BreakdownSlice>,
         val daily: List<DayBucket>,
         val monthly: List<MonthBucket>,
@@ -71,6 +88,8 @@ sealed interface InsightsUiState {
         val budget: BudgetProgress?,
         /** Per-category monthly budget progress; empty when none set. */
         val categoryBudgets: List<CategoryBudgetProgress>,
+        /** Active drill-down (transactions behind a tapped series); null when none. */
+        val drill: InsightsDrill?,
         val isEmpty: Boolean,
     ) : InsightsUiState
 }

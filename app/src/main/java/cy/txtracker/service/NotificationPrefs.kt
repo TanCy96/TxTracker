@@ -40,6 +40,14 @@ class NotificationPrefs @Inject constructor(
     private val _summaryHour = MutableStateFlow(prefs.getInt(KEY_SUMMARY_HOUR, DEFAULT_SUMMARY_HOUR))
     val summaryHour: StateFlow<Int> = _summaryHour.asStateFlow()
 
+    private val _budgetAlertsEnabled = MutableStateFlow(prefs.getBoolean(KEY_BUDGET_ALERTS_ENABLED, false))
+    val budgetAlertsEnabled: StateFlow<Boolean> = _budgetAlertsEnabled.asStateFlow()
+
+    /** Per-(month, scope, threshold) keys already alerted on, so each fires once. Reset monthly by the worker. */
+    private val _firedBudgetAlertKeys =
+        MutableStateFlow(prefs.getStringSet(KEY_FIRED_BUDGET_KEYS, emptySet())!!.toSet())
+    val firedBudgetAlertKeys: StateFlow<Set<String>> = _firedBudgetAlertKeys.asStateFlow()
+
     fun setPendingEnabled(value: Boolean) {
         prefs.edit().putBoolean(KEY_PENDING_ENABLED, value).apply()
         _pendingEnabled.value = value
@@ -74,6 +82,16 @@ class NotificationPrefs @Inject constructor(
         _summaryHour.value = hour
     }
 
+    fun setBudgetAlertsEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_BUDGET_ALERTS_ENABLED, value).apply()
+        _budgetAlertsEnabled.value = value
+    }
+
+    fun setFiredBudgetAlertKeys(keys: Set<String>) {
+        prefs.edit().putStringSet(KEY_FIRED_BUDGET_KEYS, keys).apply()
+        _firedBudgetAlertKeys.value = keys
+    }
+
     private fun readInstant(key: String): Instant? =
         if (prefs.contains(key)) Instant.fromEpochMilliseconds(prefs.getLong(key, 0)) else null
 
@@ -97,5 +115,7 @@ class NotificationPrefs @Inject constructor(
         const val KEY_SUMMARY_CADENCE = "summary_cadence"
         const val KEY_SUMMARY_HOUR = "summary_hour"
         const val DEFAULT_SUMMARY_HOUR = 20  // 8pm MYT
+        const val KEY_BUDGET_ALERTS_ENABLED = "budget_alerts_enabled"
+        const val KEY_FIRED_BUDGET_KEYS = "fired_budget_alert_keys"
     }
 }

@@ -164,4 +164,37 @@ class InsightsAggregatorTest {
     fun chart_amount_is_amount_minor_on_main() {
         assertThat(tx(1234, may).chartAmountMinor()).isEqualTo(1234L)
     }
+
+    // ---- transactionsForKey (drill-down) ----
+
+    @Test
+    fun transactions_for_category_key_filters_to_that_category() {
+        val txs = listOf(
+            tx(1000, may, categoryId = 1),
+            tx(2000, may, categoryId = 2),
+            tx(500, may, categoryId = 1),
+            tx(300, may, categoryId = null),
+        )
+        val food = transactionsForKey(txs, "cat:1", GroupBy.CATEGORY, categoriesById, emptyMap())
+        assertThat(food.map { it.amountMinor }).containsExactly(1000L, 500L)
+    }
+
+    @Test
+    fun transactions_for_unverified_key() {
+        val txs = listOf(tx(1000, may, categoryId = 1), tx(300, may, categoryId = null))
+        val unverified = transactionsForKey(txs, "unverified", GroupBy.CATEGORY, categoriesById, emptyMap())
+        assertThat(unverified.map { it.amountMinor }).containsExactly(300L)
+    }
+
+    @Test
+    fun transactions_for_funding_key_excludes_IN() {
+        val fundingById = mapOf(10L to funding(10, FundingSourceKind.CREDIT_CARD))
+        val txs = listOf(
+            tx(1000, may, fundingSourceId = 10),
+            tx(2000, may, fundingSourceId = 10, direction = Direction.IN),
+            tx(500, may, fundingSourceId = null),
+        )
+        val card = transactionsForKey(txs, "fund:CREDIT_CARD", GroupBy.FUNDING_SOURCE, categoriesById, fundingById)
+        assertThat(card.map { it.amountMinor }).containsExactly(1000L)
+    }
 }

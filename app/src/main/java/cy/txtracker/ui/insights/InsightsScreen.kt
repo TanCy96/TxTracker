@@ -37,12 +37,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cy.txtracker.domain.InsightsPeriod
-import cy.txtracker.ui.format.formatMyr
+import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.insights.charts.BudgetProgressCard
 import cy.txtracker.ui.insights.charts.CategoryPieChart
 import cy.txtracker.ui.insights.charts.DailyStackedBarChart
 import cy.txtracker.ui.insights.charts.EmptyChart
 import cy.txtracker.ui.insights.charts.SpendTrendLineChart
+import cy.txtracker.ui.insights.charts.amountAxisFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +56,8 @@ internal fun InsightsScreen(
     onEditOverallBudget: () -> Unit,
     onEditCategoryBudget: (Long) -> Unit,
     onAddCategoryBudget: () -> Unit,
+    onDrill: (String) -> Unit,
+    onSelectCurrency: (String) -> Unit,
 ) {
     Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text("Insights") }) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -70,6 +73,8 @@ internal fun InsightsScreen(
                     onEditOverallBudget = onEditOverallBudget,
                     onEditCategoryBudget = onEditCategoryBudget,
                     onAddCategoryBudget = onAddCategoryBudget,
+                    onDrill = onDrill,
+                    onSelectCurrency = onSelectCurrency,
                 )
             }
         }
@@ -86,17 +91,39 @@ private fun LoadedContent(
     onEditOverallBudget: () -> Unit,
     onEditCategoryBudget: (Long) -> Unit,
     onAddCategoryBudget: () -> Unit,
+    onDrill: (String) -> Unit,
+    onSelectCurrency: (String) -> Unit,
 ) {
     // Range + grouping apply only to the snapshot charts (pie / daily bar); trends use a fixed
     // rolling 6-month window and budget is always current-month, so their controls are hidden.
     val usesRangeAndGrouping = state.chartType == InsightsChartType.CATEGORY_PIE ||
         state.chartType == InsightsChartType.DAILY_BAR
+    val amountFormatter: (Long) -> String = { formatAmount(it, state.currencySymbol) }
+    val axisFormatter = amountAxisFormatter(state.currencySymbol)
+    // Trends + budget are MYR-only; foreign currencies offer just the range-based charts.
+    val chartTypes = if (state.currency == "MYR") {
+        InsightsChartType.entries.toList()
+    } else {
+        listOf(InsightsChartType.CATEGORY_PIE, InsightsChartType.DAILY_BAR)
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
+        if (state.currencies.size > 1) {
+            ChipRow {
+                state.currencies.forEach { option ->
+                    FilterChip(
+                        selected = state.currency == option.code,
+                        onClick = { onSelectCurrency(option.code) },
+                        label = { Text(option.code) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         ChipRow {
-            InsightsChartType.entries.forEach { type ->
+            chartTypes.forEach { type ->
                 FilterChip(
                     selected = state.chartType == type,
                     onClick = { onSetChartType(type) },
@@ -133,7 +160,7 @@ private fun LoadedContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = formatMyr(state.totalMinor),
+                text = formatAmount(state.totalMinor, state.currencySymbol),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -142,15 +169,23 @@ private fun LoadedContent(
         Spacer(Modifier.height(16.dp))
 
         when (state.chartType) {
-            InsightsChartType.CATEGORY_PIE -> CategoryPieChart(state.breakdown)
-            InsightsChartType.DAILY_BAR -> DailyStackedBarChart(state.daily, state.breakdown)
+            InsightsChartType.CATEGORY_PIE ->
+                CategoryPieChart(state.breakdown, onSliceTap = onDrill, amountFormatter = amountFormatter)
+            InsightsChartType.DAILY_BAR ->
+                DailyStackedBarChart(
+                    days = state.daily,
+                    series = state.breakdown,
+                    onKeyTap = onDrill,
+                    amountFormatter = amountFormatter,
+                    axisFormatter = axisFormatter,
+                )
             InsightsChartType.MONTHLY_TREND -> {
                 Text(
                     text = "Monthly spend · last 6 months",
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Spacer(Modifier.height(8.dp))
-                SpendTrendLineChart(state.monthly, lineColor = MaterialTheme.colorScheme.primary)
+                SpendTrendLineChart(state.monthly, lineColor = MaterialTheme.colorScheme.primary, axisFormatter = axisFormatter)
             }
             InsightsChartType.CATEGORY_TREND -> CategoryTrendSection(state, onSelectCategory)
             InsightsChartType.BUDGET -> BudgetProgressCard(

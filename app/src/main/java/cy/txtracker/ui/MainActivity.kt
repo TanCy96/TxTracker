@@ -77,7 +77,8 @@ class MainActivity : FragmentActivity() {
      */
     enum class Deeplink(val tag: String) {
         PendingFilter("pending"),
-        CurrencyReview("currency-review");
+        CurrencyReview("currency-review"),
+        InsightsBudget("insights-budget");
 
         companion object {
             fun fromTag(tag: String?): Deeplink? = entries.firstOrNull { it.tag == tag }
