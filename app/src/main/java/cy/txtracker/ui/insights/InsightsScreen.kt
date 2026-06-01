@@ -1,5 +1,6 @@
 package cy.txtracker.ui.insights
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,17 +16,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import cy.txtracker.data.Category
 import cy.txtracker.domain.InsightsPeriod
 import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.insights.charts.BudgetProgressCard
@@ -58,8 +65,24 @@ internal fun InsightsScreen(
     onAddCategoryBudget: () -> Unit,
     onDrill: (String) -> Unit,
     onSelectCurrency: (String) -> Unit,
+    onSetCategoryIgnored: (Long, Boolean) -> Unit,
 ) {
-    Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text("Insights") }) }) { padding ->
+    var showFilter by remember { mutableStateOf(false) }
+    val loaded = state as? InsightsUiState.Loaded
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Insights") },
+                actions = {
+                    if (loaded != null) {
+                        IconButton(onClick = { showFilter = true }) {
+                            Icon(Icons.Outlined.FilterList, contentDescription = "Filter categories")
+                        }
+                    }
+                },
+            )
+        },
+    ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (state) {
                 InsightsUiState.Loading ->
@@ -78,6 +101,14 @@ internal fun InsightsScreen(
                 )
             }
         }
+    }
+    if (showFilter && loaded != null) {
+        CategoryFilterDialog(
+            categories = loaded.categories,
+            ignoredIds = loaded.ignoredCategoryIds,
+            onToggle = onSetCategoryIgnored,
+            onDismiss = { showFilter = false },
+        )
     }
 }
 
@@ -266,4 +297,41 @@ private fun periodLabel(period: InsightsPeriod): String = when (period) {
 private fun groupByLabel(group: GroupBy): String = when (group) {
     GroupBy.CATEGORY -> "By category"
     GroupBy.FUNDING_SOURCE -> "By source"
+}
+
+/** Checklist of categories; unchecking one hides it from the charts (excluded from spend + total). */
+@Composable
+private fun CategoryFilterDialog(
+    categories: List<Category>,
+    ignoredIds: Set<Long>,
+    onToggle: (Long, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Show categories") },
+        text = {
+            if (categories.isEmpty()) {
+                Text("No categories yet.")
+            } else {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    categories.forEach { category ->
+                        val visible = category.id !in ignoredIds
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggle(category.id, visible) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = visible, onCheckedChange = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(category.name)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }

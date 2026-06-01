@@ -212,17 +212,6 @@ fun SettingsScreen(
             )
             HorizontalDivider()
             ListItem(
-                headlineContent = { Text("Re-categorize using learnings") },
-                supportingContent = {
-                    Text(
-                        "Run the categorizer over uncategorized rows and apply " +
-                            "description suggestions.",
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().clickableRow(viewModel::runBackfill),
-            )
-            HorizontalDivider()
-            ListItem(
                 headlineContent = { Text("Notification rewrites") },
                 supportingContent = {
                     Text("Per-app regex rules applied to notification text before parsing.")
@@ -279,14 +268,6 @@ fun SettingsScreen(
                 headlineContent = { Text("SL Debit") },
                 supportingContent = { Text("Prepaid pool — deposits, balance, and default share %.") },
                 modifier = Modifier.fillMaxWidth().clickableRow(onSlDebitClick),
-            )
-            HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Classify existing transactions") },
-                supportingContent = {
-                    Text("Auto-link unlinked rows to a funding source.")
-                },
-                modifier = Modifier.fillMaxWidth().clickableRow(viewModel::classifyExistingTransactions),
             )
             HorizontalDivider()
             ListItem(
@@ -353,19 +334,6 @@ fun SettingsScreen(
 
             SectionHeader("App")
             ListItem(
-                headlineContent = { Text("Reset onboarding") },
-                supportingContent = {
-                    Text("The onboarding screen reappears immediately.")
-                },
-                modifier = Modifier.fillMaxWidth().clickableRow(
-                    onClick = {
-                        viewModel.resetOnboarding()
-                        scope.launch { snackbar.showSnackbar("Onboarding reset.") }
-                    },
-                ),
-            )
-            HorizontalDivider()
-            ListItem(
                 headlineContent = { Text("Require unlock") },
                 supportingContent = {
                     Text(
@@ -417,6 +385,39 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            SectionHeader("Maintenance")
+            ListItem(
+                headlineContent = { Text("Re-categorize using learnings") },
+                supportingContent = {
+                    Text(
+                        "Run the categorizer over uncategorized rows and apply " +
+                            "description suggestions.",
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(viewModel::runBackfill),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Classify existing transactions") },
+                supportingContent = {
+                    Text("Auto-link unlinked rows to a funding source.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(viewModel::classifyExistingTransactions),
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Reset onboarding") },
+                supportingContent = {
+                    Text("The onboarding screen reappears immediately.")
+                },
+                modifier = Modifier.fillMaxWidth().clickableRow(
+                    onClick = {
+                        viewModel.resetOnboarding()
+                        scope.launch { snackbar.showSnackbar("Onboarding reset.") }
+                    },
+                ),
+            )
             Spacer(Modifier.height(16.dp))
         }
 
