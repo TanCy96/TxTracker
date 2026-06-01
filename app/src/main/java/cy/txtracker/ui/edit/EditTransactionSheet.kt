@@ -29,6 +29,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -51,6 +52,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
 import cy.txtracker.data.Transaction
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.domain.isValidReimbursedMinor
+import cy.txtracker.ui.format.formatAmount
+import cy.txtracker.ui.manual.parseAmountMinor
 import cy.txtracker.ui.common.FundingSourcePickerSheet
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
@@ -90,6 +94,9 @@ fun EditTransactionSheet(
                 },
                 onFundingSourceChange = { fundingSourceId ->
                     viewModel.setFundingSource(transactionId, fundingSourceId)
+                },
+                onReimbursedChange = { reimbursedMinor ->
+                    viewModel.setReimbursed(transactionId, reimbursedMinor)
                 },
                 onDescriptionChange = { description ->
                     viewModel.setDescription(transactionId, description, learn = true)
@@ -136,6 +143,7 @@ private fun EditingContent(
     viewModel: EditTransactionViewModel,
     onCategoryChange: (Long?) -> Unit,
     onFundingSourceChange: (Long?) -> Unit,
+    onReimbursedChange: (Long?) -> Unit,
     onDescriptionChange: (String?) -> Unit,
     onMerchantNoteChange: (String?) -> Unit,
     onMerchantChange: (String) -> Unit,
@@ -318,6 +326,65 @@ private fun EditingContent(
                     onFundingSourceChange(picked?.id)
                 },
             )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
+        Text(text = "Reimbursed by others", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+
+        val reimbursedEnabled = tx.reimbursedMinor != null
+        // Local expansion state so the input shows immediately when the switch is turned on,
+        // before any valid amount has been persisted. Re-seeded per transaction id.
+        var reimbursedExpanded by remember(tx.id) { mutableStateOf(reimbursedEnabled) }
+        var reimbursedText by remember(tx.id) {
+            mutableStateOf(tx.reimbursedMinor?.let { formatAmount(it, "").trim() } ?: "")
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (reimbursedEnabled) {
+                    "Others returned ${formatAmount(tx.reimbursedMinor!!, "").trim()} of ${formatAmount(tx.amountMinor, "").trim()} ${tx.currency}"
+                } else "Off",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Switch(
+                checked = reimbursedExpanded,
+                onCheckedChange = { checked ->
+                    reimbursedExpanded = checked
+                    if (!checked) {
+                        reimbursedText = ""
+                        onReimbursedChange(null)
+                    }
+                },
+            )
+        }
+        if (reimbursedExpanded) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = reimbursedText,
+                onValueChange = { reimbursedText = it },
+                label = { Text("Reimbursed amount (${tx.currency})") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LaunchedEffect(reimbursedText) {
+                val parsed = parseAmountMinor(reimbursedText)
+                if (parsed != null &&
+                    isValidReimbursedMinor(parsed, tx.amountMinor) &&
+                    parsed != tx.reimbursedMinor
+                ) {
+                    onReimbursedChange(parsed)
+                }
+            }
         }
 
         Spacer(Modifier.height(16.dp))
