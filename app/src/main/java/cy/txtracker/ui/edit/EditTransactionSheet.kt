@@ -340,7 +340,7 @@ private fun EditingContent(
         // before any valid amount has been persisted. Re-seeded per transaction id.
         var reimbursedExpanded by remember(tx.id) { mutableStateOf(reimbursedEnabled) }
         var reimbursedText by remember(tx.id) {
-            mutableStateOf(tx.reimbursedMinor?.let { formatAmount(it, "").trim() } ?: "")
+            mutableStateOf(tx.reimbursedMinor?.let { formatAmount(it, "").trim().replace(",", "") } ?: "")
         }
 
         Row(
