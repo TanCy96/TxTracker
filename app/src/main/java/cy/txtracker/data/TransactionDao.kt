@@ -77,7 +77,7 @@ interface TransactionDao {
     // bleed into the Home month total or its per-category breakdown.
     @Query(
         """
-        SELECT categoryId, SUM(amountMinor) AS totalMinor
+        SELECT categoryId, SUM(amountMinor - COALESCE(reimbursedMinor, 0)) AS totalMinor
         FROM transactions
         WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
           AND direction = 'OUT'
@@ -92,7 +92,7 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT COALESCE(SUM(amountMinor), 0)
+        SELECT COALESCE(SUM(amountMinor - COALESCE(reimbursedMinor, 0)), 0)
         FROM transactions
         WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive
           AND direction = 'OUT'
@@ -323,6 +323,9 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET fundingSourceId = :fundingSourceId WHERE id = :txId")
     suspend fun updateFundingSource(txId: Long, fundingSourceId: Long?)
+
+    @Query("UPDATE transactions SET reimbursedMinor = :reimbursedMinor WHERE id = :id")
+    suspend fun updateReimbursed(id: Long, reimbursedMinor: Long?)
 
     @Query("UPDATE transactions SET fundingSourceId = :newId WHERE fundingSourceId = :oldId")
     suspend fun relinkFundingSource(oldId: Long, newId: Long)
