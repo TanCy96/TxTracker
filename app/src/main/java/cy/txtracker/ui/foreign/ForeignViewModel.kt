@@ -99,7 +99,7 @@ class ForeignViewModel @Inject constructor(
             .filter { it.direction == cy.txtracker.data.Direction.OUT }
             .groupBy { it.categoryId }
             .map { (categoryId, rows) ->
-                CategoryBreakdownEntry(category = categoryId?.let(byId::get), totalMinor = rows.sumOf { it.amountMinor })
+                CategoryBreakdownEntry(category = categoryId?.let(byId::get), totalMinor = rows.sumOf { it.amountMinor - (it.reimbursedMinor ?: 0L) })
             }
             .sortedWith(
                 compareByDescending<CategoryBreakdownEntry> { it.category != null }
@@ -125,7 +125,7 @@ class ForeignViewModel @Inject constructor(
 
         val total = transactions
             .filter { it.direction == cy.txtracker.data.Direction.OUT }
-            .sumOf { it.amountMinor }
+            .sumOf { it.amountMinor - (it.reimbursedMinor ?: 0L) }
 
         val symbol = Currencies.CODE_TO_DISPLAY_SYMBOL[trip.currency] ?: trip.currency
 

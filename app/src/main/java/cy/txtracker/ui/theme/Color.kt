@@ -13,3 +13,9 @@ val Amber40 = Color(0xFFFFA000)
 /** Accent for the SL Debit share on a transaction row ("money coming back"). Green reads as
  *  inflow against the default expense styling. Used directly (not part of the M3 scheme). */
 val SlShareGreen = Color(0xFF2E7D32)
+
+/**
+ * Accent for a reimbursed-by-others portion on a transaction row ("money coming back").
+ * A blue tone, chosen to read distinctly from the SL Debit green.
+ */
+val ReimbursedAccent = Color(0xFF1565C0)

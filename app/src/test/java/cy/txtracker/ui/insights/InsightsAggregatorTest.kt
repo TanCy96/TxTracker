@@ -20,6 +20,7 @@ class InsightsAggregatorTest {
         fundingSourceId: Long? = null,
         direction: Direction = Direction.OUT,
         slShareMinor: Long? = null,
+        reimbursedMinor: Long? = null,
     ) = Transaction(
         id = 0,
         amountMinor = amountMinor,
@@ -37,6 +38,7 @@ class InsightsAggregatorTest {
         notificationDedupeKey = "k-$occurredAt-$amountMinor-$categoryId-$fundingSourceId-$direction",
         fundingSourceId = fundingSourceId,
         slShareMinor = slShareMinor,
+        reimbursedMinor = reimbursedMinor,
     )
 
     private fun category(id: Long, name: String, sortOrder: Int, color: Int = 0xFF000000.toInt()) =
@@ -171,6 +173,21 @@ class InsightsAggregatorTest {
     fun chart_amount_nets_the_sl_debit_share() {
         // feature/share-debit: charts show net-of-share spend, matching the netted Home total.
         assertThat(tx(1000, may, slShareMinor = 400).chartAmountMinor()).isEqualTo(600L)
+    }
+
+    @Test
+    fun chart_amount_subtracts_reimbursed_portion() {
+        assertThat(tx(10000, may, reimbursedMinor = 4000).chartAmountMinor()).isEqualTo(6000)
+    }
+
+    @Test
+    fun chart_amount_is_full_when_not_reimbursed() {
+        assertThat(tx(10000, may).chartAmountMinor()).isEqualTo(10000)
+    }
+
+    @Test
+    fun chart_amount_nets_both_share_and_reimbursement() {
+        assertThat(tx(10000, may, slShareMinor = 4000, reimbursedMinor = 1000).chartAmountMinor()).isEqualTo(5000)
     }
 
     // ---- transactionsForKey (drill-down) ----

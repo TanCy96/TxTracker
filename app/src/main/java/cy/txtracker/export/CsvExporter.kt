@@ -297,10 +297,17 @@ private val CANONICAL_KIND_ORDER = listOf(
     FundingSourceKind.CASH,
 )
 
-/** Per-transaction term for a category cell: "amount" or "amount-share" for shared rows. */
-private fun categoryTerm(tx: Transaction): String =
-    tx.slShareMinor?.let { "${formatAmount(tx.amountMinor)}-${formatAmount(it)}" }
-        ?: formatAmount(tx.amountMinor)
+/**
+ * Per-transaction term for a category cell. Each reduction is subtracted inline so the cell
+ * evaluates to the net: "amount", "amount-slShare", "amount-reimbursed", or
+ * "amount-slShare-reimbursed" when both apply.
+ */
+private fun categoryTerm(tx: Transaction): String {
+    val sb = StringBuilder(formatAmount(tx.amountMinor))
+    tx.slShareMinor?.let { sb.append('-').append(formatAmount(it)) }
+    tx.reimbursedMinor?.let { sb.append('-').append(formatAmount(it)) }
+    return sb.toString()
+}
 
 /**
  * Category cell from a day's terms:

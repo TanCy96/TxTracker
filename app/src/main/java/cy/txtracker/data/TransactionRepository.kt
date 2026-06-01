@@ -373,6 +373,10 @@ class TransactionRepository @Inject constructor(
         transactionDao.updateFundingSource(txId, fundingSourceId)
     }
 
+    suspend fun setTransactionReimbursed(txId: Long, reimbursedMinor: Long?) {
+        transactionDao.updateReimbursed(txId, reimbursedMinor)
+    }
+
     /**
      * Settings -> "Classify existing transactions" backfill. Iterates rows with NULL FK,
      * runs the classifier, writes the link. Manual entries (rawText IS NULL) get linked
@@ -626,6 +630,7 @@ class TransactionRepository @Inject constructor(
         occurredAt: Instant,
         currency: String = "MYR",
         fundingSourceId: Long? = null,
+        reimbursedMinor: Long? = null,
         now: Instant = Clock.System.now(),
     ): Long? {
         val needsCurrencyConfirmation = if (currency == "MYR") {
@@ -651,6 +656,7 @@ class TransactionRepository @Inject constructor(
             needsVerification = false,
             needsCurrencyConfirmation = needsCurrencyConfirmation,
             fundingSourceId = fundingSourceId,
+            reimbursedMinor = reimbursedMinor,
         )
         return insert(tx)
     }
@@ -1388,6 +1394,7 @@ class TransactionRepository @Inject constructor(
                     needsCurrencyConfirmation = bt.needsCurrencyConfirmation,
                     fundingSourceId = fundingSourceId,
                     slShareMinor = bt.slShareMinor,
+                    reimbursedMinor = bt.reimbursedMinor,
                 ),
             )
             if (rowId >= 0) transactionsAdded++

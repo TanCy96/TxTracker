@@ -94,6 +94,14 @@ data class Transaction(
      * and the netting in Home totals are both derived from this field; it is never a real row.
      */
     val slShareMinor: Long? = null,
+    /**
+     * The portion of this transaction that others have reimbursed, in minor units.
+     * null = not reimbursed. The original `amountMinor` is never reduced; this is subtracted
+     * only when computing net spend (Home totals, Insights charts, Foreign totals, CSV).
+     * Invariant (enforced by repository/UI, not the schema): 0 < reimbursedMinor <= amountMinor.
+     * Only ever set on direction = OUT rows. Any currency. Independent of SL Debit.
+     */
+    val reimbursedMinor: Long? = null,
 )
 
 @Entity(

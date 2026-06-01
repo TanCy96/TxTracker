@@ -21,12 +21,13 @@ import kotlinx.datetime.toLocalDateTime
  */
 
 /**
- * Effective spend amount for charts, in minor units — net of the SL Debit share, matching the
- * netted Home / `observeTotalBetween` queries. This is the feature/share-debit adaptation of the
- * MERGE-POINT through which every chart spend sum flows (on `main` it is just `amountMinor`).
- * Foreign-currency rows always have `slShareMinor == null`, so per-currency charts are unaffected.
+ * Effective spend amount for charts, in minor units — net of BOTH the SL Debit share and the
+ * reimbursed-by-others portion, matching the netted Home / `observeTotalBetween` queries. This is
+ * the MERGE-POINT through which every chart spend sum flows. Foreign-currency rows always have
+ * `slShareMinor == null` (SL Debit is MYR-only); `reimbursedMinor` may be set on any currency.
  */
-internal fun Transaction.chartAmountMinor(): Long = amountMinor - (slShareMinor ?: 0L)
+internal fun Transaction.chartAmountMinor(): Long =
+    amountMinor - (slShareMinor ?: 0L) - (reimbursedMinor ?: 0L)
 
 // Fixed colors for buckets that have no DB-stored color (category slices use Category.color).
 private const val NEUTRAL_COLOR = 0xFF9E9E9E.toInt()

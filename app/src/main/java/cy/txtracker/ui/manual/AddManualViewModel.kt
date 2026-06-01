@@ -45,8 +45,17 @@ data class AddManualUiState(
     /** Non-null when the user has enabled "Share with SL Debit"; the share in minor units. */
     val slShareMinor: Long? = null,
     val slShareText: String = "",
+    /** Free-typed reimbursed-by-others amount. Blank = not reimbursed. */
+    val reimbursedText: String = "",
 ) {
     val amountMinor: Long? get() = parseAmountMinor(amountText)
+    /** Reimbursed minor units, only when it parses AND is within (0, amountMinor]. */
+    val reimbursedMinor: Long?
+        get() {
+            val amt = amountMinor ?: return null
+            val parsed = parseAmountMinor(reimbursedText) ?: return null
+            return parsed.takeIf { it in 1L..amt }
+        }
     val canSave: Boolean
         get() = !isSaving && (amountMinor ?: 0) > 0 && merchantText.trim().isNotEmpty()
 }
@@ -164,6 +173,17 @@ class AddManualViewModel @Inject constructor(
     fun setMerchant(text: String) = _state.update { it.copy(merchantText = text) }
     fun setCategoryId(id: Long?) = _state.update { it.copy(categoryId = id) }
     fun setDescription(text: String) = _state.update { it.copy(descriptionText = text) }
+
+    fun setReimbursed(text: String) {
+        val sanitized = text.filter { it.isDigit() || it == '.' }
+        val parts = sanitized.split('.')
+        val cleaned = when {
+            parts.size <= 1 -> sanitized
+            parts.size == 2 -> parts[0] + "." + parts[1].take(2)
+            else -> parts[0] + "." + parts.drop(1).joinToString("").take(2)
+        }
+        _state.update { it.copy(reimbursedText = cleaned) }
+    }
     fun setDate(date: LocalDate) = _state.update { it.copy(date = date) }
     fun setTime(time: LocalTime) = _state.update { it.copy(time = time) }
 
@@ -183,6 +203,7 @@ class AddManualViewModel @Inject constructor(
                 occurredAt = occurredAt,
                 currency = s.currency,
                 fundingSourceId = s.fundingSource?.id,
+                reimbursedMinor = s.reimbursedMinor,
             )
             val share = s.slShareMinor
             if (newId != null && s.currency == "MYR" && share != null && isValidShareMinor(share, amount)) {

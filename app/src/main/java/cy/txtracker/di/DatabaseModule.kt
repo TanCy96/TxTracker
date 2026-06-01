@@ -92,6 +92,7 @@ object DatabaseModule {
                 MIGRATION_9_10,
                 MIGRATION_10_11,
                 MIGRATION_11_12,
+                MIGRATION_12_13,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -485,5 +486,17 @@ private val MIGRATION_11_12 = object : Migration(11, 12) {
         // runs against a DB that already has the row — reachable when switching between builds with
         // .fallbackToDestructiveMigration() leaving the table present at version 11.
         TxDatabase.seedSlDebitAccount(db)
+    }
+}
+
+/**
+ * v13 adds the reimbursed-by-others share: a nullable `reimbursedMinor` column on
+ * `transactions`. Existing rows keep reimbursedMinor = NULL (not reimbursed). No backfill,
+ * no new tables. Re-sequenced from main's v11->v12 because this branch's v12 is already the
+ * SL Debit migration. See docs/superpowers/specs/2026-06-01-reimbursed-share-design.md.
+ */
+private val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `transactions` ADD COLUMN `reimbursedMinor` INTEGER DEFAULT NULL")
     }
 }

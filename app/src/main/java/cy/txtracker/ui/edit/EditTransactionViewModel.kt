@@ -114,6 +114,18 @@ class EditTransactionViewModel @Inject constructor(
         }
     }
 
+    /** Sets (or clears, when [reimbursedMinor] is null) the reimbursed-by-others portion. */
+    fun setReimbursed(transactionId: Long, reimbursedMinor: Long?) {
+        viewModelScope.launch {
+            repository.setTransactionReimbursed(transactionId, reimbursedMinor)
+            val refreshed = repository.getTransaction(transactionId) ?: return@launch
+            val current = _state.value
+            if (current is EditUiState.Editing) {
+                _state.value = current.copy(transaction = refreshed)
+            }
+        }
+    }
+
     /** Sets (or clears, when [fundingSourceId] is null) the funding source for a transaction. */
     fun setFundingSource(transactionId: Long, fundingSourceId: Long?) {
         viewModelScope.launch {

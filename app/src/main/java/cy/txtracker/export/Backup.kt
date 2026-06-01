@@ -31,6 +31,7 @@ data class BackupFundingSource(
  *   v7 – added [keywordPattern] on [BackupCategory]
  *   v8 – added [fundingSources] and [BackupTransaction.fundingSourceLookupKey]
  *   v9 – added [BackupTransaction.slShareMinor], [slDebitAccount], [slDebitDeposits]
+ *   v10 – added [BackupTransaction.reimbursedMinor] (reimbursed-by-others share)
  */
 @Serializable
 data class Backup(
@@ -53,7 +54,7 @@ data class Backup(
     val slDebitDeposits: List<BackupSlDebitDeposit> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 9
+        const val CURRENT_VERSION = 10
     }
 }
 
@@ -144,6 +145,8 @@ data class BackupTransaction(
     /** "<sourceAppHint>|<last4>" — null when unlinked. Empty strings for null parts (e.g. Cash = "|"). */
     val fundingSourceLookupKey: String? = null,
     val slShareMinor: Long? = null,
+    /** Portion others reimbursed, in minor units. null = not reimbursed. Default keeps older backups parseable. */
+    val reimbursedMinor: Long? = null,
 )
 
 @Serializable

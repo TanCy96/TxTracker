@@ -91,6 +91,7 @@ fun AddManualSheet(
             onFundingSourceChange = { viewModel.setFundingSource(it) },
             onShareEnabledChange = viewModel::setShareEnabled,
             onShareTextChange = viewModel::setShareText,
+            onReimbursedChange = viewModel::setReimbursed,
             onSave = { viewModel.save(onSaved = onDismiss) },
             onCancel = onDismiss,
         )
@@ -112,6 +113,7 @@ private fun Content(
     onFundingSourceChange: (Long?) -> Unit,
     onShareEnabledChange: (Boolean) -> Unit,
     onShareTextChange: (String) -> Unit,
+    onReimbursedChange: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -169,6 +171,18 @@ private fun Content(
         AssistChip(
             onClick = { showFundingSourcePicker = true },
             label = { Text(state.fundingSource?.displayName ?: "None") },
+        )
+        Spacer(Modifier.height(16.dp))
+
+        Text(text = "Reimbursed by others (optional)", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = state.reimbursedText,
+            onValueChange = onReimbursedChange,
+            label = { Text("Reimbursed amount (${state.currency})") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
 

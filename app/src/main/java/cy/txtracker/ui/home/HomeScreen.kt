@@ -425,7 +425,7 @@ internal fun DayHeader(
     isFirst: Boolean,
     amountFormatter: (Long) -> String,
 ) {
-    val total = group.transactions.sumOf { it.transaction.amountMinor }
+    val total = group.transactions.sumOf { it.transaction.amountMinor - (it.transaction.reimbursedMinor ?: 0L) }
     Column {
         if (!isFirst) {
             Spacer(Modifier.height(8.dp))
@@ -528,14 +528,15 @@ internal fun TransactionRow(
 @Composable
 private fun RowAmount(transaction: Transaction, amountFormatter: (Long) -> String) {
     val share = transaction.slShareMinor
-    if (share == null) {
+    val reimbursed = transaction.reimbursedMinor
+    if (share == null && reimbursed == null) {
         Text(
             text = amountFormatter(transaction.amountMinor),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.SemiBold,
         )
     } else {
-        val net = transaction.amountMinor - share
+        val net = transaction.amountMinor - (share ?: 0L) - (reimbursed ?: 0L)
         Column(horizontalAlignment = Alignment.End) {
             // Net "what you actually paid" — emphasized.
             Text(
@@ -543,7 +544,7 @@ private fun RowAmount(transaction: Transaction, amountFormatter: (Long) -> Strin
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            // Original amount, de-emphasized + struck through.
+            // Original amount — de-emphasized, struck through.
             Text(
                 text = amountFormatter(transaction.amountMinor),
                 style = MaterialTheme.typography.bodySmall,
@@ -551,11 +552,21 @@ private fun RowAmount(transaction: Transaction, amountFormatter: (Long) -> Strin
                 textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
             )
             // SL Debit share — "money coming back" accent.
-            Text(
-                text = "−${amountFormatter(share)} SL",
-                style = MaterialTheme.typography.bodySmall,
-                color = cy.txtracker.ui.theme.SlShareGreen,
-            )
+            if (share != null) {
+                Text(
+                    text = "−${amountFormatter(share)} SL",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cy.txtracker.ui.theme.SlShareGreen,
+                )
+            }
+            // Reimbursed portion — "money coming back" accent.
+            if (reimbursed != null) {
+                Text(
+                    text = "−${amountFormatter(reimbursed)} Reimbursed",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cy.txtracker.ui.theme.ReimbursedAccent,
+                )
+            }
         }
     }
 }

@@ -82,6 +82,22 @@ class TransactionDaoTest {
     }
 
     @Test
+    fun observeTotalBetween_nets_out_reimbursed_portion() = runTest {
+        val start = Instant.parse("2026-05-01T00:00:00Z")
+        val end = Instant.parse("2026-06-01T00:00:00Z")
+
+        val id = dbRule.transactionDao.insert(
+            txAt(Instant.parse("2026-05-09T12:30:00Z"), amountMinor = 10000, dedupeKey = "r"),
+        )
+        dbRule.transactionDao.updateReimbursed(id, 4000)
+
+        dbRule.transactionDao.observeTotalBetween(start, end).test {
+            assertThat(awaitItem()).isEqualTo(6000L)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun observeCategoryTotalsBetween_groups_by_category_with_null_for_unverified() = runTest {
         val start = Instant.parse("2026-05-01T00:00:00Z")
         val end = Instant.parse("2026-06-01T00:00:00Z")

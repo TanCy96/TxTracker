@@ -25,6 +25,7 @@ class BuildCsvTest {
         occurredAt: Instant = Instant.parse("2026-05-09T04:30:00Z"),  // 12:30 KL
         fundingSourceId: Long? = null,
         slShareMinor: Long? = null,
+        reimbursedMinor: Long? = null,
     ) = Transaction(
         id = 0,
         amountMinor = amountMinor,
@@ -42,6 +43,7 @@ class BuildCsvTest {
         notificationDedupeKey = "k-$merchant-$amountMinor",
         fundingSourceId = fundingSourceId,
         slShareMinor = slShareMinor,
+        reimbursedMinor = reimbursedMinor,
     )
 
     @Test
@@ -448,6 +450,35 @@ class BuildCsvTest {
         )
         val dayLine = csv.lines().first { it.startsWith("2026-06-05") }
         assertThat(dayLine).endsWith("500.00")
+    }
+
+    // ─── Reimbursement inline subtraction (SL Debit column stays empty → trailing comma) ──
+
+    @Test
+    fun single_reimbursed_tx_shows_inline_subtraction_formula() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10000, merchant = "PJ Cafe", categoryId = food.id, reimbursedMinor = 5000),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=100.00-50.00,,,")
+    }
+
+    @Test
+    fun reimbursed_mixes_with_plain_tx_in_same_category_day() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10000, merchant = "A", categoryId = food.id, reimbursedMinor = 5000),
+                tx(amountMinor = 3000, merchant = "B", categoryId = food.id),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=100.00-50.00+30.00,,,")
     }
 }
 
