@@ -40,7 +40,7 @@ class SummaryWorker @AssistedInject constructor(
         val mgr = NotificationManagerCompat.from(applicationContext)
         if (!mgr.areNotificationsEnabled()) return Result.success()
 
-        val total = rows.sumOf { it.amountMinor }
+        val total = rows.sumOf { it.amountMinor - (it.reimbursedMinor ?: 0L) }
         val topCategories = topByCategory(rows, take = 2)
         val budgetLine = insightsPrefs.overallBudgetMinor.value?.let { budget ->
             val month = resolveInsightsPeriod(InsightsPeriod.THIS_MONTH)
@@ -78,7 +78,7 @@ class SummaryWorker @AssistedInject constructor(
         take: Int,
     ): List<Pair<String, Long>> {
         val sumByCategory: Map<Long?, Long> =
-            rows.groupBy { it.categoryId }.mapValues { (_, r) -> r.sumOf { it.amountMinor } }
+            rows.groupBy { it.categoryId }.mapValues { (_, r) -> r.sumOf { it.amountMinor - (it.reimbursedMinor ?: 0L) } }
         return sumByCategory.entries
             .sortedByDescending { it.value }
             .take(take)

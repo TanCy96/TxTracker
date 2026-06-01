@@ -395,7 +395,7 @@ internal fun DayHeader(
     isFirst: Boolean,
     amountFormatter: (Long) -> String,
 ) {
-    val total = group.transactions.sumOf { it.transaction.amountMinor }
+    val total = group.transactions.sumOf { it.transaction.amountMinor - (it.transaction.reimbursedMinor ?: 0L) }
     Column {
         if (!isFirst) {
             Spacer(Modifier.height(8.dp))
