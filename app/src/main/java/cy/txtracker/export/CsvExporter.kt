@@ -217,16 +217,16 @@ fun buildCsv(
         // Per-category columns.
         for (c in orderedCategories) {
             sb.append(',')
-            val amounts = txs.filter { it.categoryId == c.id }.map { it.amountMinor }
-            sb.append(buildAmountCell(amounts))
+            val terms = txs.filter { it.categoryId == c.id }.map { it.amountMinor to it.reimbursedMinor }
+            sb.append(buildAmountCell(terms))
         }
 
         // Unverified column: null categoryId OR a categoryId pointing at a deleted category.
         sb.append(',')
-        val unverifiedAmounts = txs
+        val unverifiedTerms = txs
             .filter { it.categoryId == null || categoryById[it.categoryId] == null }
-            .map { it.amountMinor }
-        sb.append(buildAmountCell(unverifiedAmounts))
+            .map { it.amountMinor to it.reimbursedMinor }
+        sb.append(buildAmountCell(unverifiedTerms))
 
         sb.append('\n')
     }
@@ -255,15 +255,21 @@ private val CANONICAL_KIND_ORDER = listOf(
 )
 
 /**
- * Builds the contents of a single category column for a single day:
- *   - empty list  → blank
- *   - one amount  → "12.50"
- *   - many amounts → "=12.50+4.00+5.00"  (a spreadsheet formula)
+ * Builds the contents of a single category column for a single day. Each term is a
+ * transaction's `amount`, or `amount-reimbursed` when others reimbursed part of it.
+ *   - empty list                       → blank
+ *   - one plain amount                 → "12.50"
+ *   - one reimbursed amount            → "=100.00-50.00"  (a formula, since it subtracts)
+ *   - many                             → "=12.50+100.00-50.00+5.00"
+ * The cell always evaluates to the net spend for the day in that category.
  */
-private fun buildAmountCell(amountsMinor: List<Long>): String = when {
-    amountsMinor.isEmpty() -> ""
-    amountsMinor.size == 1 -> formatAmount(amountsMinor[0])
-    else -> amountsMinor.joinToString(prefix = "=", separator = "+") { formatAmount(it) }
+private fun buildAmountCell(terms: List<Pair<Long, Long?>>): String = when {
+    terms.isEmpty() -> ""
+    terms.size == 1 && terms[0].second == null -> formatAmount(terms[0].first)
+    else -> terms.joinToString(prefix = "=", separator = "+") { (amount, reimbursed) ->
+        if (reimbursed != null) "${formatAmount(amount)}-${formatAmount(reimbursed)}"
+        else formatAmount(amount)
+    }
 }
 
 /** ISO-8601 date. */

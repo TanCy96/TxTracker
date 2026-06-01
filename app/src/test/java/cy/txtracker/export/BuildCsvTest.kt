@@ -23,6 +23,7 @@ class BuildCsvTest {
         categoryId: Long? = null,
         occurredAt: Instant = Instant.parse("2026-05-09T04:30:00Z"),  // 12:30 KL
         fundingSourceId: Long? = null,
+        reimbursedMinor: Long? = null,
     ) = Transaction(
         id = 0,
         amountMinor = amountMinor,
@@ -39,6 +40,7 @@ class BuildCsvTest {
         createdAt = occurredAt,
         notificationDedupeKey = "k-$merchant-$amountMinor",
         fundingSourceId = fundingSourceId,
+        reimbursedMinor = reimbursedMinor,
     )
 
     @Test
@@ -347,6 +349,35 @@ class BuildCsvTest {
         val rows = csv.trimEnd().lines()
         // Day 1 row should contain the padded-slash join, unambiguous from the embedded slash.
         assertThat(rows[1]).contains("Credit Card / Debit/Transfer")
+    }
+
+    // ─── Reimbursement inline subtraction ───────────────────────────────────────────────
+
+    @Test
+    fun single_reimbursed_tx_shows_inline_subtraction_formula() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10000, merchant = "PJ Cafe", categoryId = food.id, reimbursedMinor = 5000),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=100.00-50.00,,")
+    }
+
+    @Test
+    fun reimbursed_mixes_with_plain_tx_in_same_category_day() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 10000, merchant = "A", categoryId = food.id, reimbursedMinor = 5000),
+                tx(amountMinor = 3000, merchant = "B", categoryId = food.id),
+            ),
+            categories = categories,
+            fundingSourcesById = emptyMap(),
+        )
+        val rows = csv.trimEnd().lines()
+        assertThat(rows[1]).isEqualTo("2026-05-09,,,=100.00-50.00+30.00,,")
     }
 }
 
