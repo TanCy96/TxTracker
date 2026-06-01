@@ -114,6 +114,16 @@ fun monthlyTotalsForCategory(
     zone: TimeZone = MalaysiaTimeZone,
 ): List<MonthBucket> = monthlyTotals(txs.filter { it.categoryId == categoryId }, zone)
 
+/** OUT rows whose grouping series matches [key] (a [BreakdownSlice.key]) — drives chart drill-down. */
+fun transactionsForKey(
+    txs: List<Transaction>,
+    key: String,
+    groupBy: GroupBy,
+    categoriesById: Map<Long, Category>,
+    fundingById: Map<Long, FundingSource>,
+): List<Transaction> =
+    txs.filter { it.direction == Direction.OUT && classify(it, groupBy, categoriesById, fundingById).key == key }
+
 /** Spend-vs-budget progress; null when no positive budget is set. [fraction] is uncapped. */
 fun budgetProgress(spentMinor: Long, budgetMinor: Long?): BudgetProgress? =
     budgetMinor?.takeIf { it > 0 }?.let {

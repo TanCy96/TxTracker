@@ -55,6 +55,7 @@ internal fun InsightsScreen(
     onEditOverallBudget: () -> Unit,
     onEditCategoryBudget: (Long) -> Unit,
     onAddCategoryBudget: () -> Unit,
+    onDrill: (String) -> Unit,
 ) {
     Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text("Insights") }) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -70,6 +71,7 @@ internal fun InsightsScreen(
                     onEditOverallBudget = onEditOverallBudget,
                     onEditCategoryBudget = onEditCategoryBudget,
                     onAddCategoryBudget = onAddCategoryBudget,
+                    onDrill = onDrill,
                 )
             }
         }
@@ -86,6 +88,7 @@ private fun LoadedContent(
     onEditOverallBudget: () -> Unit,
     onEditCategoryBudget: (Long) -> Unit,
     onAddCategoryBudget: () -> Unit,
+    onDrill: (String) -> Unit,
 ) {
     // Range + grouping apply only to the snapshot charts (pie / daily bar); trends use a fixed
     // rolling 6-month window and budget is always current-month, so their controls are hidden.
@@ -142,8 +145,8 @@ private fun LoadedContent(
         Spacer(Modifier.height(16.dp))
 
         when (state.chartType) {
-            InsightsChartType.CATEGORY_PIE -> CategoryPieChart(state.breakdown)
-            InsightsChartType.DAILY_BAR -> DailyStackedBarChart(state.daily, state.breakdown)
+            InsightsChartType.CATEGORY_PIE -> CategoryPieChart(state.breakdown, onSliceTap = onDrill)
+            InsightsChartType.DAILY_BAR -> DailyStackedBarChart(state.daily, state.breakdown, onKeyTap = onDrill)
             InsightsChartType.MONTHLY_TREND -> {
                 Text(
                     text = "Monthly spend · last 6 months",

@@ -2,6 +2,7 @@ package cy.txtracker.ui.insights
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,8 +34,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cy.txtracker.data.Category
+import cy.txtracker.data.Transaction
 import cy.txtracker.domain.InsightsPeriod
 import cy.txtracker.export.ExportDateRange
+import cy.txtracker.ui.edit.EditTransactionSheet
+import cy.txtracker.ui.format.formatMyr
+import cy.txtracker.ui.home.TransactionList
 import cy.txtracker.ui.insights.charts.ColorDot
 import cy.txtracker.ui.manual.parseAmountMinor
 import kotlinx.datetime.Instant
@@ -49,6 +55,7 @@ fun InsightsRoute(viewModel: InsightsViewModel = hiltViewModel()) {
     var showCustomRange by remember { mutableStateOf(false) }
     var budgetTarget by remember { mutableStateOf<BudgetTarget?>(null) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var editingTxId by remember { mutableStateOf<Long?>(null) }
 
     InsightsScreen(
         state = state,
@@ -65,6 +72,7 @@ fun InsightsRoute(viewModel: InsightsViewModel = hiltViewModel()) {
             budgetTarget = BudgetTarget.Category(id, name, current)
         },
         onAddCategoryBudget = { showCategoryPicker = true },
+        onDrill = viewModel::openDrill,
     )
 
     if (showCustomRange) {
@@ -107,6 +115,18 @@ fun InsightsRoute(viewModel: InsightsViewModel = hiltViewModel()) {
             },
             onDismiss = { showCategoryPicker = false },
         )
+    }
+
+    loaded?.drill?.let { drill ->
+        DrillSheet(
+            drill = drill,
+            onTransactionClick = { editingTxId = it.id },
+            onDismiss = viewModel::closeDrill,
+        )
+    }
+
+    editingTxId?.let { id ->
+        EditTransactionSheet(transactionId = id, onDismiss = { editingTxId = null })
     }
 }
 
@@ -229,3 +249,27 @@ private fun formatPlainAmount(minor: Long): String =
 
 private fun Long.toUtcLocalDate(): LocalDate =
     Instant.fromEpochMilliseconds(this).toLocalDateTime(TimeZone.UTC).date
+
+/** Bottom sheet listing the transactions behind a tapped chart series (for the selected range). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DrillSheet(
+    drill: InsightsDrill,
+    onTransactionClick: (Transaction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = drill.label,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+        )
+        TransactionList(
+            days = drill.days,
+            notesByMerchant = emptyMap(),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            amountFormatter = { formatMyr(it) },
+            onTransactionClick = onTransactionClick,
+        )
+    }
+}

@@ -37,6 +37,7 @@ fun DailyStackedBarChart(
     days: List<DayBucket>,
     series: List<BreakdownSlice>,
     modifier: Modifier = Modifier,
+    onKeyTap: ((String) -> Unit)? = null,
 ) {
     if (days.isEmpty() || series.isEmpty() || days.all { it.totalMinor == 0L }) {
         EmptyChart("No spending to chart in this range", modifier)
@@ -70,6 +71,6 @@ fun DailyStackedBarChart(
             modifier = Modifier.fillMaxWidth().height(200.dp),
         )
         Spacer(Modifier.height(12.dp))
-        BreakdownLegend(series)
+        BreakdownLegend(series, onKeyTap = onKeyTap)
     }
 }

@@ -1,6 +1,7 @@
 package cy.txtracker.ui.insights.charts
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,13 +60,20 @@ internal fun EmptyChart(message: String, modifier: Modifier = Modifier) {
 
 /** Legend rows shared by the pie and the stacked bar: colour dot, label, amount, and percentage. */
 @Composable
-internal fun BreakdownLegend(slices: List<BreakdownSlice>, modifier: Modifier = Modifier) {
+internal fun BreakdownLegend(
+    slices: List<BreakdownSlice>,
+    modifier: Modifier = Modifier,
+    onKeyTap: ((String) -> Unit)? = null,
+) {
     val total = slices.sumOf { it.totalMinor }
     Column(modifier = modifier.fillMaxWidth()) {
         slices.forEach { slice ->
             val pct = if (total > 0L) (100.0 * slice.totalMinor / total).roundToInt() else 0
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (onKeyTap != null) Modifier.clickable { onKeyTap(slice.key) } else Modifier)
+                    .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ColorDot(slice.colorArgb)

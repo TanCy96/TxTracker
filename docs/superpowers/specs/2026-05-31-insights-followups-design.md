@@ -1,7 +1,7 @@
 # Insights follow-ups — design
 
 **Date:** 2026-05-31
-**Status:** Budget alerts (1) implemented 2026-05-31; drill-down (2) + foreign charts (3) planned
+**Status:** Budget alerts (1) + tap-to-drill-down (2) implemented 2026-05-31; foreign charts (3) planned
 
 Three improvements to the shipped Insights feature
 (`docs/superpowers/specs/2026-05-31-insights-charts-design.md`), chosen from the options menu:
@@ -66,7 +66,7 @@ cloud sync, more moving parts).
 
 ---
 
-## 2. Tap-to-drill-down — C1
+## 2. Tap-to-drill-down — C1 — ✅ implemented
 
 **Why.** Charts are read-only; tapping a category/source to see the transactions behind it is the
 natural next gesture and was in the original charts sketch (tappable pie slice).

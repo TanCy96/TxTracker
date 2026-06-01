@@ -9,8 +9,12 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.InsightsPeriod
 import cy.txtracker.domain.InsightsRange
+import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.resolveInsightsPeriod
 import cy.txtracker.export.ExportDateRange
+import cy.txtracker.ui.home.DayGroup
+import cy.txtracker.ui.home.TransactionWithCategory
+import kotlinx.datetime.toLocalDateTime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,6 +35,9 @@ class InsightsViewModel @Inject constructor(
 
     /** Per-category trend selection — session only (depends on which categories currently exist). */
     private val _selectedCategoryId = MutableStateFlow<Long?>(null)
+
+    /** Active chart drill-down (a BreakdownSlice.key), or null. Session only. */
+    private val _drillKey = MutableStateFlow<String?>(null)
 
     // Trend charts always show a fixed trailing 6-month window, independent of the range selector;
     // budgets are evaluated against the current calendar month (a subset of that window). "Now" is
@@ -54,11 +61,11 @@ class InsightsViewModel @Inject constructor(
         combine(
             rangeData,
             sixMonthTxs,
-            combine(prefs.groupBy, prefs.chartType, _selectedCategoryId) { g, c, s -> Triple(g, c, s) },
+            combine(prefs.groupBy, prefs.chartType, _selectedCategoryId, _drillKey) { g, c, s, d -> Presentation(g, c, s, d) },
             combine(prefs.overallBudgetMinor, prefs.categoryBudgetsMinor) { o, c -> o to c },
             combine(repository.observeAllCategories(), repository.observeFundingSources()) { cats, f -> cats to f },
         ) { rd, sixMo, presentation, budgets, catsFunding ->
-            val (groupBy, chartType, selectedCategoryId) = presentation
+            val (groupBy, chartType, selectedCategoryId, drillKey) = presentation
             val (overallBudget, categoryBudgets) = budgets
             val (categories, fundingSources) = catsFunding
             buildLoaded(
@@ -67,6 +74,7 @@ class InsightsViewModel @Inject constructor(
                 groupBy = groupBy,
                 chartType = chartType,
                 selectedCategoryId = selectedCategoryId,
+                drillKey = drillKey,
                 overallBudget = overallBudget,
                 categoryBudgets = categoryBudgets,
                 categories = categories,
@@ -89,6 +97,8 @@ class InsightsViewModel @Inject constructor(
     fun setGroupBy(groupBy: GroupBy) = prefs.setGroupBy(groupBy)
     fun setChartType(chartType: InsightsChartType) = prefs.setChartType(chartType)
     fun selectCategory(categoryId: Long?) { _selectedCategoryId.value = categoryId }
+    fun openDrill(key: String) { _drillKey.value = key }
+    fun closeDrill() { _drillKey.value = null }
     fun setOverallBudget(minor: Long?) = prefs.setOverallBudget(minor)
     fun setCategoryBudget(categoryId: Long, minor: Long?) = prefs.setCategoryBudget(categoryId, minor)
 
@@ -98,6 +108,7 @@ class InsightsViewModel @Inject constructor(
         groupBy: GroupBy,
         chartType: InsightsChartType,
         selectedCategoryId: Long?,
+        drillKey: String?,
         overallBudget: Long?,
         categoryBudgets: Map<Long, Long>,
         categories: List<Category>,
@@ -127,6 +138,9 @@ class InsightsViewModel @Inject constructor(
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, rows) -> rows.sumOf { it.chartAmountMinor() } }
 
+        val breakdown = groupedBreakdown(rangeTxs, groupBy, categoriesById, fundingById)
+        val drill = buildDrill(drillKey, rangeTxs, groupBy, categoriesById, fundingById, breakdown)
+
         return InsightsUiState.Loaded(
             chartType = chartType,
             period = rangeData.period,
@@ -134,15 +148,40 @@ class InsightsViewModel @Inject constructor(
             groupBy = groupBy,
             categories = categories,
             selectedCategoryId = effectiveSelectedCategoryId,
-            breakdown = groupedBreakdown(rangeTxs, groupBy, categoriesById, fundingById),
+            breakdown = breakdown,
             daily = dailyStacked(rangeTxs, groupBy, categoriesById, fundingById),
             monthly = monthlyTotals(sixMoTxs),
             categoryTrend = effectiveSelectedCategoryId?.let { monthlyTotalsForCategory(sixMoTxs, it) } ?: emptyList(),
             totalMinor = rangeTxs.filter { it.direction == Direction.OUT }.sumOf { it.chartAmountMinor() },
             budget = budgetProgress(monthSpend, overallBudget),
             categoryBudgets = categoryBudgetProgress(monthCategorySpend, categoryBudgets, categoriesById),
+            drill = drill,
             isEmpty = rangeTxs.none { it.direction == Direction.OUT },
         )
+    }
+
+    private fun buildDrill(
+        drillKey: String?,
+        rangeTxs: List<Transaction>,
+        groupBy: GroupBy,
+        categoriesById: Map<Long, Category>,
+        fundingById: Map<Long, FundingSource>,
+        breakdown: List<BreakdownSlice>,
+    ): InsightsDrill? {
+        val key = drillKey ?: return null
+        val rows = transactionsForKey(rangeTxs, key, groupBy, categoriesById, fundingById)
+        if (rows.isEmpty()) {
+            // Stale key (e.g. the grouping changed) — clear it so the sheet dismisses.
+            _drillKey.value = null
+            return null
+        }
+        val days = rows
+            .map { TransactionWithCategory(it, it.categoryId?.let(categoriesById::get)) }
+            .groupBy { it.transaction.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
+            .toSortedMap(reverseOrder())
+            .map { (date, list) -> DayGroup(date, list) }
+        val label = breakdown.firstOrNull { it.key == key }?.label ?: key
+        return InsightsDrill(key = key, label = label, days = days)
     }
 
     private fun rangeLabel(period: InsightsPeriod, customRange: ExportDateRange?): String = when (period) {
@@ -160,6 +199,13 @@ class InsightsViewModel @Inject constructor(
         val customRange: ExportDateRange?,
         val range: InsightsRange,
         val txs: List<Transaction>,
+    )
+
+    private data class Presentation(
+        val groupBy: GroupBy,
+        val chartType: InsightsChartType,
+        val selectedCategoryId: Long?,
+        val drillKey: String?,
     )
 
     private companion object {
