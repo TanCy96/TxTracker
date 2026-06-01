@@ -74,6 +74,7 @@ fun InsightsRoute(viewModel: InsightsViewModel = hiltViewModel()) {
         onAddCategoryBudget = { showCategoryPicker = true },
         onDrill = viewModel::openDrill,
         onSelectCurrency = viewModel::selectCurrency,
+        onSetCategoryIgnored = viewModel::setCategoryIgnored,
     )
 
     if (showCustomRange) {

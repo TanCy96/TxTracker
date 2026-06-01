@@ -47,6 +47,10 @@ class InsightsPrefs @Inject constructor(
     private val _categoryBudgetsMinor = MutableStateFlow(readCategoryBudgets())
     val categoryBudgetsMinor: StateFlow<Map<Long, Long>> = _categoryBudgetsMinor.asStateFlow()
 
+    /** Category ids hidden from the Insights charts/total (the user filters out noisy ones). */
+    private val _ignoredCategoryIds = MutableStateFlow(readIgnoredCategoryIds())
+    val ignoredCategoryIds: StateFlow<Set<Long>> = _ignoredCategoryIds.asStateFlow()
+
     fun setPeriod(value: InsightsPeriod) {
         prefs.edit().putString(KEY_PERIOD, value.name).apply()
         _period.value = value
@@ -92,6 +96,13 @@ class InsightsPrefs @Inject constructor(
         _categoryBudgetsMinor.value = updated
     }
 
+    fun setCategoryIgnored(categoryId: Long, ignored: Boolean) {
+        val updated = _ignoredCategoryIds.value.toMutableSet()
+        if (ignored) updated.add(categoryId) else updated.remove(categoryId)
+        prefs.edit().putStringSet(KEY_IGNORED_CATEGORIES, updated.map { it.toString() }.toSet()).apply()
+        _ignoredCategoryIds.value = updated
+    }
+
     private fun readPeriod(): InsightsPeriod = runCatching {
         InsightsPeriod.valueOf(prefs.getString(KEY_PERIOD, null) ?: InsightsPeriod.THIS_MONTH.name)
     }.getOrDefault(InsightsPeriod.THIS_MONTH)
@@ -125,6 +136,9 @@ class InsightsPrefs @Inject constructor(
     private fun encodeBudgets(map: Map<Long, Long>): String =
         Json.encodeToString(map.mapKeys { it.key.toString() })
 
+    private fun readIgnoredCategoryIds(): Set<Long> =
+        prefs.getStringSet(KEY_IGNORED_CATEGORIES, emptySet())!!.mapNotNull { it.toLongOrNull() }.toSet()
+
     private companion object {
         const val FILE = "insights"
         const val KEY_PERIOD = "period"
@@ -134,5 +148,6 @@ class InsightsPrefs @Inject constructor(
         const val KEY_CHART_TYPE = "chart_type"
         const val KEY_OVERALL_BUDGET = "overall_budget_minor"
         const val KEY_CATEGORY_BUDGETS = "category_budgets"
+        const val KEY_IGNORED_CATEGORIES = "ignored_category_ids"
     }
 }

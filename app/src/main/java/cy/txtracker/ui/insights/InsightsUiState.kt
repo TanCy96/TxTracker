@@ -74,6 +74,8 @@ sealed interface InsightsUiState {
         val groupBy: GroupBy,
         val categories: List<Category>,
         val selectedCategoryId: Long?,
+        /** Category ids hidden from the charts (excluded from spend/total). */
+        val ignoredCategoryIds: Set<Long>,
         /** Selected currency (MYR or a tracked foreign code) + its display symbol. */
         val currency: String,
         val currencySymbol: String,

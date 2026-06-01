@@ -72,7 +72,7 @@ class InsightsViewModel @Inject constructor(
         combine(
             rangeData,
             sixMonthTxs,
-            combine(prefs.groupBy, prefs.chartType, _selectedCategoryId, _drillKey) { g, c, s, d -> Presentation(g, c, s, d) },
+            combine(prefs.groupBy, prefs.chartType, _selectedCategoryId, _drillKey, prefs.ignoredCategoryIds) { g, c, s, d, ignored -> Presentation(g, c, s, d, ignored) },
             combine(prefs.overallBudgetMinor, prefs.categoryBudgetsMinor) { o, c -> o to c },
             combine(
                 repository.observeAllCategories(),
@@ -80,7 +80,7 @@ class InsightsViewModel @Inject constructor(
                 repository.observeTrackedCurrencies(),
             ) { cats, f, tc -> Triple(cats, f, tc) },
         ) { rd, sixMo, presentation, budgets, catsFunding ->
-            val (groupBy, chartType, selectedCategoryId, drillKey) = presentation
+            val (groupBy, chartType, selectedCategoryId, drillKey, ignoredCategoryIds) = presentation
             val (overallBudget, categoryBudgets) = budgets
             val (categories, fundingSources, trackedCurrencies) = catsFunding
             buildLoaded(
@@ -90,6 +90,7 @@ class InsightsViewModel @Inject constructor(
                 chartType = chartType,
                 selectedCategoryId = selectedCategoryId,
                 drillKey = drillKey,
+                ignoredCategoryIds = ignoredCategoryIds,
                 overallBudget = overallBudget,
                 categoryBudgets = categoryBudgets,
                 categories = categories,
@@ -119,6 +120,7 @@ class InsightsViewModel @Inject constructor(
         _drillKey.value = null
         _selectedCurrency.value = code
     }
+    fun setCategoryIgnored(categoryId: Long, ignored: Boolean) = prefs.setCategoryIgnored(categoryId, ignored)
     fun setOverallBudget(minor: Long?) = prefs.setOverallBudget(minor)
     fun setCategoryBudget(categoryId: Long, minor: Long?) = prefs.setCategoryBudget(categoryId, minor)
 
@@ -129,6 +131,7 @@ class InsightsViewModel @Inject constructor(
         chartType: InsightsChartType,
         selectedCategoryId: Long?,
         drillKey: String?,
+        ignoredCategoryIds: Set<Long>,
         overallBudget: Long?,
         categoryBudgets: Map<Long, Long>,
         categories: List<Category>,
@@ -138,6 +141,10 @@ class InsightsViewModel @Inject constructor(
         val categoriesById = categories.associateBy { it.id }
         val fundingById = fundingSources.associateBy { it.id }
         val rangeTxs = rangeData.txs
+        // Hidden categories are excluded from the charts + total (but not budgets, which the user
+        // explicitly set per category). Unverified (null category) is never hidden.
+        val visibleRangeTxs = rangeTxs.filter { tx -> tx.categoryId?.let { it !in ignoredCategoryIds } ?: true }
+        val visibleSixMoTxs = sixMoTxs.filter { tx -> tx.categoryId?.let { it !in ignoredCategoryIds } ?: true }
         val currency = rangeData.currency
         val currencies = listOf(CurrencyOption("MYR", "RM")) +
             trackedCurrencies.map { CurrencyOption(it.code, it.displaySymbol) }
@@ -171,8 +178,8 @@ class InsightsViewModel @Inject constructor(
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, rows) -> rows.sumOf { it.chartAmountMinor() } }
 
-        val breakdown = groupedBreakdown(rangeTxs, groupBy, categoriesById, fundingById)
-        val drill = buildDrill(drillKey, rangeTxs, groupBy, categoriesById, fundingById, breakdown, currencySymbol)
+        val breakdown = groupedBreakdown(visibleRangeTxs, groupBy, categoriesById, fundingById)
+        val drill = buildDrill(drillKey, visibleRangeTxs, groupBy, categoriesById, fundingById, breakdown, currencySymbol)
 
         return InsightsUiState.Loaded(
             chartType = effectiveChartType,
@@ -181,14 +188,15 @@ class InsightsViewModel @Inject constructor(
             groupBy = groupBy,
             categories = categories,
             selectedCategoryId = effectiveSelectedCategoryId,
+            ignoredCategoryIds = ignoredCategoryIds,
             currency = currency,
             currencySymbol = currencySymbol,
             currencies = currencies,
             breakdown = breakdown,
-            daily = dailyStacked(rangeTxs, groupBy, categoriesById, fundingById),
-            monthly = monthlyTotals(sixMoTxs),
-            categoryTrend = effectiveSelectedCategoryId?.let { monthlyTotalsForCategory(sixMoTxs, it) } ?: emptyList(),
-            totalMinor = rangeTxs.filter { it.direction == Direction.OUT }.sumOf { it.chartAmountMinor() },
+            daily = dailyStacked(visibleRangeTxs, groupBy, categoriesById, fundingById),
+            monthly = monthlyTotals(visibleSixMoTxs),
+            categoryTrend = effectiveSelectedCategoryId?.let { monthlyTotalsForCategory(visibleSixMoTxs, it) } ?: emptyList(),
+            totalMinor = visibleRangeTxs.filter { it.direction == Direction.OUT }.sumOf { it.chartAmountMinor() },
             budget = budgetProgress(monthSpend, overallBudget),
             categoryBudgets = categoryBudgetProgress(monthCategorySpend, categoryBudgets, categoriesById),
             drill = drill,
@@ -244,6 +252,7 @@ class InsightsViewModel @Inject constructor(
         val chartType: InsightsChartType,
         val selectedCategoryId: Long?,
         val drillKey: String?,
+        val ignoredCategoryIds: Set<Long>,
     )
 
     private companion object {
