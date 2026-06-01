@@ -47,7 +47,9 @@ fun SpendTrendLineChart(
         }
     }
     val monthFormatter = CartesianValueFormatter { _, value, _ ->
-        points.getOrNull(value.toInt())?.yearMonth?.let(::shortMonthLabel) ?: ""
+        // Vico rejects an empty label; clamp the index because it probes out-of-range x when
+        // measuring label widths (e.g. a sparse single-point trend). points is non-empty here.
+        shortMonthLabel(points[value.toInt().coerceIn(0, points.lastIndex)].yearMonth)
     }
     val line = LineCartesianLayer.rememberLine(fill = LineCartesianLayer.LineFill.single(fill(lineColor)))
     Column(modifier = modifier.fillMaxWidth()) {

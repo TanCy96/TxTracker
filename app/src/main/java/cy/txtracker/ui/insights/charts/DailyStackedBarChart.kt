@@ -58,7 +58,9 @@ fun DailyStackedBarChart(
     }
     val columns = series.map { slice -> rememberLineComponent(fill = fill(Color(slice.colorArgb)), thickness = 10.dp) }
     val dayFormatter = CartesianValueFormatter { _, value, _ ->
-        days.getOrNull(value.toInt())?.date?.let(::dayMonthLabel) ?: ""
+        // Vico rejects an empty label; clamp the index because it probes out-of-range x when
+        // measuring label widths. days is non-empty here.
+        dayMonthLabel(days[value.toInt().coerceIn(0, days.lastIndex)].date)
     }
     Column(modifier = modifier.fillMaxWidth()) {
         CartesianChartHost(
