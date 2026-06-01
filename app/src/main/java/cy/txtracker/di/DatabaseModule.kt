@@ -88,6 +88,7 @@ object DatabaseModule {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
+                MIGRATION_11_12,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -434,5 +435,16 @@ private val MIGRATION_10_11 = object : Migration(10, 11) {
             "CREATE UNIQUE INDEX IF NOT EXISTS `index_captured_notifications_dedupeKey` " +
                 "ON `captured_notifications`(`dedupeKey`)",
         )
+    }
+}
+
+/**
+ * v12 adds the reimbursed-by-others share: a nullable `reimbursedMinor` column on
+ * `transactions`. Existing rows keep reimbursedMinor = NULL (not reimbursed). No backfill,
+ * no new tables. See docs/superpowers/specs/2026-06-01-reimbursed-share-design.md.
+ */
+private val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `transactions` ADD COLUMN `reimbursedMinor` INTEGER DEFAULT NULL")
     }
 }
