@@ -24,4 +24,34 @@ class ShareTest {
     @Test fun negative_is_invalid() {
         assertThat(isValidReimbursedMinor(-1, 10000)).isFalse()
     }
+
+    // ─── Multi-entry reimbursement total ────────────────────────────────────────────────
+
+    @Test fun total_of_empty_entries_is_null() {
+        assertThat(reimbursedTotalMinor(emptyList())).isNull()
+    }
+
+    @Test fun total_sums_entries() {
+        assertThat(reimbursedTotalMinor(listOf(1000L, 1200L))).isEqualTo(2200L)
+    }
+
+    @Test fun total_of_all_zero_is_null() {
+        assertThat(reimbursedTotalMinor(listOf(0L))).isNull()
+    }
+
+    @Test fun entry_set_valid_when_each_positive_and_sum_in_range() {
+        assertThat(isValidReimbursementTotal(listOf(4000L, 6000L), 10000L)).isTrue()
+    }
+
+    @Test fun entry_set_invalid_when_sum_exceeds_amount() {
+        assertThat(isValidReimbursementTotal(listOf(4000L, 6001L), 10000L)).isFalse()
+    }
+
+    @Test fun entry_set_invalid_when_any_entry_non_positive() {
+        assertThat(isValidReimbursementTotal(listOf(0L, 5000L), 10000L)).isFalse()
+    }
+
+    @Test fun empty_entry_set_is_invalid() {
+        assertThat(isValidReimbursementTotal(emptyList(), 10000L)).isFalse()
+    }
 }
