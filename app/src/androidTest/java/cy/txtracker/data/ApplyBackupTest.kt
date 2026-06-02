@@ -59,9 +59,11 @@ class ApplyBackupTest {
     )
 
     @Test
-    fun missing_categories_are_created_existing_ones_left_alone() = runTest {
-        // The default seed includes "Food" (color = 0xFFEF5350). Backup says Food has a
-        // different color — existing local Food must NOT be overwritten.
+    fun backup_category_set_replaces_local_set_authoritatively() = runTest {
+        // The backup is authoritative: it carries only "Food" (with a custom color) and a
+        // new "Pets". After import the local set must be EXACTLY those two — every seed
+        // default the backup omits is removed, and the surviving "Food" adopts the backup's
+        // color (the backup wins, in place).
         val customColor = 0xFF000000.toInt()
         val result = repo().applyBackup(
             backup(
@@ -73,10 +75,43 @@ class ApplyBackupTest {
         )
 
         val all = dbRule.categoryDao.getAll().associateBy { it.name }
-        assertThat(all["Food"]?.color).isNotEqualTo(customColor)  // local Food untouched
-        assertThat(all["Pets"]).isNotNull()
+        assertThat(all.keys).containsExactly("Food", "Pets")  // seed defaults pruned
+        assertThat(all["Food"]?.color).isEqualTo(customColor)  // backup wins, updated in place
         assertThat(all["Pets"]?.isCustom).isTrue()
-        assertThat(result.categoriesCreated).isEqualTo(1)
+        assertThat(result.categoriesCreated).isEqualTo(1)  // Pets inserted; Food updated
+    }
+
+    @Test
+    fun applyBackup_removes_seed_defaults_the_backup_omits() = runTest {
+        // Reproduces the restore-onto-fresh-install bug: the source device deleted "Food"
+        // and renamed "Transport" -> "Commute", so its backup carries neither "Food" nor
+        // "Transport". A fresh install re-seeds all 10 defaults; after restore, the resurrected
+        // defaults the user had customized away must be gone.
+        val result = repo().applyBackup(
+            backup(
+                categories = listOf(
+                    BackupCategory("Groceries", color = 0xFF66BB6A.toInt(), sortOrder = 1, isCustom = false),
+                    BackupCategory("Commute", color = 0xFF42A5F5.toInt(), sortOrder = 2, isCustom = false),
+                    BackupCategory("Other", color = 0xFF78909C.toInt(), sortOrder = 9, isCustom = false),
+                ),
+            ),
+        )
+
+        val names = dbRule.categoryDao.getAll().map { it.name }.toSet()
+        assertThat(names).containsExactly("Groceries", "Commute", "Other")
+        assertThat(names).doesNotContain("Food")       // deleted on source device
+        assertThat(names).doesNotContain("Transport")  // renamed to "Commute"
+        assertThat(result.categoriesCreated).isEqualTo(1)  // only "Commute" is new
+    }
+
+    @Test
+    fun applyBackup_with_empty_category_list_leaves_local_categories_untouched() = runTest {
+        // A backup with NO categories is a partial/degenerate payload, not a "delete all"
+        // instruction — the local (seeded) set must survive intact.
+        val before = dbRule.categoryDao.getAll().map { it.name }.toSet()
+        repo().applyBackup(backup(categories = emptyList()))
+        val after = dbRule.categoryDao.getAll().map { it.name }.toSet()
+        assertThat(after).isEqualTo(before)
     }
 
     @Test
