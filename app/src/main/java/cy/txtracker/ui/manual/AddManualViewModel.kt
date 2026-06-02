@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
 import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceDao
+import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
@@ -26,6 +27,13 @@ import kotlinx.datetime.LocalTime
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
+/** A reimbursement the user added before the transaction exists. Persisted after insert. */
+data class DraftReimbursement(
+    val amountMinor: Long,
+    val destinationKind: FundingSourceKind,
+    val personLabel: String?,
+)
+
 data class AddManualUiState(
     val amountText: String = "",
     val merchantText: String = "",
@@ -45,17 +53,12 @@ data class AddManualUiState(
     /** Non-null when the user has enabled "Share with SL Debit"; the share in minor units. */
     val slShareMinor: Long? = null,
     val slShareText: String = "",
-    /** Free-typed reimbursed-by-others amount. Blank = not reimbursed. */
-    val reimbursedText: String = "",
+    val reimbursements: List<DraftReimbursement> = emptyList(),
 ) {
     val amountMinor: Long? get() = parseAmountMinor(amountText)
-    /** Reimbursed minor units, only when it parses AND is within (0, amountMinor]. */
+    /** Cached reimbursed total for the row, or null when none. Validated at add-time. */
     val reimbursedMinor: Long?
-        get() {
-            val amt = amountMinor ?: return null
-            val parsed = parseAmountMinor(reimbursedText) ?: return null
-            return parsed.takeIf { it in 1L..amt }
-        }
+        get() = reimbursements.sumOf { it.amountMinor }.takeIf { it > 0 }
     val canSave: Boolean
         get() = !isSaving && (amountMinor ?: 0) > 0 && merchantText.trim().isNotEmpty()
 }
@@ -174,16 +177,16 @@ class AddManualViewModel @Inject constructor(
     fun setCategoryId(id: Long?) = _state.update { it.copy(categoryId = id) }
     fun setDescription(text: String) = _state.update { it.copy(descriptionText = text) }
 
-    fun setReimbursed(text: String) {
-        val sanitized = text.filter { it.isDigit() || it == '.' }
-        val parts = sanitized.split('.')
-        val cleaned = when {
-            parts.size <= 1 -> sanitized
-            parts.size == 2 -> parts[0] + "." + parts[1].take(2)
-            else -> parts[0] + "." + parts.drop(1).joinToString("").take(2)
+    fun addReimbursement(amountMinor: Long, destinationKind: FundingSourceKind, personLabel: String?) {
+        _state.update {
+            it.copy(reimbursements = it.reimbursements + DraftReimbursement(amountMinor, destinationKind, personLabel?.trim()?.takeIf { p -> p.isNotEmpty() }))
         }
-        _state.update { it.copy(reimbursedText = cleaned) }
     }
+
+    fun removeReimbursement(index: Int) {
+        _state.update { it.copy(reimbursements = it.reimbursements.filterIndexed { i, _ -> i != index }) }
+    }
+
     fun setDate(date: LocalDate) = _state.update { it.copy(date = date) }
     fun setTime(time: LocalTime) = _state.update { it.copy(time = time) }
 
@@ -208,6 +211,11 @@ class AddManualViewModel @Inject constructor(
             val share = s.slShareMinor
             if (newId != null && s.currency == "MYR" && share != null && isValidShareMinor(share, amount)) {
                 repository.setTransactionShare(newId, share)
+            }
+            if (newId != null) {
+                s.reimbursements.forEach { d ->
+                    repository.addReimbursementEntry(newId, d.amountMinor, d.destinationKind, d.personLabel)
+                }
             }
             _state.update { it.copy(isSaving = false) }
             onSaved()

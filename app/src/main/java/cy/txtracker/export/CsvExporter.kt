@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import cy.txtracker.data.Category
 import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.ReimbursementEntry
 import cy.txtracker.data.SlDebitDeposit
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
@@ -26,17 +27,16 @@ import kotlinx.datetime.toLocalDateTime
 /**
  * Wide-format CSV export. Columns:
  *
- *     date, description, Source, <each category in sortOrder>, Unverified, SL Debit
+ *     date, description, <each category in sortOrder>, Unverified,
+ *     Credit Card, E-Wallet, Debit/Transfer, Cash, SL Debit
  *
- * Each transaction row places its amount in exactly one category column (or `Unverified`
+ * Each transaction row places its NET amount in exactly one category column (or `Unverified`
  * when categoryId is null); the other category columns are blank. This makes summing each
  * column in a spreadsheet give per-category totals directly.
  *
- * The `Source` column shows the funding-source bucket label(s) for all transactions in that
- * day. When all transactions share the same bucket, the single label is shown (e.g.
- * `Credit Card`). When the day has transactions from multiple buckets, the distinct labels
- * are joined with `" / "` in canonical kind order. Unlinked transactions contribute nothing to
- * the Source cell.
+ * The four funding-bucket columns carry the GROSS amount of each transaction funded from that
+ * bucket (positive), plus each reimbursement entry as a negative in its destination bucket.
+ * Unlinked transactions contribute to no funding column.
  */
 @Singleton
 class CsvExporter @Inject constructor(
@@ -58,9 +58,12 @@ class CsvExporter @Inject constructor(
             if (currency == "MYR") repository.getSlDebitDepositsOnce() else emptyList(),
             range,
         )
+        val reimbursementsByTxId = repository.getReimbursementEntriesByTransaction()
         val dir = exportDir()
         val file = File(dir, csvFileName(currency, range))
-        file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, deposits, it) }
+        file.outputStream().use {
+            writeCsv(transactions, categories, fundingSourcesById, deposits, reimbursementsByTxId, it)
+        }
         return uriFor(file)
     }
 
@@ -72,6 +75,7 @@ class CsvExporter @Inject constructor(
     suspend fun exportAllCurrenciesZip(range: ExportDateRange? = null): Uri {
         val categories = repository.getAllCategoriesOnce()
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
+        val reimbursementsByTxId = repository.getReimbursementEntriesByTransaction()
         val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
         val codes = (listOf("MYR") + trackedCodes).distinct()
         val allDeposits = filterDepositsByRange(repository.getSlDebitDepositsOnce(), range)
@@ -84,7 +88,7 @@ class CsvExporter @Inject constructor(
                 val deposits = if (code == "MYR") allDeposits else emptyList()
                 if (rows.isEmpty() && deposits.isEmpty()) continue
                 zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
-                writeCsv(rows, categories, fundingSourcesById, deposits, zip)
+                writeCsv(rows, categories, fundingSourcesById, deposits, reimbursementsByTxId, zip)
                 zip.closeEntry()
             }
         }
@@ -171,9 +175,10 @@ fun writeCsv(
     categories: List<Category>,
     fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
     deposits: List<SlDebitDeposit> = emptyList(),
+    reimbursementsByTxId: Map<Long, List<ReimbursementEntry>> = emptyMap(),
     output: OutputStream,
 ) {
-    val csv = buildCsv(transactions, categories, fundingSourcesById, deposits)
+    val csv = buildCsv(transactions, categories, fundingSourcesById, deposits, reimbursementsByTxId)
     output.write(csv.toByteArray(Charsets.UTF_8))
 }
 
@@ -187,23 +192,27 @@ fun writeCsv(
  * **One row per day**, not per transaction. For each day:
  *   - The `description` column joins all non-blank descriptions with `", "`, in
  *     chronological order. Blanks are skipped.
- *   - The `Source` column shows the distinct funding-source bucket label(s) for all
- *     transactions in that day, joined with `" / "` in canonical kind order. Unlinked
- *     transactions (null fundingSourceId or unresolved id) are excluded from the cell.
  *   - Each category column is empty if the day had no tx in that category; the literal
  *     amount if exactly one; a spreadsheet formula `=A+B+C` if more than one. The formula
- *     evaluates to the sum but a single click on the cell reveals the individual values,
- *     which matches the user's mental model of "see the total but keep the details".
- *   - The `SL Debit` column accumulates deposits (positive) and shares (negative) for the
- *     day. A single deposit with no shares renders as a bare positive literal (`500.00`); a
- *     single share with no deposit renders as a bare negative literal (`-40.00`); when there
- *     is more than one term the cell is a spreadsheet formula (`=500.00-40.00`).
+ *     evaluates to the net spend but a single click on the cell reveals the individual
+ *     values, which matches the user's mental model of "see the total but keep the details".
+ *     Both the SL Debit share and reimbursement entries are subtracted inline (e.g.
+ *     `=100.00-40.00-10.00`).
+ *   - The four funding-bucket columns (Credit Card, E-Wallet, Debit/Transfer, Cash) carry
+ *     the GROSS amount of each transaction funded from that bucket (positive), plus each
+ *     reimbursement entry as a negative in its destination bucket. A cell with a single term
+ *     is a bare literal; multiple terms form a "=" formula. Unlinked transactions contribute
+ *     to no funding column.
+ *   - The `SL Debit` column accumulates deposits (positive) and SL shares (negative) for the
+ *     day, same cell formatting as the funding columns. The SL deposit pool is tracked here
+ *     rather than in a funding bucket.
  */
 fun buildCsv(
     transactions: List<Transaction>,
     categories: List<Category>,
     fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
     deposits: List<SlDebitDeposit> = emptyList(),
+    reimbursementsByTxId: Map<Long, List<ReimbursementEntry>> = emptyMap(),
 ): String {
     val orderedCategories = categories.sortedWith(
         compareBy<Category> { it.sortOrder }.thenBy { it.name },
@@ -212,12 +221,13 @@ fun buildCsv(
 
     val sb = StringBuilder()
 
-    // Header.
-    sb.append("date,description,Source")
-    for (c in orderedCategories) {
-        sb.append(',').append(csvEscape(c.name))
-    }
-    sb.append(",Unverified,SL Debit\n")
+    // Header: date, description, <categories>, Unverified, the four funding buckets, SL Debit.
+    sb.append("date,description")
+    for (c in orderedCategories) sb.append(',').append(csvEscape(c.name))
+    sb.append(",Unverified")
+    for (kind in CANONICAL_KIND_ORDER) sb.append(',').append(csvEscape(bucketLabel(kind)))
+    sb.append(",SL Debit")
+    sb.append('\n')
 
     // Group by day (Asia/Kuala_Lumpur). The export iterates the union of transaction days and
     // deposit days so a deposit-only day still emits a row. Sorted so it reads chronologically.
@@ -236,40 +246,39 @@ fun buildCsv(
         val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }
         sb.append(',').append(csvEscape(descriptions.joinToString(", ")))
 
-        // Source column: distinct bucket labels for the day, in canonical kind order. A day with
-        // any SL Debit-shared transaction synthesizes a DEBIT_BANK bucket (the Debit/Transfer
-        // inflow that funds the share), even though there is no real funding source row for it.
-        val dayKinds = txs
-            .mapNotNull { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } }
-            .toMutableList()
-        if (txs.any { it.slShareMinor != null }) {
-            dayKinds.add(FundingSourceKind.DEBIT_BANK)
-        }
-        val dayBuckets = dayKinds
-            .distinct()
-            .sortedBy { CANONICAL_KIND_ORDER.indexOf(it) }
-        val sourceCell = dayBuckets.joinToString(" / ") { bucketLabel(it) }
-        sb.append(',').append(csvEscape(sourceCell))
-
-        // Per-category columns.
+        // Per-category columns — net (gross minus the SL share minus each reimbursement entry).
         for (c in orderedCategories) {
             sb.append(',')
-            val terms = txs.filter { it.categoryId == c.id }.map { categoryTerm(it) }
+            val terms = txs.filter { it.categoryId == c.id }.map { categoryTerm(it, reimbursementsByTxId) }
             sb.append(buildCategoryCell(terms))
         }
 
-        // Unverified column: null categoryId OR a categoryId pointing at a deleted category.
+        // Unverified column.
         sb.append(',')
         val unverifiedTerms = txs
             .filter { it.categoryId == null || categoryById[it.categoryId] == null }
-            .map { categoryTerm(it) }
+            .map { categoryTerm(it, reimbursementsByTxId) }
         sb.append(buildCategoryCell(unverifiedTerms))
 
-        // SL Debit column: deposits (positive) and shares (negative) for the day.
+        // Funding-bucket columns: gross positives (by the tx's source kind) + reimbursement
+        // negatives (by each entry's destinationKind), in canonical order. Positives first.
+        for (kind in CANONICAL_KIND_ORDER) {
+            sb.append(',')
+            val positives = txs
+                .filter { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } == kind }
+                .map { "+${formatAmount(it.amountMinor)}" }
+            val negatives = txs
+                .flatMap { reimbursementsByTxId[it.id] ?: emptyList() }
+                .filter { it.destinationKind == kind }
+                .map { "-${formatAmount(it.amountMinor)}" }
+            sb.append(csvEscape(buildSignedCell(positives + negatives)))
+        }
+
+        // SL Debit column: deposits (positive) and SL shares (negative) for the day.
         sb.append(',')
         val depositTerms = (depositsByDate[date] ?: emptyList()).map { "+${formatAmount(it.amountMinor)}" }
         val shareTerms = txs.mapNotNull { it.slShareMinor?.let { s -> "-${formatAmount(s)}" } }
-        sb.append(csvEscape(buildSlDebitCell(depositTerms + shareTerms)))
+        sb.append(csvEscape(buildSignedCell(depositTerms + shareTerms)))
 
         sb.append('\n')
     }
@@ -299,13 +308,17 @@ private val CANONICAL_KIND_ORDER = listOf(
 
 /**
  * Per-transaction term for a category cell. Each reduction is subtracted inline so the cell
- * evaluates to the net: "amount", "amount-slShare", "amount-reimbursed", or
- * "amount-slShare-reimbursed" when both apply.
+ * evaluates to the net: the gross amount, minus the SL Debit share (if any), minus each
+ * reimbursement entry (if any). E.g. "100.00", "100.00-40.00", "100.00-10.00-12.00", or
+ * "100.00-40.00-10.00" when both an SL share and reimbursements apply.
  */
-private fun categoryTerm(tx: Transaction): String {
+private fun categoryTerm(
+    tx: Transaction,
+    reimbursementsByTxId: Map<Long, List<ReimbursementEntry>>,
+): String {
     val sb = StringBuilder(formatAmount(tx.amountMinor))
     tx.slShareMinor?.let { sb.append('-').append(formatAmount(it)) }
-    tx.reimbursedMinor?.let { sb.append('-').append(formatAmount(it)) }
+    reimbursementsByTxId[tx.id]?.forEach { sb.append('-').append(formatAmount(it.amountMinor)) }
     return sb.toString()
 }
 
@@ -323,12 +336,13 @@ private fun buildCategoryCell(terms: List<String>): String = when {
 }
 
 /**
- * SL Debit cell from signed terms ("+500.00", "-40.00"):
+ * Signed-term cell shared by the funding-bucket columns and the SL Debit column. Terms are
+ * "+500.00" / "-40.00":
  *   empty      -> ""
  *   one term   -> the term without a leading '+'  ("500.00" or "-40.00")
  *   many terms -> "=" + concatenation with the leading '+' stripped  ("=500.00-40.00")
  */
-private fun buildSlDebitCell(signedTerms: List<String>): String = when {
+private fun buildSignedCell(signedTerms: List<String>): String = when {
     signedTerms.isEmpty() -> ""
     signedTerms.size == 1 -> signedTerms[0].removePrefix("+")
     else -> "=" + signedTerms.joinToString(separator = "").removePrefix("+")

@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(10)
+        assertThat(parsed.version).isEqualTo(11)
     }
 
     @Test
@@ -147,7 +147,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.approvedSources).hasSize(1)
         assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
-        assertThat(parsed.version).isEqualTo(10)
+        assertThat(parsed.version).isEqualTo(11)
     }
 
     @Test
@@ -195,7 +195,7 @@ class BackupSerializationTest {
         assertThat(note.merchant).isEqualTo("WARUNG UNCLE")
         assertThat(note.note).isEqualTo("SS15 kopitiam, only takes cash")
         assertThat(note.updatedAt).isEqualTo(Instant.parse("2026-05-10T10:00:00Z"))
-        assertThat(parsed.version).isEqualTo(10)
+        assertThat(parsed.version).isEqualTo(11)
     }
 
     @Test
@@ -250,7 +250,7 @@ class BackupSerializationTest {
         val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
 
-        assertThat(parsed.version).isEqualTo(10)
+        assertThat(parsed.version).isEqualTo(11)
         assertThat(parsed.transactions).hasSize(1)
         val tx = parsed.transactions.single()
         assertThat(tx.merchantRaw).isEqualTo("GRAB")
@@ -362,7 +362,7 @@ class BackupSerializationTest {
         )
         val text = BackupExporter.JSON.encodeToString(Backup.serializer(), backup)
         val decoded = BackupImporter.JSON.decodeFromString(Backup.serializer(), text)
-        assertThat(decoded.version).isEqualTo(10)
+        assertThat(decoded.version).isEqualTo(11)
         assertThat(decoded.slDebitAccount?.displayName).isEqualTo("SL Debit")
         assertThat(decoded.slDebitAccount?.defaultSharePercent).isEqualTo(40)
         assertThat(decoded.slDebitDeposits).hasSize(1)

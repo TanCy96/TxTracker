@@ -6,6 +6,16 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class BackupReimbursementEntry(
+    /** Parent transaction's notificationDedupeKey — stable across reinstalls/devices. */
+    val transactionDedupeKey: String,
+    val amountMinor: Long,
+    val destinationKind: String,   // FundingSourceKind name
+    val personLabel: String?,
+    val createdAt: Instant,
+)
+
+@Serializable
 data class BackupFundingSource(
     val kind: String,            // FundingSourceKind name
     val displayName: String,
@@ -32,6 +42,9 @@ data class BackupFundingSource(
  *   v8 – added [fundingSources] and [BackupTransaction.fundingSourceLookupKey]
  *   v9 – added [BackupTransaction.slShareMinor], [slDebitAccount], [slDebitDeposits]
  *   v10 – added [BackupTransaction.reimbursedMinor] (reimbursed-by-others share)
+ *   v11 – added [reimbursementEntries] (multi-person reimbursement entries; the per-tx
+ *         reimbursedMinor is the cached sum and is also carried on each BackupTransaction).
+ *         Re-sequenced from main's v10 because this branch's v10 is the reimbursedMinor bump.
  */
 @Serializable
 data class Backup(
@@ -52,9 +65,10 @@ data class Backup(
     val fundingSources: List<BackupFundingSource> = emptyList(),
     val slDebitAccount: BackupSlDebitAccount? = null,
     val slDebitDeposits: List<BackupSlDebitDeposit> = emptyList(),
+    val reimbursementEntries: List<BackupReimbursementEntry> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 10
+        const val CURRENT_VERSION = 11
     }
 }
 

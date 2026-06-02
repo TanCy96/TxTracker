@@ -75,6 +75,7 @@ class FundingSourceMergeTest {
         packageTextRewriteDao = mockk(relaxed = true),
         fundingSourceDao = fundingDao,
         slDebitDao = mockk(relaxed = true),
+        reimbursementEntryDao = mockk(relaxed = true),
         categorizationEngine = mockk(relaxed = true),
         descriptionEngine = mockk(relaxed = true),
         heuristicExtractor = mockk(relaxed = true),

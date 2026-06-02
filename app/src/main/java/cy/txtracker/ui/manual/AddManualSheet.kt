@@ -18,6 +18,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,7 +52,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.domain.isValidReimbursementTotal
 import cy.txtracker.ui.common.FundingSourcePickerSheet
+import cy.txtracker.ui.common.KIND_ORDER
+import cy.txtracker.ui.common.fundingBucketLabel
+import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
@@ -91,7 +99,8 @@ fun AddManualSheet(
             onFundingSourceChange = { viewModel.setFundingSource(it) },
             onShareEnabledChange = viewModel::setShareEnabled,
             onShareTextChange = viewModel::setShareText,
-            onReimbursedChange = viewModel::setReimbursed,
+            onAddReimbursement = viewModel::addReimbursement,
+            onRemoveReimbursement = viewModel::removeReimbursement,
             onSave = { viewModel.save(onSaved = onDismiss) },
             onCancel = onDismiss,
         )
@@ -113,7 +122,8 @@ private fun Content(
     onFundingSourceChange: (Long?) -> Unit,
     onShareEnabledChange: (Boolean) -> Unit,
     onShareTextChange: (String) -> Unit,
-    onReimbursedChange: (String) -> Unit,
+    onAddReimbursement: (Long, FundingSourceKind, String?) -> Unit,
+    onRemoveReimbursement: (Int) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -176,14 +186,61 @@ private fun Content(
 
         Text(text = "Reimbursed by others (optional)", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))
+        state.reimbursements.forEachIndexed { index, d ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = buildString {
+                        append("−").append(formatAmount(d.amountMinor, "").trim()).append(" ")
+                        append(state.currency).append(" → ").append(fundingBucketLabel(d.destinationKind))
+                        d.personLabel?.let { append("  (").append(it).append(")") }
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cy.txtracker.ui.theme.ReimbursedAccent,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onRemoveReimbursement(index) }) { Text("Remove") }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        var rAmount by remember(state.reimbursements.size) { mutableStateOf("") }
+        var rKind by remember(state.reimbursements.size) { mutableStateOf(FundingSourceKind.DEBIT_BANK) }
+        var rPerson by remember(state.reimbursements.size) { mutableStateOf("") }
+
         OutlinedTextField(
-            value = state.reimbursedText,
-            onValueChange = onReimbursedChange,
+            value = rAmount,
+            onValueChange = { rAmount = it },
             label = { Text("Reimbursed amount (${state.currency})") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(8.dp))
+        ManualKindDropdown(selected = rKind, onSelect = { rKind = it })
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = rPerson,
+            onValueChange = { rPerson = it },
+            label = { Text("Who (optional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        run {
+            val parsed = parseAmountMinor(rAmount)
+            val amt = state.amountMinor
+            val prospective = state.reimbursements.map { it.amountMinor } + (parsed ?: 0L)
+            val canAdd = parsed != null && amt != null && isValidReimbursementTotal(prospective, amt)
+            Button(
+                onClick = { onAddReimbursement(parsed!!, rKind, rPerson.takeIf { it.isNotBlank() }); rAmount = ""; rPerson = "" },
+                enabled = canAdd,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Add reimbursement") }
+        }
         Spacer(Modifier.height(8.dp))
 
         if (state.currency == "MYR") {
@@ -454,3 +511,30 @@ private fun TimePickerSheet(
 }
 
 private fun Int.pad(): String = toString().padStart(2, '0')
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManualKindDropdown(
+    selected: FundingSourceKind,
+    onSelect: (FundingSourceKind) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = fundingBucketLabel(selected),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Landed in") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            KIND_ORDER.forEach { kind ->
+                DropdownMenuItem(
+                    text = { Text(fundingBucketLabel(kind)) },
+                    onClick = { onSelect(kind); expanded = false },
+                )
+            }
+        }
+    }
+}

@@ -20,6 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -30,7 +33,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -45,19 +47,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.Category
+import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.ReimbursementEntry
 import cy.txtracker.data.Transaction
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.isValidShareMinor
 import cy.txtracker.domain.slDebitDefaultShareMinor
-import cy.txtracker.domain.isValidReimbursedMinor
+import cy.txtracker.domain.isValidReimbursementTotal
 import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.common.FundingSourcePickerSheet
+import cy.txtracker.ui.common.KIND_ORDER
+import cy.txtracker.ui.common.fundingBucketLabel
 import cy.txtracker.ui.currency.AddCurrencyDialog
 import cy.txtracker.ui.currency.CurrencyPickerSheet
 import cy.txtracker.ui.currency.TripCreationDialog
@@ -101,9 +108,11 @@ fun EditTransactionSheet(
                 onShareChange = { shareMinor ->
                     viewModel.setShare(transactionId, shareMinor)
                 },
-                onReimbursedChange = { reimbursedMinor ->
-                    viewModel.setReimbursed(transactionId, reimbursedMinor)
+                onAddReimbursement = { amt, kind, person ->
+                    viewModel.addReimbursement(transactionId, amt, kind, person)
                 },
+                onUpdateReimbursement = { entry -> viewModel.updateReimbursement(entry) },
+                onRemoveReimbursement = { entry -> viewModel.removeReimbursement(entry) },
                 onDescriptionChange = { description ->
                     viewModel.setDescription(transactionId, description, learn = true)
                 },
@@ -150,7 +159,9 @@ private fun EditingContent(
     onCategoryChange: (Long?) -> Unit,
     onFundingSourceChange: (Long?) -> Unit,
     onShareChange: (Long?) -> Unit,
-    onReimbursedChange: (Long?) -> Unit,
+    onAddReimbursement: (Long, FundingSourceKind, String?) -> Unit,
+    onUpdateReimbursement: (ReimbursementEntry) -> Unit,
+    onRemoveReimbursement: (ReimbursementEntry) -> Unit,
     onDescriptionChange: (String?) -> Unit,
     onMerchantNoteChange: (String?) -> Unit,
     onMerchantChange: (String) -> Unit,
@@ -397,58 +408,69 @@ private fun EditingContent(
         }
 
         Text(text = "Reimbursed by others", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-
-        val reimbursedEnabled = tx.reimbursedMinor != null
-        // Local expansion state so the input shows immediately when the switch is turned on,
-        // before any valid amount has been persisted. Re-seeded per transaction id.
-        var reimbursedExpanded by remember(tx.id) { mutableStateOf(reimbursedEnabled) }
-        var reimbursedText by remember(tx.id) {
-            mutableStateOf(tx.reimbursedMinor?.let { formatAmount(it, "").trim().replace(",", "") } ?: "")
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (reimbursedEnabled) {
-                    "Others returned ${formatAmount(tx.reimbursedMinor!!, "").trim()} of ${formatAmount(tx.amountMinor, "").trim()} ${tx.currency}"
-                } else "Off",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Switch(
-                checked = reimbursedExpanded,
-                onCheckedChange = { checked ->
-                    reimbursedExpanded = checked
-                    if (!checked) {
-                        reimbursedText = ""
-                        onReimbursedChange(null)
-                    }
-                },
-            )
-        }
-        if (reimbursedExpanded) {
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = reimbursedText,
-                onValueChange = { reimbursedText = it },
-                label = { Text("Reimbursed amount (${tx.currency})") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            LaunchedEffect(reimbursedText) {
-                val parsed = parseAmountMinor(reimbursedText)
-                if (parsed != null &&
-                    isValidReimbursedMinor(parsed, tx.amountMinor) &&
-                    parsed != tx.reimbursedMinor
-                ) {
-                    onReimbursedChange(parsed)
+        Spacer(Modifier.height(4.dp))
+        run {
+            val entries = state.reimbursements
+            val totalReimbursed = entries.sumOf { it.amountMinor }
+            if (entries.isEmpty()) {
+                Text(
+                    text = "No reimbursements",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = "Others returned ${formatAmount(totalReimbursed, "").trim()} of " +
+                        "${formatAmount(tx.amountMinor, "").trim()} ${tx.currency}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                entries.forEach { entry ->
+                    ReimbursementRow(
+                        entry = entry,
+                        currency = tx.currency,
+                        onRemove = { onRemoveReimbursement(entry) },
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
             }
+
+            var newAmount by remember(tx.id, entries.size) { mutableStateOf("") }
+            var newKind by remember(tx.id, entries.size) { mutableStateOf(FundingSourceKind.DEBIT_BANK) }
+            var newPerson by remember(tx.id, entries.size) { mutableStateOf("") }
+
+            OutlinedTextField(
+                value = newAmount,
+                onValueChange = { newAmount = it },
+                label = { Text("Reimbursed amount (${tx.currency})") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            KindDropdown(selected = newKind, onSelect = { newKind = it })
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = newPerson,
+                onValueChange = { newPerson = it },
+                label = { Text("Who (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+
+            val parsedNew = parseAmountMinor(newAmount)
+            val prospective = entries.map { it.amountMinor } + (parsedNew ?: 0L)
+            val canAdd = parsedNew != null && isValidReimbursementTotal(prospective, tx.amountMinor)
+            Button(
+                onClick = {
+                    onAddReimbursement(parsedNew!!, newKind, newPerson.takeIf { it.isNotBlank() })
+                    newAmount = ""; newPerson = ""
+                },
+                enabled = canAdd,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Add reimbursement") }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -674,6 +696,58 @@ private fun CategoryPicker(
                     }
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun ReimbursementRow(
+    entry: ReimbursementEntry,
+    currency: String,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = buildString {
+                append("−").append(formatAmount(entry.amountMinor, "").trim()).append(" ")
+                append(currency).append(" → ").append(fundingBucketLabel(entry.destinationKind))
+                entry.personLabel?.let { append("  (").append(it).append(")") }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = cy.txtracker.ui.theme.ReimbursedAccent,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRemove) { Text("Remove") }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KindDropdown(
+    selected: FundingSourceKind,
+    onSelect: (FundingSourceKind) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = fundingBucketLabel(selected),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Landed in") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            KIND_ORDER.forEach { kind ->
+                DropdownMenuItem(
+                    text = { Text(fundingBucketLabel(kind)) },
+                    onClick = { onSelect(kind); expanded = false },
+                )
+            }
         }
     }
 }

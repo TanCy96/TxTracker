@@ -68,6 +68,22 @@ class BackupExporter @Inject constructor(
             repository.getAllTransactionsOnce()
         }
 
+        // Reimbursement entries, linked to their parent by dedupe key, scoped to exported txs.
+        val txIdToDedupe = txs.associate { it.id to it.notificationDedupeKey }
+        val exportedReimbursements = repository.getReimbursementEntriesByTransaction()
+            .flatMap { (txId, entries) ->
+                val dedupe = txIdToDedupe[txId] ?: return@flatMap emptyList<BackupReimbursementEntry>()
+                entries.map { e ->
+                    BackupReimbursementEntry(
+                        transactionDedupeKey = dedupe,
+                        amountMinor = e.amountMinor,
+                        destinationKind = e.destinationKind.name,
+                        personLabel = e.personLabel,
+                        createdAt = e.createdAt,
+                    )
+                }
+            }
+
         val fundingSources = fundingSourceDao.getAll()
         // Build a map from id to lookup key so tx.fundingSourceId resolves in O(1).
         val fundingSourceKeyById = fundingSources.associate { fs ->
@@ -186,6 +202,7 @@ class BackupExporter @Inject constructor(
                     createdAt = it.createdAt,
                 )
             },
+            reimbursementEntries = exportedReimbursements,
         )
 
         return JSON.encodeToString(backup)

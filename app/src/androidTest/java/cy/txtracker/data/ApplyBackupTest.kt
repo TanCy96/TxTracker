@@ -11,6 +11,7 @@ import cy.txtracker.export.BackupMerchantMapping
 import cy.txtracker.export.BackupApprovedSource
 import cy.txtracker.export.BackupMerchantNote
 import cy.txtracker.export.BackupTrackedCurrency
+import cy.txtracker.export.BackupReimbursementEntry
 import cy.txtracker.export.BackupTransaction
 import cy.txtracker.export.BackupTripWindow
 import cy.txtracker.export.BackupUserFacingSource
@@ -632,5 +633,110 @@ class ApplyBackupTest {
         assertThat(result.transactionsAdded).isEqualTo(1)
         val tx = dbRule.transactionDao.getAllOnce().single()
         assertThat(tx.categoryId).isNull()
+    }
+
+    @Test
+    fun applyBackup_v10_restores_two_reimbursement_entries_for_transaction() = runTest {
+        val repo = repo()
+        val dedupeKey = "v10-reimb-test"
+        val reimbursedTotal = 3000L
+
+        val backup = Backup(
+            version = 10,
+            exportedAt = now,
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 10000,
+                    currency = "MYR",
+                    merchantRaw = "RESTAURANT",
+                    merchantNormalized = "RESTAURANT",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = now,
+                    timeBucket = TimeBucket.MIDDAY,
+                    sourceApp = "manual",
+                    rawText = null,
+                    direction = Direction.OUT,
+                    createdAt = now,
+                    notificationDedupeKey = dedupeKey,
+                    needsVerification = false,
+                    reimbursedMinor = reimbursedTotal,
+                ),
+            ),
+            reimbursementEntries = listOf(
+                BackupReimbursementEntry(
+                    transactionDedupeKey = dedupeKey,
+                    amountMinor = 1500,
+                    destinationKind = "DEBIT_BANK",
+                    personLabel = "Alice",
+                    createdAt = now,
+                ),
+                BackupReimbursementEntry(
+                    transactionDedupeKey = dedupeKey,
+                    amountMinor = 1500,
+                    destinationKind = "E_WALLET",
+                    personLabel = "Bob",
+                    createdAt = now,
+                ),
+            ),
+        )
+
+        val result = repo.applyBackup(backup)
+
+        assertThat(result.transactionsAdded).isEqualTo(1)
+        val tx = dbRule.transactionDao.getAllOnce().single()
+        assertThat(tx.reimbursedMinor).isEqualTo(reimbursedTotal)
+        val entries = dbRule.db.reimbursementEntryDao().getForTransaction(tx.id)
+        assertThat(entries).hasSize(2)
+        assertThat(entries.map { it.amountMinor }).containsExactly(1500L, 1500L)
+    }
+
+    @Test
+    fun applyBackup_v9_synthesizes_single_debit_bank_entry_for_reimbursed_tx() = runTest {
+        val repo = repo()
+        val dedupeKey = "v9-synth-test"
+
+        val backup = Backup(
+            version = 9,
+            exportedAt = now,
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 8000,
+                    currency = "MYR",
+                    merchantRaw = "SHOP",
+                    merchantNormalized = "SHOP",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = now,
+                    timeBucket = TimeBucket.MIDDAY,
+                    sourceApp = "manual",
+                    rawText = null,
+                    direction = Direction.OUT,
+                    createdAt = now,
+                    notificationDedupeKey = dedupeKey,
+                    needsVerification = false,
+                    reimbursedMinor = 5000,
+                ),
+            ),
+            // reimbursementEntries omitted — v9-style backup
+        )
+
+        repo.applyBackup(backup)
+
+        val tx = dbRule.transactionDao.getAllOnce().single()
+        val entries = dbRule.db.reimbursementEntryDao().getForTransaction(tx.id)
+        assertThat(entries).hasSize(1)
+        val entry = entries.single()
+        assertThat(entry.amountMinor).isEqualTo(5000)
+        assertThat(entry.destinationKind).isEqualTo(FundingSourceKind.DEBIT_BANK)
+        assertThat(entry.personLabel).isNull()
     }
 }

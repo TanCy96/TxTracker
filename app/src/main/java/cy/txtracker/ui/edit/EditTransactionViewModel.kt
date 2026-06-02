@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cy.txtracker.data.Category
 import cy.txtracker.data.FundingSource
+import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.ReimbursementEntry
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
@@ -31,6 +33,7 @@ sealed interface EditUiState {
         val fundingSource: FundingSource? = null,
         /** SL Debit account (for the default %), or null if unavailable. */
         val slDebitAccount: cy.txtracker.data.SlDebitAccount? = null,
+        val reimbursements: List<ReimbursementEntry> = emptyList(),
     ) : EditUiState
 }
 
@@ -58,6 +61,7 @@ class EditTransactionViewModel @Inject constructor(
                     availableFundingSources = sources,
                     fundingSource = sources.find { it.id == tx.fundingSourceId },
                     slDebitAccount = slAccount,
+                    reimbursements = repository.getReimbursementEntries(transactionId),
                 )
             }
         }
@@ -114,15 +118,34 @@ class EditTransactionViewModel @Inject constructor(
         }
     }
 
-    /** Sets (or clears, when [reimbursedMinor] is null) the reimbursed-by-others portion. */
-    fun setReimbursed(transactionId: Long, reimbursedMinor: Long?) {
+    fun addReimbursement(transactionId: Long, amountMinor: Long, destinationKind: FundingSourceKind, personLabel: String?) {
         viewModelScope.launch {
-            repository.setTransactionReimbursed(transactionId, reimbursedMinor)
-            val refreshed = repository.getTransaction(transactionId) ?: return@launch
-            val current = _state.value
-            if (current is EditUiState.Editing) {
-                _state.value = current.copy(transaction = refreshed)
-            }
+            repository.addReimbursementEntry(transactionId, amountMinor, destinationKind, personLabel)
+            refreshReimbursements(transactionId)
+        }
+    }
+
+    fun updateReimbursement(entry: ReimbursementEntry) {
+        viewModelScope.launch {
+            repository.updateReimbursementEntry(entry)
+            refreshReimbursements(entry.transactionId)
+        }
+    }
+
+    fun removeReimbursement(entry: ReimbursementEntry) {
+        viewModelScope.launch {
+            repository.deleteReimbursementEntry(entry)
+            refreshReimbursements(entry.transactionId)
+        }
+    }
+
+    /** Reloads both the entry list and the transaction (for the cached reimbursedMinor). */
+    private suspend fun refreshReimbursements(transactionId: Long) {
+        val tx = repository.getTransaction(transactionId) ?: return
+        val entries = repository.getReimbursementEntries(transactionId)
+        val current = _state.value
+        if (current is EditUiState.Editing) {
+            _state.value = current.copy(transaction = tx, reimbursements = entries)
         }
     }
 
