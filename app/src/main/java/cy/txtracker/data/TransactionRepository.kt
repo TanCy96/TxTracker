@@ -371,10 +371,6 @@ class TransactionRepository @Inject constructor(
         transactionDao.updateFundingSource(txId, fundingSourceId)
     }
 
-    suspend fun setTransactionReimbursed(txId: Long, reimbursedMinor: Long?) {
-        transactionDao.updateReimbursed(txId, reimbursedMinor)
-    }
-
     // Reimbursement entries (multi-person). The cached Transaction.reimbursedMinor is kept in
     // step after every mutation so all net-spend SQL stays unchanged.
 
