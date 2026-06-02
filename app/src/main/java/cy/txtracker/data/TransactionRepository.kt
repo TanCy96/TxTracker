@@ -1169,24 +1169,51 @@ class TransactionRepository @Inject constructor(
      *     normal use because the category-create pass creates everything referenced.
      */
     suspend fun applyBackup(backup: Backup): ImportResult = database.withTransaction {
-        // 1. Insert any backup categories whose names aren't already present locally.
-        val existingCategories = categoryDao.getAll()
-        val existingByName = existingCategories.associateBy { it.name }
-        var nextSortOrder = (existingCategories.maxOfOrNull { it.sortOrder } ?: -1) + 1
-
+        // 1. Categories: the backup is AUTHORITATIVE. Make the local set match the backup's
+        //    exactly — categories absent from the backup are deleted, those present are
+        //    upserted (updated in place by name so referencing rows keep their link, or
+        //    inserted when new). This stops seed defaults the user deleted/renamed on the
+        //    source device from surviving a restore: a fresh install re-seeds the 10 defaults
+        //    in onCreate, and the old additive merge never removed the ones the backup omitted.
+        //
+        //    Guard: an EMPTY backup category list leaves the local set untouched. Real exports
+        //    always carry the full category list (BackupExporter exports getAllCategoriesOnce),
+        //    so an empty list signals a partial/degenerate payload — never an intent to wipe.
+        //
+        //    Deletions are FK-safe: transactions.categoryId is ON DELETE SET NULL (rows fall
+        //    back to Unverified) and the merchant/category description mapping tables CASCADE.
+        //    Backup mappings and transactions are re-resolved by category name in later steps.
         var categoriesCreated = 0
-        for (bc in backup.categories) {
-            if (bc.name in existingByName) continue
-            categoryDao.insert(
-                Category(
-                    name = bc.name,
-                    color = bc.color,
-                    isCustom = bc.isCustom,
-                    sortOrder = nextSortOrder++,
-                    keywordPattern = bc.keywordPattern,
-                ),
-            )
-            categoriesCreated++
+        if (backup.categories.isNotEmpty()) {
+            val backupNames = backup.categories.mapTo(mutableSetOf()) { it.name }
+            for (local in categoryDao.getAll()) {
+                if (local.name !in backupNames) categoryDao.delete(local)
+            }
+            val survivingByName = categoryDao.getAll().associateBy { it.name }
+            for (bc in backup.categories) {
+                val local = survivingByName[bc.name]
+                if (local == null) {
+                    categoryDao.insert(
+                        Category(
+                            name = bc.name,
+                            color = bc.color,
+                            isCustom = bc.isCustom,
+                            sortOrder = bc.sortOrder,
+                            keywordPattern = bc.keywordPattern,
+                        ),
+                    )
+                    categoriesCreated++
+                } else {
+                    categoryDao.update(
+                        local.copy(
+                            color = bc.color,
+                            isCustom = bc.isCustom,
+                            sortOrder = bc.sortOrder,
+                            keywordPattern = bc.keywordPattern,
+                        ),
+                    )
+                }
+            }
         }
 
         // 2. Refresh the name → category map so newly inserted ones are referenceable.

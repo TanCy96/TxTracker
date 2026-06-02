@@ -1,4 +1,6 @@
-﻿plugins {
+﻿import java.util.Properties
+
+plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
@@ -6,6 +8,15 @@
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+// Release signing secrets live in local.properties (git-ignored), never in the repo.
+// Define RELEASE_STORE_FILE / RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD
+// there to produce a signed release APK; without them, release builds stay unsigned.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val releaseStoreFile: String? = localProps.getProperty("RELEASE_STORE_FILE")
 
 android {
     namespace = "cy.txtracker"
@@ -21,10 +32,26 @@ android {
         testInstrumentationRunner = "cy.txtracker.HiltTestRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile != null) {
+                storeFile = file(releaseStoreFile)
+                storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Only sign when the keystore is configured; otherwise leave the build unsigned
+            // (so compile-only checks on machines without the keystore still work).
+            if (releaseStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"

@@ -53,6 +53,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -511,23 +513,60 @@ private fun DeleteCategoryDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColorPickerRow(selected: Int, onSelect: (Int) -> Unit) {
+    var showCustomPicker by remember { mutableStateOf(false) }
+    val isCustomSelected = selected !in DefaultCategoryColors
+
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         DefaultCategoryColors.forEach { color ->
-            val isSelected = color == selected
-            val borderColor = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .background(Color(color), CircleShape)
-                    .border(width = 2.dp, color = borderColor, shape = CircleShape)
-                    .clickable { onSelect(color) },
+            ColorSwatch(color = color, selected = color == selected, onClick = { onSelect(color) })
+        }
+        // A custom color the user previously chose (not in the preset grid) stays visible and
+        // selected, and re-opens the picker when tapped.
+        if (isCustomSelected) {
+            ColorSwatch(color = selected, selected = true, onClick = { showCustomPicker = true })
+        }
+        // "Custom color" opener — a rainbow swatch that launches the HSV picker.
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(Brush.sweepGradient(RainbowSwatchColors))
+                .border(width = 2.dp, color = MaterialTheme.colorScheme.outline, shape = CircleShape)
+                .clickable { showCustomPicker = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "Custom color",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
             )
         }
     }
+
+    if (showCustomPicker) {
+        CustomColorPickerDialog(
+            initialColor = selected,
+            onConfirm = { onSelect(it); showCustomPicker = false },
+            onDismiss = { showCustomPicker = false },
+        )
+    }
+}
+
+@Composable
+private fun ColorSwatch(color: Int, selected: Boolean, onClick: () -> Unit) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.onSurface else Color.Transparent
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .background(Color(color), CircleShape)
+            .border(width = 2.dp, color = borderColor, shape = CircleShape)
+            .clickable(onClick = onClick),
+    )
 }
 
 private data class OverlapInfo(val token: String, val otherCategoryName: String)
@@ -568,7 +607,8 @@ private fun detectOverlap(
     return null
 }
 
-// Material-style palette used for both seeded categories and the new-category color picker.
+// Material-style palette of quick-pick swatches. The custom picker (rainbow swatch) covers
+// any color beyond these. The first 10 match the seeded category colors in TxDatabase.
 private val DefaultCategoryColors = listOf(
     0xFFEF5350.toInt(), // red
     0xFF66BB6A.toInt(), // green
@@ -580,4 +620,16 @@ private val DefaultCategoryColors = listOf(
     0xFF26A69A.toInt(), // teal
     0xFFEC407A.toInt(), // pink
     0xFF78909C.toInt(), // blue grey
+    0xFF5C6BC0.toInt(), // indigo
+    0xFF29B6F6.toInt(), // light blue
+    0xFF26C6DA.toInt(), // cyan
+    0xFF9CCC65.toInt(), // light green
+    0xFFD4E157.toInt(), // lime
+    0xFFFFA726.toInt(), // orange
+    0xFF7E57C2.toInt(), // deep purple
+    0xFF455A64.toInt(), // dark blue grey
 )
+
+// Rainbow gradient shown on the "custom color" opener swatch.
+private val RainbowSwatchColors =
+    listOf(0, 60, 120, 180, 240, 300, 360).map { Color(hsvToColorInt(it.toFloat(), 1f, 1f)) }
