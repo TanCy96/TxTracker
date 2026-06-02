@@ -1376,6 +1376,7 @@ class TransactionRepository @Inject constructor(
         //     local transactions always win on conflict. Backup transactions whose
         //     categoryName doesn't resolve to a local category get inserted with
         //     categoryId = null (Unverified, same as a fresh capture).
+        val newTxIdByDedupe = mutableMapOf<String, Long>()
         var transactionsAdded = 0
         for (bt in backup.transactions) {
             val categoryId = bt.categoryName?.let { categoriesByName[it]?.id }
@@ -1402,6 +1403,46 @@ class TransactionRepository @Inject constructor(
                 ),
             )
             if (rowId >= 0) transactionsAdded++
+            if (rowId >= 0) newTxIdByDedupe[bt.notificationDedupeKey] = rowId
+        }
+
+        // 13. Reimbursement entries. Only attach to transactions THIS import inserted
+        //     (newTxIdByDedupe) — when a local tx won the dedupe conflict, its entries stay
+        //     local. v10 backups carry explicit entries; for older backups (or any inserted
+        //     reimbursed tx with no matching entries) synthesize a single DEBIT_BANK entry so
+        //     the funding columns reconcile, mirroring the v12->v13 migration backfill.
+        val entriesByDedupe = backup.reimbursementEntries.groupBy { it.transactionDedupeKey }
+        for ((dedupe, newId) in newTxIdByDedupe) {
+            val backupEntries = entriesByDedupe[dedupe]
+            if (!backupEntries.isNullOrEmpty()) {
+                for (be in backupEntries) {
+                    val kind = runCatching { FundingSourceKind.valueOf(be.destinationKind) }.getOrNull()
+                        ?: FundingSourceKind.DEBIT_BANK
+                    reimbursementEntryDao.insert(
+                        ReimbursementEntry(
+                            transactionId = newId,
+                            amountMinor = be.amountMinor,
+                            destinationKind = kind,
+                            personLabel = be.personLabel,
+                            createdAt = be.createdAt,
+                        ),
+                    )
+                }
+            } else {
+                val bt = backup.transactions.firstOrNull { it.notificationDedupeKey == dedupe }
+                val reimbursed = bt?.reimbursedMinor
+                if (bt != null && reimbursed != null && reimbursed > 0) {
+                    reimbursementEntryDao.insert(
+                        ReimbursementEntry(
+                            transactionId = newId,
+                            amountMinor = reimbursed,
+                            destinationKind = FundingSourceKind.DEBIT_BANK,
+                            personLabel = null,
+                            createdAt = bt.createdAt,
+                        ),
+                    )
+                }
+            }
         }
 
         ImportResult(

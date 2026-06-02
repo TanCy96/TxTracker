@@ -47,4 +47,27 @@ class ReimbursedBackupTest {
         val decoded = json.decodeFromString<BackupTransaction>(legacy)
         assertThat(decoded.reimbursedMinor).isNull()
     }
+
+    @Test
+    fun reimbursement_entry_survives_round_trip() {
+        val e = BackupReimbursementEntry(
+            transactionDedupeKey = "k",
+            amountMinor = 1000,
+            destinationKind = "DEBIT_BANK",
+            personLabel = "Person A",
+            createdAt = Instant.parse("2026-05-09T04:30:00Z"),
+        )
+        val decoded = json.decodeFromString<BackupReimbursementEntry>(json.encodeToString(e))
+        assertThat(decoded.amountMinor).isEqualTo(1000)
+        assertThat(decoded.destinationKind).isEqualTo("DEBIT_BANK")
+        assertThat(decoded.personLabel).isEqualTo("Person A")
+    }
+
+    @Test
+    fun backup_defaults_reimbursement_entries_to_empty_for_v9() {
+        val v9 = """{"version":9,"exportedAt":"2026-05-09T04:30:00Z","categories":[],
+            "merchantMappings":[],"merchantDescriptionMappings":[],"categoryDescriptionMappings":[]}""".trimIndent()
+        val decoded = json.decodeFromString<Backup>(v9)
+        assertThat(decoded.reimbursementEntries).isEmpty()
+    }
 }
