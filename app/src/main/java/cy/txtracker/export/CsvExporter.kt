@@ -53,9 +53,10 @@ class CsvExporter @Inject constructor(
         )
         val categories = repository.getAllCategoriesOnce()
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
+        val reimbursementsByTxId = repository.getReimbursementEntriesByTransaction()
         val dir = exportDir()
         val file = File(dir, csvFileName(currency, range))
-        file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, it) }
+        file.outputStream().use { writeCsv(transactions, categories, fundingSourcesById, reimbursementsByTxId, it) }
         return uriFor(file)
     }
 
@@ -67,6 +68,7 @@ class CsvExporter @Inject constructor(
     suspend fun exportAllCurrenciesZip(range: ExportDateRange? = null): Uri {
         val categories = repository.getAllCategoriesOnce()
         val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
+        val reimbursementsByTxId = repository.getReimbursementEntriesByTransaction()
         val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
         val codes = (listOf("MYR") + trackedCodes).distinct()
 
@@ -77,7 +79,7 @@ class CsvExporter @Inject constructor(
                 val rows = filterByRange(repository.getAllTransactionsOnceForCurrency(code), range)
                 if (rows.isEmpty()) continue
                 zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
-                writeCsv(rows, categories, fundingSourcesById, zip)
+                writeCsv(rows, categories, fundingSourcesById, reimbursementsByTxId, zip)
                 zip.closeEntry()
             }
         }
@@ -149,9 +151,10 @@ fun writeCsv(
     transactions: List<Transaction>,
     categories: List<Category>,
     fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
+    reimbursementsByTxId: Map<Long, List<ReimbursementEntry>> = emptyMap(),
     output: OutputStream,
 ) {
-    val csv = buildCsv(transactions, categories, fundingSourcesById)
+    val csv = buildCsv(transactions, categories, fundingSourcesById, reimbursementsByTxId)
     output.write(csv.toByteArray(Charsets.UTF_8))
 }
 
