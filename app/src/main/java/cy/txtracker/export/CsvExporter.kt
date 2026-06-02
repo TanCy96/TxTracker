@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import cy.txtracker.data.Category
 import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceKind
+import cy.txtracker.data.ReimbursementEntry
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
@@ -25,17 +26,16 @@ import kotlinx.datetime.toLocalDateTime
 /**
  * Wide-format CSV export. Columns:
  *
- *     date, description, Source, <each category in sortOrder>, Unverified
+ *     date, description, <each category in sortOrder>, Unverified,
+ *     Credit Card, E-Wallet, Debit/Transfer, Cash
  *
- * Each transaction row places its amount in exactly one category column (or `Unverified`
+ * Each transaction row places its NET amount in exactly one category column (or `Unverified`
  * when categoryId is null); the other category columns are blank. This makes summing each
  * column in a spreadsheet give per-category totals directly.
  *
- * The `Source` column shows the funding-source bucket label(s) for all transactions in that
- * day. When all transactions share the same bucket, the single label is shown (e.g.
- * `Credit Card`). When the day has transactions from multiple buckets, the distinct labels
- * are joined with `" / "` in canonical kind order. Unlinked transactions contribute nothing to
- * the Source cell.
+ * The four funding-bucket columns carry the GROSS amount of each transaction funded from that
+ * bucket (positive), plus each reimbursement entry as a negative in its destination bucket.
+ * Unlinked transactions contribute to no funding column.
  */
 @Singleton
 class CsvExporter @Inject constructor(
@@ -165,18 +165,22 @@ fun writeCsv(
  * **One row per day**, not per transaction. For each day:
  *   - The `description` column joins all non-blank descriptions with `", "`, in
  *     chronological order. Blanks are skipped.
- *   - The `Source` column shows the distinct funding-source bucket label(s) for all
- *     transactions in that day, joined with `" / "` in canonical kind order. Unlinked
- *     transactions (null fundingSourceId or unresolved id) are excluded from the cell.
  *   - Each category column is empty if the day had no tx in that category; the literal
  *     amount if exactly one; a spreadsheet formula `=A+B+C` if more than one. The formula
- *     evaluates to the sum but a single click on the cell reveals the individual values,
- *     which matches the user's mental model of "see the total but keep the details".
+ *     evaluates to the net spend but a single click on the cell reveals the individual
+ *     values, which matches the user's mental model of "see the total but keep the details".
+ *     Reimbursement entries are subtracted inline (e.g. `=100.00-10.00-12.00`).
+ *   - The four funding-bucket columns (Credit Card, E-Wallet, Debit/Transfer, Cash) carry
+ *     the GROSS amount of each transaction funded from that bucket (positive), plus each
+ *     reimbursement entry as a negative in its destination bucket. A cell with a single term
+ *     is a bare literal; multiple terms form a "=" formula. Unlinked transactions contribute
+ *     to no funding column.
  */
 fun buildCsv(
     transactions: List<Transaction>,
     categories: List<Category>,
     fundingSourcesById: Map<Long, FundingSource> = emptyMap(),
+    reimbursementsByTxId: Map<Long, List<ReimbursementEntry>> = emptyMap(),
 ): String {
     val orderedCategories = categories.sortedWith(
         compareBy<Category> { it.sortOrder }.thenBy { it.name },
@@ -185,14 +189,13 @@ fun buildCsv(
 
     val sb = StringBuilder()
 
-    // Header.
-    sb.append("date,description,Source")
-    for (c in orderedCategories) {
-        sb.append(',').append(csvEscape(c.name))
-    }
-    sb.append(",Unverified\n")
+    // Header: date, description, <categories>, Unverified, then the four funding buckets.
+    sb.append("date,description")
+    for (c in orderedCategories) sb.append(',').append(csvEscape(c.name))
+    sb.append(",Unverified")
+    for (kind in CANONICAL_KIND_ORDER) sb.append(',').append(csvEscape(bucketLabel(kind)))
+    sb.append('\n')
 
-    // Group by day (Asia/Kuala_Lumpur). Sorted ascending so the export reads chronologically.
     val byDate: Map<LocalDate, List<Transaction>> = transactions
         .groupBy { it.occurredAt.toLocalDateTime(MalaysiaTimeZone).date }
         .toSortedMap()
@@ -206,27 +209,30 @@ fun buildCsv(
         val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }
         sb.append(',').append(csvEscape(descriptions.joinToString(", ")))
 
-        // Source column: distinct bucket labels for the day, in canonical kind order.
-        val dayBuckets = txs
-            .mapNotNull { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } }
-            .distinct()
-            .sortedBy { CANONICAL_KIND_ORDER.indexOf(it) }
-        val sourceCell = dayBuckets.joinToString(" / ") { bucketLabel(it) }
-        sb.append(',').append(csvEscape(sourceCell))
-
-        // Per-category columns.
+        // Per-category columns — net (gross minus each reimbursement entry inline).
         for (c in orderedCategories) {
             sb.append(',')
-            val terms = txs.filter { it.categoryId == c.id }.map { it.amountMinor to it.reimbursedMinor }
-            sb.append(buildAmountCell(terms))
+            sb.append(buildAmountCell(txs.filter { it.categoryId == c.id }.map { categoryTerm(it, reimbursementsByTxId) }))
         }
 
-        // Unverified column: null categoryId OR a categoryId pointing at a deleted category.
+        // Unverified column.
         sb.append(',')
-        val unverifiedTerms = txs
-            .filter { it.categoryId == null || categoryById[it.categoryId] == null }
-            .map { it.amountMinor to it.reimbursedMinor }
-        sb.append(buildAmountCell(unverifiedTerms))
+        val unverified = txs.filter { it.categoryId == null || categoryById[it.categoryId] == null }
+        sb.append(buildAmountCell(unverified.map { categoryTerm(it, reimbursementsByTxId) }))
+
+        // Funding-bucket columns: gross positives (by the tx's source kind) + reimbursement
+        // negatives (by each entry's destinationKind), in canonical order. Positives first.
+        for (kind in CANONICAL_KIND_ORDER) {
+            sb.append(',')
+            val positives = txs
+                .filter { tx -> tx.fundingSourceId?.let { fundingSourcesById[it]?.kind } == kind }
+                .map { "+${formatAmount(it.amountMinor)}" }
+            val negatives = txs
+                .flatMap { reimbursementsByTxId[it.id] ?: emptyList() }
+                .filter { it.destinationKind == kind }
+                .map { "-${formatAmount(it.amountMinor)}" }
+            sb.append(csvEscape(buildFundingCell(positives + negatives)))
+        }
 
         sb.append('\n')
     }
@@ -255,21 +261,43 @@ private val CANONICAL_KIND_ORDER = listOf(
 )
 
 /**
- * Builds the contents of a single category column for a single day. Each term is a
- * transaction's `amount`, or `amount-reimbursed` when others reimbursed part of it.
- *   - empty list                       → blank
- *   - one plain amount                 → "12.50"
- *   - one reimbursed amount            → "=100.00-50.00"  (a formula, since it subtracts)
- *   - many                             → "=12.50+100.00-50.00+5.00"
- * The cell always evaluates to the net spend for the day in that category.
+ * A category term is `(grossAmountMinor, reimbursementAmountsMinor)`. The cell subtracts
+ * each reimbursement inline so it evaluates to net spend.
  */
-private fun buildAmountCell(terms: List<Pair<Long, Long?>>): String = when {
+private fun categoryTerm(
+    tx: Transaction,
+    reimbursementsByTxId: Map<Long, List<ReimbursementEntry>>,
+): Pair<Long, List<Long>> =
+    tx.amountMinor to (reimbursementsByTxId[tx.id]?.map { it.amountMinor } ?: emptyList())
+
+/**
+ * Builds one category column for a day:
+ *   - empty                                  -> ""
+ *   - one plain term (no reimbursement)      -> "12.50"
+ *   - anything else                          -> "=t1+t2+..."  where a reimbursed term is
+ *                                              "amount-r1-r2"  (e.g. "=100.00-10.00-12.00+30.00")
+ */
+private fun buildAmountCell(terms: List<Pair<Long, List<Long>>>): String = when {
     terms.isEmpty() -> ""
-    terms.size == 1 && terms[0].second == null -> formatAmount(terms[0].first)
-    else -> terms.joinToString(prefix = "=", separator = "+") { (amount, reimbursed) ->
-        if (reimbursed != null) "${formatAmount(amount)}-${formatAmount(reimbursed)}"
-        else formatAmount(amount)
+    terms.size == 1 && terms[0].second.isEmpty() -> formatAmount(terms[0].first)
+    else -> terms.joinToString(prefix = "=", separator = "+") { (amount, reimbs) ->
+        buildString {
+            append(formatAmount(amount))
+            reimbs.forEach { append('-').append(formatAmount(it)) }
+        }
     }
+}
+
+/**
+ * Builds one funding-bucket column from signed terms ("+100.00", "-10.00"):
+ *   - empty      -> ""
+ *   - one term   -> the term with any leading '+' stripped ("100.00" or "-10.00")
+ *   - many terms -> "=" + concatenation with the leading '+' stripped ("=100.00-10.00")
+ */
+private fun buildFundingCell(signedTerms: List<String>): String = when {
+    signedTerms.isEmpty() -> ""
+    signedTerms.size == 1 -> signedTerms[0].removePrefix("+")
+    else -> "=" + signedTerms.joinToString(separator = "").removePrefix("+")
 }
 
 /** ISO-8601 date. */
