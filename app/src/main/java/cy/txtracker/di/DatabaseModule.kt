@@ -89,6 +89,7 @@ object DatabaseModule {
                 MIGRATION_9_10,
                 MIGRATION_10_11,
                 MIGRATION_11_12,
+                MIGRATION_12_13,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -446,5 +447,50 @@ private val MIGRATION_10_11 = object : Migration(10, 11) {
 private val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `transactions` ADD COLUMN `reimbursedMinor` INTEGER DEFAULT NULL")
+    }
+}
+
+/**
+ * v13 adds the `reimbursement_entries` child table for multi-person reimbursements. Each
+ * row records an amount, the destination funding bucket, and an optional person label.
+ * `Transaction.reimbursedMinor` is retained as the cached sum of a transaction's entries.
+ *
+ * Backfill: every existing reimbursed transaction (reimbursedMinor > 0) gets ONE entry with
+ * destinationKind = 'DEBIT_BANK' (bank transfer is the common reimbursement channel) so the
+ * CSV funding columns reconcile for pre-v13 data. reimbursedMinor itself is left unchanged
+ * (it already equals the new sum). See
+ * docs/superpowers/specs/2026-06-02-csv-funding-columns-reimbursement-design.md.
+ */
+private val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `reimbursement_entries` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `transactionId` INTEGER NOT NULL,
+                `amountMinor` INTEGER NOT NULL,
+                `destinationKind` TEXT NOT NULL,
+                `personLabel` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`transactionId`) REFERENCES `transactions`(`id`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_reimbursement_entries_transactionId` " +
+                "ON `reimbursement_entries`(`transactionId`)",
+        )
+        // Backfill one DEBIT_BANK entry per existing reimbursed transaction. createdAt copies
+        // the transaction's occurredAt (epoch-ms Long, matching the Instant converter).
+        db.execSQL(
+            """
+            INSERT INTO `reimbursement_entries`
+                (`transactionId`, `amountMinor`, `destinationKind`, `personLabel`, `createdAt`)
+            SELECT `id`, `reimbursedMinor`, 'DEBIT_BANK', NULL, `occurredAt`
+            FROM `transactions`
+            WHERE `reimbursedMinor` IS NOT NULL AND `reimbursedMinor` > 0
+            """.trimIndent(),
+        )
     }
 }
