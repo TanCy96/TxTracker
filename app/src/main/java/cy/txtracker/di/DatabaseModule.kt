@@ -8,6 +8,7 @@ import cy.txtracker.data.CapturedNotificationDao
 import cy.txtracker.data.CategoryDao
 import cy.txtracker.data.DescriptionMappingDao
 import cy.txtracker.data.FundingSourceDao
+import cy.txtracker.data.ReimbursementEntryDao
 import cy.txtracker.data.MerchantMappingDao
 import cy.txtracker.data.MerchantNoteDao
 import cy.txtracker.data.PackageTextRewriteDao
@@ -138,6 +139,10 @@ object DatabaseModule {
 
     @Provides
     fun provideFundingSourceDao(db: TxDatabase): FundingSourceDao = db.fundingSourceDao()
+
+    @Provides
+    fun provideReimbursementEntryDao(db: TxDatabase): ReimbursementEntryDao =
+        db.reimbursementEntryDao()
 }
 
 /**

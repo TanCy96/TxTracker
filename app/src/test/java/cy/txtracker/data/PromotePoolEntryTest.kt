@@ -159,6 +159,7 @@ class PromotePoolEntryTest {
         tripWindowDao = mockk(relaxed = true),
         packageTextRewriteDao = mockk(relaxed = true),
         fundingSourceDao = mockk(relaxed = true),
+        reimbursementEntryDao = mockk(relaxed = true),
         categorizationEngine = mockk<CategorizationEngine>(relaxed = true),
         descriptionEngine = mockk<DescriptionEngine>(relaxed = true),
         heuristicExtractor = mockk(relaxed = true),

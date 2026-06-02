@@ -80,6 +80,7 @@ class TransactionRepository @Inject constructor(
     private val tripWindowDao: TripWindowDao,
     private val packageTextRewriteDao: PackageTextRewriteDao,
     private val fundingSourceDao: FundingSourceDao,
+    private val reimbursementEntryDao: ReimbursementEntryDao,
     private val categorizationEngine: CategorizationEngine,
     private val descriptionEngine: DescriptionEngine,
     private val heuristicExtractor: HeuristicExtractor,
@@ -112,6 +113,7 @@ class TransactionRepository @Inject constructor(
         tripWindowDao = tripWindowDao,
         packageTextRewriteDao = database.packageTextRewriteDao(),
         fundingSourceDao = database.fundingSourceDao(),
+        reimbursementEntryDao = database.reimbursementEntryDao(),
         categorizationEngine = CategorizationEngine(merchantMappingDao, categoryDao),
         descriptionEngine = DescriptionEngine(descriptionMappingDao),
         heuristicExtractor = HeuristicExtractor(),
@@ -371,6 +373,56 @@ class TransactionRepository @Inject constructor(
 
     suspend fun setTransactionReimbursed(txId: Long, reimbursedMinor: Long?) {
         transactionDao.updateReimbursed(txId, reimbursedMinor)
+    }
+
+    // Reimbursement entries (multi-person). The cached Transaction.reimbursedMinor is kept in
+    // step after every mutation so all net-spend SQL stays unchanged.
+
+    fun observeReimbursementEntries(txId: Long): Flow<List<ReimbursementEntry>> =
+        reimbursementEntryDao.observeForTransaction(txId)
+
+    suspend fun getReimbursementEntries(txId: Long): List<ReimbursementEntry> =
+        reimbursementEntryDao.getForTransaction(txId)
+
+    /** All entries across all transactions, grouped by transactionId. Used by CSV export. */
+    suspend fun getReimbursementEntriesByTransaction(): Map<Long, List<ReimbursementEntry>> =
+        reimbursementEntryDao.getAll().groupBy { it.transactionId }
+
+    suspend fun addReimbursementEntry(
+        txId: Long,
+        amountMinor: Long,
+        destinationKind: FundingSourceKind,
+        personLabel: String?,
+        now: Instant = Clock.System.now(),
+    ) = database.withTransaction {
+        reimbursementEntryDao.insert(
+            ReimbursementEntry(
+                transactionId = txId,
+                amountMinor = amountMinor,
+                destinationKind = destinationKind,
+                personLabel = personLabel?.trim()?.takeIf { it.isNotEmpty() },
+                createdAt = now,
+            ),
+        )
+        recomputeReimbursedTotal(txId)
+    }
+
+    suspend fun updateReimbursementEntry(entry: ReimbursementEntry) = database.withTransaction {
+        reimbursementEntryDao.update(
+            entry.copy(personLabel = entry.personLabel?.trim()?.takeIf { it.isNotEmpty() }),
+        )
+        recomputeReimbursedTotal(entry.transactionId)
+    }
+
+    suspend fun deleteReimbursementEntry(entry: ReimbursementEntry) = database.withTransaction {
+        reimbursementEntryDao.delete(entry)
+        recomputeReimbursedTotal(entry.transactionId)
+    }
+
+    /** Re-derives and writes the cached `Transaction.reimbursedMinor` from the entry rows. */
+    private suspend fun recomputeReimbursedTotal(txId: Long) {
+        val total = reimbursementEntryDao.totalForTransaction(txId)
+        transactionDao.updateReimbursed(txId, total.takeIf { it > 0 })
     }
 
     /**
