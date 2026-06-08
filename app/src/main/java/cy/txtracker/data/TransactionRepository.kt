@@ -1007,11 +1007,17 @@ class TransactionRepository @Inject constructor(
     suspend fun restoreTransaction(tx: Transaction, reimbursements: List<ReimbursementEntry>) =
         database.withTransaction { restoreTransactionBody(tx, reimbursements) }
 
+    /**
+     * Body of [restoreTransaction], extracted so unit tests can drive it directly without
+     * mocking Room's `withTransaction` extension. Production callers MUST go through
+     * [restoreTransaction] so the parent + children insert runs atomically.
+     */
     internal suspend fun restoreTransactionBody(
         tx: Transaction,
         reimbursements: List<ReimbursementEntry>,
     ) {
         transactionDao.insert(tx)
+        // Children were cascade-deleted with the parent, so no id conflict is possible on re-insert.
         reimbursements.forEach { reimbursementEntryDao.insert(it) }
     }
 
