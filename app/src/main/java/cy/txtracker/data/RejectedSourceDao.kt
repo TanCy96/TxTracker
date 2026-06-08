@@ -20,6 +20,9 @@ interface RejectedSourceDao {
     @Query("SELECT packageName FROM rejected_sources")
     suspend fun getAllPackageNamesOnce(): List<String>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM rejected_sources WHERE packageName = :packageName)")
+    suspend fun isRejected(packageName: String): Boolean
+
     @Query("DELETE FROM rejected_sources WHERE packageName = :packageName")
     suspend fun delete(packageName: String)
 }

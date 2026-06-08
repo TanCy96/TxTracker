@@ -59,6 +59,7 @@ class TxNotificationListener : NotificationListenerService() {
                 val rewritten = rewriteEngine.apply(sbn.packageName, rawText)
                 val symbolDefaults = trackedCurrencyDao.getDefaultsForSymbol()
                     .associate { it.displaySymbol to it.code }
+                val isRejected = repository.isPackageRejected(sbn.packageName)
 
                 when (val decision = capturePipeline.decide(
                     packageName = sbn.packageName,
@@ -67,6 +68,7 @@ class TxNotificationListener : NotificationListenerService() {
                     postedAt = postedAt,
                     symbolDefaults = symbolDefaults,
                     capturedAt = Clock.System.now(),
+                    isRejected = isRejected,
                 )) {
                     is CaptureDecision.Parsed -> {
                         val rowId = insert(

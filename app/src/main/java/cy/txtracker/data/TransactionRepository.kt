@@ -277,6 +277,10 @@ class TransactionRepository @Inject constructor(
     fun observeRejectedPackages(): Flow<List<RejectedSource>> =
         rejectedSourceDao.observeAll()
 
+    /** True when the user has explicitly rejected this package as a notification source. */
+    suspend fun isPackageRejected(packageName: String): Boolean =
+        rejectedSourceDao.isRejected(packageName)
+
     fun observeAllSourcePackages(): Flow<List<String>> =
         transactionDao.observeDistinctSourceApps()
 
