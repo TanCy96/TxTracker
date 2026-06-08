@@ -31,6 +31,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,12 +58,14 @@ import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.ui.common.KIND_ORDER
 import cy.txtracker.ui.common.fundingBucketLabel
 import cy.txtracker.ui.currency.TripCreationDialog
+import cy.txtracker.ui.edit.DeletedTransaction
 import cy.txtracker.ui.edit.EditTransactionSheet
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
 import cy.txtracker.ui.format.formatYearMonth
 import cy.txtracker.ui.manual.AddManualSheet
+import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
 import kotlinx.datetime.plus
@@ -72,9 +79,12 @@ fun HomeRoute(
     var editingTxId by remember { mutableStateOf<Long?>(null) }
     var showAddSheet by remember { mutableStateOf(false) }
     var tripDialogOffer by remember { mutableStateOf<BannerOffer?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     HomeScreen(
         state = state,
+        snackbarHostState = snackbarHostState,
         onPrevMonth = viewModel::previousMonth,
         onNextMonth = viewModel::nextMonth,
         onFilterChange = viewModel::setFilter,
@@ -90,6 +100,18 @@ fun HomeRoute(
         EditTransactionSheet(
             transactionId = id,
             onDismiss = { editingTxId = null },
+            onDeleted = { snapshot ->
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Transaction deleted",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.restoreTransaction(snapshot)
+                    }
+                }
+            },
         )
     }
     if (showAddSheet) {
@@ -113,6 +135,7 @@ fun HomeRoute(
 @Composable
 fun HomeScreen(
     state: HomeUiState,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onFilterChange: (HomeFilter) -> Unit,
@@ -124,6 +147,7 @@ fun HomeScreen(
     onStartTrip: (BannerOffer) -> Unit = {},
 ) {
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddClick) {
                 Icon(Icons.Filled.Add, contentDescription = "Add manual transaction")

@@ -8,6 +8,7 @@ import cy.txtracker.data.FundingSource
 import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.ui.edit.DeletedTransaction
 import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.YearMonth
 import cy.txtracker.notify.DeeplinkBus
@@ -172,6 +173,12 @@ class HomeViewModel @Inject constructor(
 
     fun dismissBanner(currency: String) {
         currencyPrefs.markDismissed(currency)
+    }
+
+    fun restoreTransaction(snapshot: DeletedTransaction) {
+        viewModelScope.launch {
+            repository.restoreTransaction(snapshot.transaction, snapshot.reimbursements)
+        }
     }
 
     fun openTrip(currency: String, startAt: Instant, endAt: Instant?) {
