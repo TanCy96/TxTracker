@@ -253,7 +253,7 @@ private fun Content(
         }
         Spacer(Modifier.height(8.dp))
 
-        if (state.currency == "MYR") {
+        if (state.currency == "MYR" && state.slDebitUnlocked) {
             val shareOn = state.slShareMinor != null || state.slShareText.isNotEmpty()
             Text("Share with SL Debit", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))

@@ -9,6 +9,7 @@ import cy.txtracker.data.FundingSourceKind
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.service.FeatureFlags
 import cy.txtracker.domain.isValidShareMinor
 import cy.txtracker.domain.slDebitDefaultShareMinor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +54,8 @@ data class AddManualUiState(
     /** Non-null when the user has enabled "Share with SL Debit"; the share in minor units. */
     val slShareMinor: Long? = null,
     val slShareText: String = "",
+    /** When false, the SL Debit share control is hidden (feature gated/locked). */
+    val slDebitUnlocked: Boolean = false,
     val reimbursements: List<DraftReimbursement> = emptyList(),
 ) {
     val amountMinor: Long? get() = parseAmountMinor(amountText)
@@ -67,6 +70,7 @@ data class AddManualUiState(
 class AddManualViewModel @Inject constructor(
     private val repository: TransactionRepository,
     private val fundingSourceDao: FundingSourceDao,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddManualUiState())
@@ -105,6 +109,7 @@ class AddManualViewModel @Inject constructor(
                 availableFundingSources = sources,
                 fundingSource = defaultCash,
                 slDefaultPercent = slAccount?.defaultSharePercent ?: 40,
+                slDebitUnlocked = featureFlags.slDebitUnlocked.value,
             )
         }
     }
