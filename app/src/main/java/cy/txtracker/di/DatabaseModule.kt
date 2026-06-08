@@ -17,6 +17,7 @@ import cy.txtracker.data.SlDebitDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import cy.txtracker.data.ApprovedSourceDao
+import cy.txtracker.BuildConfig
 import cy.txtracker.data.UserFacingSourceDao
 import cy.txtracker.data.TrackedCurrencyDao
 import cy.txtracker.data.TripWindowDao
@@ -96,7 +97,13 @@ object DatabaseModule {
                 MIGRATION_12_13,
                 MIGRATION_13_14,
             )
-            .fallbackToDestructiveMigration()
+            .apply {
+                // DEBUG only: a missing/incompatible migration recreates the DB destructively,
+                // convenient while iterating. RELEASE deliberately omits this so an unhandled
+                // migration fails loudly (catchable) instead of silently wiping user data —
+                // the cause of the prior data-loss incident.
+                if (BuildConfig.DEBUG) fallbackToDestructiveMigration()
+            }
             .build()
 
     @Provides
