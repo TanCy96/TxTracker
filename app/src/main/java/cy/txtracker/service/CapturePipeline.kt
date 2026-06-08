@@ -32,6 +32,7 @@ class CapturePipeline @Inject constructor(
         postedAt: Instant,
         symbolDefaults: Map<String, String>,
         capturedAt: Instant,
+        isRejected: Boolean = false,
     ): CaptureDecision {
         val heuristic = heuristicExtractor.extract(
             text = rewrittenText,
@@ -39,7 +40,22 @@ class CapturePipeline @Inject constructor(
             postedAt = postedAt,
             symbolDefaults = symbolDefaults,
         )?.copy(rawText = rawText)
-        if (heuristic != null) return CaptureDecision.Parsed(heuristic)
+        if (heuristic != null) {
+            // Non-rejected: a confident parse becomes a (verifiable) home transaction.
+            if (!isRejected) return CaptureDecision.Parsed(heuristic)
+            // Rejected: keep the spec's hidden safety net — pool the entry (hidden by the
+            // PENDING-minus-rejected filter) instead of surfacing it on home, and never reach
+            // the listener's auto-track call.
+            return CaptureDecision.Pooled(
+                packageName = packageName,
+                postedAt = postedAt,
+                amountMinor = heuristic.amountMinor,
+                currency = heuristic.currency,
+                rawText = rawText,
+                rewrittenText = rewrittenText.takeIf { it != rawText },
+                capturedAt = capturedAt,
+            )
+        }
 
         val amount = NotificationAmountParser.findFirst(rewrittenText, symbolDefaults)
             ?: return CaptureDecision.Dropped

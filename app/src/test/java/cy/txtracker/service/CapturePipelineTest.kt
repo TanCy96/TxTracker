@@ -75,4 +75,40 @@ class CapturePipelineTest {
         assertThat(parsed.merchantRaw).isEqualTo("Coffee Shop")
         assertThat(parsed.rawText).isEqualTo("Paid RM12.00 CTA")
     }
+
+    @Test
+    fun rejected_package_parseable_notification_goes_to_pool_not_parsed() {
+        val decision = pipeline.decide(
+            packageName = "com.google.android.gm",
+            rawText = "Paid RM12.00 to Coffee Shop",
+            rewrittenText = "Paid RM12.00 to Coffee Shop",
+            postedAt = now,
+            symbolDefaults = emptyMap(),
+            capturedAt = now,
+            isRejected = true,
+        )
+
+        assertThat(decision).isInstanceOf(CaptureDecision.Pooled::class.java)
+        val pooled = decision as CaptureDecision.Pooled
+        assertThat(pooled.packageName).isEqualTo("com.google.android.gm")
+        assertThat(pooled.amountMinor).isEqualTo(1200L)
+        assertThat(pooled.currency).isEqualTo("MYR")
+        assertThat(pooled.rawText).isEqualTo("Paid RM12.00 to Coffee Shop")
+        assertThat(pooled.rewrittenText).isNull()
+    }
+
+    @Test
+    fun non_rejected_package_parseable_notification_still_parses() {
+        val decision = pipeline.decide(
+            packageName = "com.google.android.gm",
+            rawText = "Paid RM12.00 to Coffee Shop",
+            rewrittenText = "Paid RM12.00 to Coffee Shop",
+            postedAt = now,
+            symbolDefaults = emptyMap(),
+            capturedAt = now,
+            isRejected = false,
+        )
+
+        assertThat(decision).isInstanceOf(CaptureDecision.Parsed::class.java)
+    }
 }
