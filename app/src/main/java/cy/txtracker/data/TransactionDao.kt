@@ -327,6 +327,11 @@ interface TransactionDao {
     @Query("UPDATE transactions SET slShareMinor = :slShareMinor WHERE id = :id")
     suspend fun updateShare(id: Long, slShareMinor: Long?)
 
+    /** Id of the row with this dedupe key, or null. Used by restore to reconcile fields onto a
+     *  transaction that already exists locally (the IGNORE insert was a no-op on conflict). */
+    @Query("SELECT id FROM transactions WHERE notificationDedupeKey = :key")
+    suspend fun idForDedupeKey(key: String): Long?
+
     /** Lifetime sum of all SL Debit shares (MYR, OUT). Drives the pool balance. */
     @Query(
         """

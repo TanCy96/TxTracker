@@ -1502,8 +1502,21 @@ class TransactionRepository @Inject constructor(
                     reimbursedMinor = bt.reimbursedMinor,
                 ),
             )
-            if (rowId >= 0) transactionsAdded++
-            if (rowId >= 0) newTxIdByDedupe[bt.notificationDedupeKey] = rowId
+            if (rowId >= 0) {
+                transactionsAdded++
+                newTxIdByDedupe[bt.notificationDedupeKey] = rowId
+            } else {
+                // Dedupe conflict: a local row with this notificationDedupeKey already exists, so the
+                // IGNORE insert was a no-op and the local row wins (its merchant/amount/category stay).
+                // But a restore must still bring back the backup's SL Debit share — otherwise restoring
+                // onto an existing-but-unshared row silently drops slShareMinor (the reported bug).
+                // Reconcile it, backup-wins, consistent with the authoritative-category restore above.
+                // reimbursedMinor is intentionally NOT overwritten here: it's the cached sum of the
+                // reimbursement_entries child rows (only attached to freshly inserted transactions),
+                // so overwriting the cache alone would break the cache == sum(entries) invariant.
+                val existingId = transactionDao.idForDedupeKey(bt.notificationDedupeKey)
+                if (existingId != null) transactionDao.updateShare(existingId, bt.slShareMinor)
+            }
         }
 
         // 13. Reimbursement entries. Only attach to transactions THIS import inserted

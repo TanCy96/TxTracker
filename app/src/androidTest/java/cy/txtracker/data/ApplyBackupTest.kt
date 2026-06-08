@@ -513,6 +513,65 @@ class ApplyBackupTest {
     }
 
     @Test
+    fun applyBackup_reconciles_slShareMinor_onto_conflicting_local_transaction() = runTest {
+        val repo = repo()
+        // Local row WITHOUT a share, same dedupe key as the backup's row (the merge scenario:
+        // restoring onto a DB that already has the transaction but no SL Debit share).
+        val existingId = repo.insert(
+            Transaction(
+                amountMinor = 3900,
+                currency = "MYR",
+                merchantRaw = "LUNCH",
+                merchantNormalized = "LUNCH",
+                categoryId = null,
+                description = null,
+                occurredAt = now,
+                timeBucket = TimeBucket.MIDDAY,
+                sourceApp = "manual",
+                rawText = null,
+                direction = Direction.OUT,
+                createdAt = now,
+                notificationDedupeKey = "share-collide",
+                needsVerification = false,
+            ),
+        )!!
+
+        // Backup carries the SAME transaction (same dedupe key) fully shared with SL Debit.
+        val backup = Backup(
+            exportedAt = now,
+            categories = emptyList(),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 3900,
+                    currency = "MYR",
+                    merchantRaw = "LUNCH",
+                    merchantNormalized = "LUNCH",
+                    categoryName = null,
+                    description = null,
+                    occurredAt = now,
+                    timeBucket = TimeBucket.MIDDAY,
+                    sourceApp = "manual",
+                    rawText = null,
+                    direction = Direction.OUT,
+                    createdAt = now,
+                    notificationDedupeKey = "share-collide",
+                    needsVerification = false,
+                    slShareMinor = 3900,
+                ),
+            ),
+        )
+
+        repo.applyBackup(backup)
+
+        val tx = dbRule.transactionDao.getAllOnce().single()
+        assertThat(tx.id).isEqualTo(existingId)        // local row kept (merged, not duplicated)
+        assertThat(tx.slShareMinor).isEqualTo(3900L)   // share reconciled from the backup
+    }
+
+    @Test
     fun applyBackup_v6_round_trips_currencies_trips_and_confirmation_flag() = runTest {
         val repo = repo()
         val backup = Backup(
