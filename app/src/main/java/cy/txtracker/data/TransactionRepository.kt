@@ -998,6 +998,24 @@ class TransactionRepository @Inject constructor(
     suspend fun delete(txId: Long) = transactionDao.delete(txId)
 
     /**
+     * Re-inserts a transaction that was just deleted, preserving its original id so any
+     * restored reimbursement children re-link. Parent is inserted before children to satisfy
+     * the reimbursement_entries → transactions foreign key. Used by the edit-sheet "Not a
+     * transaction" Undo. `transactionDao.insert` uses IGNORE-on-conflict, which is fine here:
+     * the row was deleted, so there is no conflict.
+     */
+    suspend fun restoreTransaction(tx: Transaction, reimbursements: List<ReimbursementEntry>) =
+        database.withTransaction { restoreTransactionBody(tx, reimbursements) }
+
+    internal suspend fun restoreTransactionBody(
+        tx: Transaction,
+        reimbursements: List<ReimbursementEntry>,
+    ) {
+        transactionDao.insert(tx)
+        reimbursements.forEach { reimbursementEntryDao.insert(it) }
+    }
+
+    /**
      * Runs [CategorizationEngine.categorize] over every transaction with `categoryId == null`,
      * applying the result where non-null. Returns the count of rows updated.
      */
