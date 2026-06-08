@@ -12,6 +12,7 @@ import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.YearMonth
 import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.service.CurrencyPrefs
+import cy.txtracker.service.FeatureFlags
 import cy.txtracker.ui.MainActivity
 import cy.txtracker.ui.edit.DeletedTransaction
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,6 +35,7 @@ class HomeViewModel @Inject constructor(
     private val repository: TransactionRepository,
     private val currencyPrefs: CurrencyPrefs,
     private val deeplinkBus: DeeplinkBus,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _yearMonth = MutableStateFlow(YearMonth.current())
@@ -68,6 +70,9 @@ class HomeViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = 0L,
         )
+    val slDebitUnlocked: StateFlow<Boolean> = featureFlags.slDebitUnlocked
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
+
     private val _slDebitName: StateFlow<String> =
         repository.observeSlDebitAccount()
             .map { it?.displayName ?: "SL Debit" }

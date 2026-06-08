@@ -77,6 +77,7 @@ fun HomeRoute(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val slDebitUnlocked by viewModel.slDebitUnlocked.collectAsState()
     var editingTxId by remember { mutableStateOf<Long?>(null) }
     var showAddSheet by remember { mutableStateOf(false) }
     var tripDialogOffer by remember { mutableStateOf<BannerOffer?>(null) }
@@ -94,6 +95,7 @@ fun HomeRoute(
         onAddClick = { showAddSheet = true },
         onSettingsClick = onSettingsClick,
         onSlDebitClick = onSlDebitClick,
+        slDebitUnlocked = slDebitUnlocked,
         onDismissBanner = { currency -> viewModel.dismissBanner(currency) },
         onStartTrip = { offer -> tripDialogOffer = offer },
     )
@@ -146,6 +148,7 @@ fun HomeScreen(
     onAddClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onSlDebitClick: () -> Unit = {},
+    slDebitUnlocked: Boolean = false,
     onDismissBanner: (String) -> Unit = {},
     onStartTrip: (BannerOffer) -> Unit = {},
 ) {
@@ -183,11 +186,13 @@ fun HomeScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             MonthTotalHeader(totalMinor = state.totalMinor, transactionCount = state.transactionCount)
 
-            SlDebitBalanceCard(
-                name = state.slDebitName,
-                balanceMinor = state.slDebitBalanceMinor,
-                onClick = onSlDebitClick,
-            )
+            if (slDebitUnlocked) {
+                SlDebitBalanceCard(
+                    name = state.slDebitName,
+                    balanceMinor = state.slDebitBalanceMinor,
+                    onClick = onSlDebitClick,
+                )
+            }
 
             val onChipTap: (HomeFilter) -> Unit = { target ->
                 onFilterChange(if (state.filter == target) HomeFilter.All else target)
