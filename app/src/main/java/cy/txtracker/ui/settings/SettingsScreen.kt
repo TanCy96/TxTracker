@@ -2,6 +2,7 @@ package cy.txtracker.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -39,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,6 +81,7 @@ fun SettingsScreen(
     val backupStatus by viewModel.backupStatus.collectAsState()
     val backfillResult by viewModel.backfillResult.collectAsState()
     val lockEnabled by viewModel.lockEnabled.collectAsState()
+    val slDebitUnlocked by viewModel.slDebitUnlocked.collectAsState()
     val poolPendingCount by viewModel.poolPendingCount.collectAsState()
     val cloudSyncEnabled by viewModel.cloudSyncEnabled.collectAsState()
     val cloudSyncPaused by viewModel.cloudSyncPaused.collectAsState()
@@ -95,6 +98,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var showCutoffDialog by remember { mutableStateOf(false) }
     var showExportChooser by remember { mutableStateOf(false) }
+    var versionTaps by remember { mutableIntStateOf(0) }
 
     val pickBackup = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -264,12 +268,14 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().clickableRow(onFundingSourcesClick),
             )
             HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("SL Debit") },
-                supportingContent = { Text("Prepaid pool — deposits, balance, and default share %.") },
-                modifier = Modifier.fillMaxWidth().clickableRow(onSlDebitClick),
-            )
-            HorizontalDivider()
+            if (slDebitUnlocked) {
+                ListItem(
+                    headlineContent = { Text("SL Debit") },
+                    supportingContent = { Text("Prepaid pool — deposits, balance, and default share %.") },
+                    modifier = Modifier.fillMaxWidth().clickableRow(onSlDebitClick),
+                )
+                HorizontalDivider()
+            }
             ListItem(
                 headlineContent = { Text("Push notifications") },
                 supportingContent = {
@@ -383,7 +389,36 @@ fun SettingsScreen(
                     text = "Tally ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable {
+                        val r = registerUnlockTap(versionTaps, slDebitUnlocked)
+                        versionTaps = r.newCount
+                        if (r.unlocked) {
+                            viewModel.setSlDebitUnlocked(true)
+                            Toast.makeText(context, "Advanced unlocked", Toast.LENGTH_SHORT).show()
+                        } else if (r.hintRemaining != null) {
+                            Toast.makeText(
+                                context,
+                                "${r.hintRemaining} tap(s) from Advanced",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
                 )
+            }
+
+            if (slDebitUnlocked) {
+                SectionHeader("Advanced")
+                ListItem(
+                    headlineContent = { Text("SL Debit") },
+                    supportingContent = { Text("Show the SL Debit prepaid-pool feature.") },
+                    trailingContent = {
+                        Switch(
+                            checked = slDebitUnlocked,
+                            onCheckedChange = { viewModel.setSlDebitUnlocked(it) },
+                        )
+                    },
+                )
+                HorizontalDivider()
             }
 
             SectionHeader("Maintenance")

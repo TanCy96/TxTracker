@@ -18,6 +18,7 @@ import cy.txtracker.export.ExportDateRange
 import cy.txtracker.export.ImportResult
 import cy.txtracker.export.YearMonth
 import cy.txtracker.service.CloudSyncPrefs
+import cy.txtracker.service.FeatureFlags
 import kotlinx.datetime.Instant
 import cy.txtracker.ui.lock.LockPrefs
 import cy.txtracker.ui.lock.LockState
@@ -42,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val lockPrefs: LockPrefs,
     private val lockState: LockState,
     private val cloudSyncPrefs: CloudSyncPrefs,
+    private val featureFlags: FeatureFlags,
     private val cloudSyncScheduler: CloudSyncScheduler,
     private val driveClient: DriveClient,
     private val signInState: GoogleSignInStateProvider,
@@ -59,6 +61,10 @@ class SettingsViewModel @Inject constructor(
             )
 
     val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
+
+    val slDebitUnlocked: StateFlow<Boolean> = featureFlags.slDebitUnlocked
+
+    fun setSlDebitUnlocked(value: Boolean) = featureFlags.setSlDebitUnlocked(value)
 
     fun setLockEnabled(value: Boolean) {
         lockPrefs.setEnabled(value)
