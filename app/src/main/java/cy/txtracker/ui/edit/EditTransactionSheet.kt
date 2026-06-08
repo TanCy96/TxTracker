@@ -82,6 +82,7 @@ import kotlinx.datetime.toLocalDateTime
 fun EditTransactionSheet(
     transactionId: Long,
     onDismiss: () -> Unit,
+    onDeleted: (DeletedTransaction) -> Unit = {},
     viewModel: EditTransactionViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(transactionId) { viewModel.load(transactionId) }
@@ -126,7 +127,10 @@ fun EditTransactionSheet(
                     viewModel.confirmVerification(transactionId, onDone = onDismiss)
                 },
                 onDelete = {
-                    viewModel.delete(transactionId, onDone = onDismiss)
+                    viewModel.delete(transactionId) { snapshot ->
+                        if (snapshot != null) onDeleted(snapshot)
+                        onDismiss()
+                    }
                 },
                 onClose = onDismiss,
             )

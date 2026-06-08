@@ -3,13 +3,14 @@ package cy.txtracker.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ReimbursementEntryDao {
-    @Insert suspend fun insert(entry: ReimbursementEntry): Long
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insert(entry: ReimbursementEntry): Long
     @Update suspend fun update(entry: ReimbursementEntry)
     @Delete suspend fun delete(entry: ReimbursementEntry)
 

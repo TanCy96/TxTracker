@@ -281,6 +281,10 @@ class TransactionRepository @Inject constructor(
     fun observeRejectedPackages(): Flow<List<RejectedSource>> =
         rejectedSourceDao.observeAll()
 
+    /** True when the user has explicitly rejected this package as a notification source. */
+    suspend fun isPackageRejected(packageName: String): Boolean =
+        rejectedSourceDao.isRejected(packageName)
+
     fun observeAllSourcePackages(): Flow<List<String>> =
         transactionDao.observeDistinctSourceApps()
 
@@ -1066,6 +1070,31 @@ class TransactionRepository @Inject constructor(
     )
 
     suspend fun delete(txId: Long) = transactionDao.delete(txId)
+
+    /**
+     * Re-inserts a transaction that was just deleted, preserving its original id so any
+     * restored reimbursement children re-link. Parent is inserted before children to satisfy
+     * the reimbursement_entries → transactions foreign key. Used by the edit-sheet "Not a
+     * transaction" Undo. Both `transactionDao.insert` and `reimbursementEntryDao.insert` use
+     * IGNORE-on-conflict, so restoring the same snapshot more than once is a harmless no-op
+     * rather than a crash.
+     */
+    suspend fun restoreTransaction(tx: Transaction, reimbursements: List<ReimbursementEntry>) =
+        database.withTransaction { restoreTransactionBody(tx, reimbursements) }
+
+    /**
+     * Body of [restoreTransaction], extracted so unit tests can drive it directly without
+     * mocking Room's `withTransaction` extension. Production callers MUST go through
+     * [restoreTransaction] so the parent + children insert runs atomically.
+     */
+    internal suspend fun restoreTransactionBody(
+        tx: Transaction,
+        reimbursements: List<ReimbursementEntry>,
+    ) {
+        transactionDao.insert(tx)
+        // Children were cascade-deleted with the parent, so no id conflict is possible on re-insert.
+        reimbursements.forEach { reimbursementEntryDao.insert(it) }
+    }
 
     /**
      * Runs [CategorizationEngine.categorize] over every transaction with `categoryId == null`,

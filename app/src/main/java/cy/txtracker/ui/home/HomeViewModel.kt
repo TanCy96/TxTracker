@@ -13,6 +13,7 @@ import cy.txtracker.domain.YearMonth
 import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.service.CurrencyPrefs
 import cy.txtracker.ui.MainActivity
+import cy.txtracker.ui.edit.DeletedTransaction
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -197,6 +198,12 @@ class HomeViewModel @Inject constructor(
 
     fun dismissBanner(currency: String) {
         currencyPrefs.markDismissed(currency)
+    }
+
+    fun restoreTransaction(snapshot: DeletedTransaction) {
+        viewModelScope.launch {
+            repository.restoreTransaction(snapshot.transaction, snapshot.reimbursements)
+        }
     }
 
     fun openTrip(currency: String, startAt: Instant, endAt: Instant?) {
