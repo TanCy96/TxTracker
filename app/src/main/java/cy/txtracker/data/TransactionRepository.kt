@@ -1001,8 +1001,9 @@ class TransactionRepository @Inject constructor(
      * Re-inserts a transaction that was just deleted, preserving its original id so any
      * restored reimbursement children re-link. Parent is inserted before children to satisfy
      * the reimbursement_entries → transactions foreign key. Used by the edit-sheet "Not a
-     * transaction" Undo. `transactionDao.insert` uses IGNORE-on-conflict, which is fine here:
-     * the row was deleted, so there is no conflict.
+     * transaction" Undo. Both `transactionDao.insert` and `reimbursementEntryDao.insert` use
+     * IGNORE-on-conflict, so restoring the same snapshot more than once is a harmless no-op
+     * rather than a crash.
      */
     suspend fun restoreTransaction(tx: Transaction, reimbursements: List<ReimbursementEntry>) =
         database.withTransaction { restoreTransactionBody(tx, reimbursements) }
