@@ -9,6 +9,7 @@ import cy.txtracker.data.ReimbursementEntry
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.service.FeatureFlags
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,12 +35,15 @@ sealed interface EditUiState {
         /** SL Debit account (for the default %), or null if unavailable. */
         val slDebitAccount: cy.txtracker.data.SlDebitAccount? = null,
         val reimbursements: List<ReimbursementEntry> = emptyList(),
+        /** When false, the SL Debit share input is hidden (feature gated/locked). */
+        val slDebitUnlocked: Boolean = false,
     ) : EditUiState
 }
 
 @HiltViewModel
 class EditTransactionViewModel @Inject constructor(
     private val repository: TransactionRepository,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<EditUiState>(EditUiState.Loading)
@@ -62,6 +66,7 @@ class EditTransactionViewModel @Inject constructor(
                     fundingSource = sources.find { it.id == tx.fundingSourceId },
                     slDebitAccount = slAccount,
                     reimbursements = repository.getReimbursementEntries(transactionId),
+                    slDebitUnlocked = featureFlags.slDebitUnlocked.value,
                 )
             }
         }

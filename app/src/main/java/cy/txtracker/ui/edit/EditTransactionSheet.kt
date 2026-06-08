@@ -354,7 +354,7 @@ private fun EditingContent(
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
 
-        if (tx.currency == "MYR") {
+        if (tx.currency == "MYR" && state.slDebitUnlocked) {
             Text(text = "Share with SL Debit", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))
 
