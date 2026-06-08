@@ -82,6 +82,7 @@ class RestoreTransactionTest {
         tripWindowDao = mockk(relaxed = true),
         packageTextRewriteDao = mockk(relaxed = true),
         fundingSourceDao = mockk(relaxed = true),
+        slDebitDao = mockk(relaxed = true),
         reimbursementEntryDao = reimbursementDao,
         categorizationEngine = mockk<CategorizationEngine>(relaxed = true),
         descriptionEngine = mockk<DescriptionEngine>(relaxed = true),
