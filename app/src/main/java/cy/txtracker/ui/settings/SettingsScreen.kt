@@ -412,6 +412,10 @@ fun SettingsScreen(
                     headlineContent = { Text("SL Debit") },
                     supportingContent = { Text("Show the SL Debit prepaid-pool feature.") },
                     trailingContent = {
+                        // `checked` is always true here — this section only renders while
+                        // unlocked. Toggling off calls setSlDebitUnlocked(false), which hides
+                        // this whole section immediately (re-reveal via 7 version taps).
+                        // Intentional developer-options-style UX, not a bug.
                         Switch(
                             checked = slDebitUnlocked,
                             onCheckedChange = { viewModel.setSlDebitUnlocked(it) },
