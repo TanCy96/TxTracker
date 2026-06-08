@@ -26,17 +26,16 @@ class BackupImporter @Inject constructor(
 ) {
     suspend fun import(uri: Uri): ImportResult {
         val json = readText(uri) ?: throw IOException("Couldn't open backup file")
-        val backup = JSON.decodeFromString<Backup>(json)
-        require(backup.version in SUPPORTED_VERSIONS) {
-            "Backup version ${backup.version} is not supported by this app version " +
-                "(expected ${Backup.CURRENT_VERSION})."
-        }
-        return repository.applyBackup(backup)
+        return importFromJsonString(json)
     }
 
     /** Convenience for cloud restore: parse a JSON string and call applyBackup. */
     suspend fun importFromJsonString(json: String): ImportResult {
         val backup = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
+        require(backup.version in SUPPORTED_VERSIONS) {
+            "Backup version ${backup.version} is not supported by this app version " +
+                "(expected ${Backup.CURRENT_VERSION})."
+        }
         return repository.applyBackup(backup)
     }
 
