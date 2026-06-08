@@ -111,4 +111,20 @@ class CapturePipelineTest {
 
         assertThat(decision).isInstanceOf(CaptureDecision.Parsed::class.java)
     }
+
+    @Test
+    fun rejected_package_amount_only_text_still_goes_to_pool() {
+        val decision = pipeline.decide(
+            packageName = "com.google.android.gm",
+            rawText = "Lunch yesterday RM50 split reminder",
+            rewrittenText = "Lunch yesterday RM50 split reminder",
+            postedAt = now,
+            symbolDefaults = emptyMap(),
+            capturedAt = now,
+            isRejected = true,
+        ) as CaptureDecision.Pooled
+
+        assertThat(decision.amountMinor).isEqualTo(5000L)
+        assertThat(decision.currency).isEqualTo("MYR")
+    }
 }
