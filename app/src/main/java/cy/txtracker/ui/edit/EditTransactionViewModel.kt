@@ -201,10 +201,16 @@ class EditTransactionViewModel @Inject constructor(
         }
     }
 
-    fun delete(transactionId: Long, onDone: () -> Unit) {
+    fun delete(transactionId: Long, onDeleted: (DeletedTransaction?) -> Unit) {
         viewModelScope.launch {
+            // The "Not a transaction" button is only shown over an Editing state, so the
+            // snapshot is already in memory — no extra DB read. If state isn't Editing for
+            // this id (defensive), we still delete but offer no undo (null snapshot).
+            val snapshot = (_state.value as? EditUiState.Editing)
+                ?.takeIf { it.transaction.id == transactionId }
+                ?.let { DeletedTransaction(it.transaction, it.reimbursements) }
             repository.delete(transactionId)
-            onDone()
+            onDeleted(snapshot)
         }
     }
 
