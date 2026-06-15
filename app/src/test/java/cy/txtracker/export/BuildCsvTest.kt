@@ -213,22 +213,38 @@ class BuildCsvTest {
     // ─── SL Debit column ────────────────────────────────────────────────────────────────
 
     @Test
-    fun sl_share_subtracts_in_category_and_shows_negative_in_sl_debit_column() {
+    fun sl_share_subtracts_in_category_negative_in_debit_transfer_positive_in_sl_debit() {
         val csv = buildCsv(
             transactions = listOf(tx(id = 1L, amountMinor = 10000, merchant = "A", categoryId = food.id, slShareMinor = 4000)),
             categories = categories,
         )
-        assertThat(csv.trimEnd().lines()[1]).isEqualTo("2026-05-09,,=100.00-40.00,,,,,,,-40.00")
+        // Category nets the share; Debit/Transfer carries -share; SL Debit shows +share.
+        assertThat(csv.trimEnd().lines()[1]).isEqualTo("2026-05-09,,=100.00-40.00,,,,,-40.00,,40.00")
     }
 
     @Test
-    fun deposit_only_day_emits_row_with_positive_sl_debit() {
+    fun sl_share_negative_nets_with_debit_transfer_funding_within_the_cell() {
+        // Tx funded from the Debit/Transfer bucket AND shared with SL Debit: the bucket cell
+        // carries the gross positive and the share negative, netting inline.
+        val t = tx(id = 8L, amountMinor = 10000, merchant = "A", categoryId = food.id,
+            fundingSourceId = 30L, slShareMinor = 3000)
+        val csv = buildCsv(
+            transactions = listOf(t),
+            categories = categories,
+            fundingSourcesById = mapOf(30L to fs(30L, FundingSourceKind.DEBIT_BANK)),
+        )
+        assertThat(csv.trimEnd().lines()[1])
+            .isEqualTo("2026-05-09,,=100.00-30.00,,,,,=100.00-30.00,,30.00")
+    }
+
+    @Test
+    fun deposit_only_day_emits_row_with_negative_sl_debit() {
         val csv = buildCsv(
             transactions = emptyList(),
             categories = categories,
             deposits = listOf(deposit(amountMinor = 50000)),
         )
-        assertThat(csv.trimEnd().lines()[1]).isEqualTo("2026-05-09,,,,,,,,,500.00")
+        assertThat(csv.trimEnd().lines()[1]).isEqualTo("2026-05-09,,,,,,,,,-500.00")
     }
 
     @Test
@@ -241,10 +257,26 @@ class BuildCsvTest {
             fundingSourcesById = mapOf(10L to fs(10L, FundingSourceKind.CREDIT_CARD)),
             reimbursementsByTxId = mapOf(3L to listOf(entry(3L, 1000, FundingSourceKind.DEBIT_BANK))),
         )
-        // Category nets gross-share-reimbursement; CC carries the gross; DT the reimbursement;
-        // SL Debit the share.
+        // Category nets gross-share-reimbursement; CC carries the gross; Debit/Transfer carries
+        // both the reimbursement negative and the share negative; SL Debit shows +share.
         assertThat(csv.trimEnd().lines()[1])
-            .isEqualTo("2026-05-09,,=100.00-20.00-10.00,,,100.00,,-10.00,,-20.00")
+            .isEqualTo("2026-05-09,,=100.00-20.00-10.00,,,100.00,,=-10.00-20.00,,20.00")
+    }
+
+    // ─── Description de-duplication ─────────────────────────────────────────────────────
+
+    @Test
+    fun duplicate_descriptions_on_a_day_collapse_to_one() {
+        val csv = buildCsv(
+            transactions = listOf(
+                tx(amountMinor = 1000, merchant = "Grab A", description = "grab car", categoryId = transport.id,
+                    occurredAt = Instant.parse("2026-05-09T04:00:00Z")),
+                tx(amountMinor = 2000, merchant = "Grab B", description = "grab car", categoryId = transport.id,
+                    occurredAt = Instant.parse("2026-05-09T08:00:00Z")),
+            ),
+            categories = categories,
+        )
+        assertThat(csv.trimEnd().lines()[1]).isEqualTo("2026-05-09,grab car,,=10.00+20.00,,,,,,")
     }
 }
 

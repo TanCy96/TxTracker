@@ -36,7 +36,8 @@ import kotlinx.datetime.toLocalDateTime
  *
  * The four funding-bucket columns carry the GROSS amount of each transaction funded from that
  * bucket (positive), plus each reimbursement entry as a negative in its destination bucket.
- * Unlinked transactions contribute to no funding column.
+ * The Debit/Transfer bucket additionally carries each SL Debit share as a negative. Unlinked
+ * transactions contribute to no funding column.
  */
 @Singleton
 class CsvExporter @Inject constructor(
@@ -200,10 +201,11 @@ fun writeCsv(
  *     `=100.00-40.00-10.00`).
  *   - The four funding-bucket columns (Credit Card, E-Wallet, Debit/Transfer, Cash) carry
  *     the GROSS amount of each transaction funded from that bucket (positive), plus each
- *     reimbursement entry as a negative in its destination bucket. A cell with a single term
- *     is a bare literal; multiple terms form a "=" formula. Unlinked transactions contribute
- *     to no funding column.
- *   - The `SL Debit` column accumulates deposits (positive) and SL shares (negative) for the
+ *     reimbursement entry as a negative in its destination bucket. The Debit/Transfer bucket
+ *     additionally carries each SL Debit share as a negative. A cell with a single term is a
+ *     bare literal; multiple terms form a "=" formula. Unlinked transactions contribute to no
+ *     funding column.
+ *   - The `SL Debit` column accumulates deposits (negative) and SL shares (positive) for the
  *     day, same cell formatting as the funding columns. The SL deposit pool is tracked here
  *     rather than in a funding bucket.
  */
@@ -242,8 +244,9 @@ fun buildCsv(
 
         sb.append(formatDate(date))
 
-        // Description column.
-        val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }
+        // Description column. Duplicate descriptions on the same day collapse to one occurrence
+        // (e.g. two "grab car" rows -> a single "grab car"), keeping first-seen order.
+        val descriptions = txs.mapNotNull { it.description?.takeIf { d -> d.isNotBlank() } }.distinct()
         sb.append(',').append(csvEscape(descriptions.joinToString(", ")))
 
         // Per-category columns — net (gross minus the SL share minus each reimbursement entry).
@@ -262,6 +265,8 @@ fun buildCsv(
 
         // Funding-bucket columns: gross positives (by the tx's source kind) + reimbursement
         // negatives (by each entry's destinationKind), in canonical order. Positives first.
+        // The Debit/Transfer bucket additionally carries each SL Debit share as a negative,
+        // since the SL Debit pool is funded from the debit bank.
         for (kind in CANONICAL_KIND_ORDER) {
             sb.append(',')
             val positives = txs
@@ -271,13 +276,18 @@ fun buildCsv(
                 .flatMap { reimbursementsByTxId[it.id] ?: emptyList() }
                 .filter { it.destinationKind == kind }
                 .map { "-${formatAmount(it.amountMinor)}" }
-            sb.append(csvEscape(buildSignedCell(positives + negatives)))
+            val slShareNegatives = if (kind == FundingSourceKind.DEBIT_BANK) {
+                txs.mapNotNull { it.slShareMinor?.let { s -> "-${formatAmount(s)}" } }
+            } else {
+                emptyList()
+            }
+            sb.append(csvEscape(buildSignedCell(positives + negatives + slShareNegatives)))
         }
 
-        // SL Debit column: deposits (positive) and SL shares (negative) for the day.
+        // SL Debit column: deposits (negative) and SL shares (positive) for the day.
         sb.append(',')
-        val depositTerms = (depositsByDate[date] ?: emptyList()).map { "+${formatAmount(it.amountMinor)}" }
-        val shareTerms = txs.mapNotNull { it.slShareMinor?.let { s -> "-${formatAmount(s)}" } }
+        val depositTerms = (depositsByDate[date] ?: emptyList()).map { "-${formatAmount(it.amountMinor)}" }
+        val shareTerms = txs.mapNotNull { it.slShareMinor?.let { s -> "+${formatAmount(s)}" } }
         sb.append(csvEscape(buildSignedCell(depositTerms + shareTerms)))
 
         sb.append('\n')
