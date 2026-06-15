@@ -58,9 +58,11 @@ class FundingSourceClassifier @Inject constructor(
         // Rule 2: bullets/asterisks immediately preceding a last-4, no card name preamble.
         private val RULE_2 = Regex("""[•*]+\s*(?<last4>\d{4})\b""")
 
-        // Rule 3: literal "card ending 1234" or "card 1234" in body text.
+        // Rule 3: literal "card ending 1234", "card num 1234", "card number 1234",
+        // "card no 1234", or bare "card 1234" in body text. The connector ("ending"/"num"/
+        // "number"/"no", optional trailing dot) is consumed so the last-4 is captured.
         private val RULE_3 = Regex(
-            """\bcard\s+(?:ending\s+)?(?<last4>\d{4})\b""",
+            """\bcard\s+(?:ending\s+|num(?:ber)?\.?\s+|no\.?\s+)?(?<last4>\d{4})\b""",
             RegexOption.IGNORE_CASE,
         )
 

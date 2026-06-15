@@ -51,6 +51,21 @@ class FundingSourceClassifierTest {
     }
 
     @Test
+    fun rule3_card_num_form_attributes_to_credit_card() {
+        // Real CIMB capture: "card num 1868" — the "num" connector must be recognized so the
+        // charge is attributed to the credit card, not the catch-all DEBIT_BANK.
+        val detected = FundingSourceClassifier.detect(
+            rawText = "CIMB:MYR 46.20 was charged on your card num 1868 @CHAGEE M SDN. BHD. " +
+                "on 15/06.Pls call the num at the back of your card for any queries.",
+            sourceApp = "com.cimb.cimbocto",
+        )
+        assertThat(detected.kind).isEqualTo(FundingSourceKind.CREDIT_CARD)
+        assertThat(detected.last4).isEqualTo("1868")
+        assertThat(detected.displayName).isEqualTo("CIMB card 1868")
+        assertThat(detected.sourceAppHint).isEqualTo("com.cimb.cimbocto")
+    }
+
+    @Test
     fun rule4_account_ending_attributed_to_debit_bank() {
         val detected = FundingSourceClassifier.detect(
             rawText = "26MAY2026: Debited your A/C ending 0025 with MYR 13.00 " +
