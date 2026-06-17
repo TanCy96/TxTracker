@@ -84,6 +84,8 @@ class RestoreTransactionTest {
         fundingSourceDao = mockk(relaxed = true),
         slDebitDao = mockk(relaxed = true),
         reimbursementEntryDao = reimbursementDao,
+        customSourceLabelDao = mockk(relaxed = true),
+        autoPromoteSourceDao = mockk(relaxed = true),
         categorizationEngine = mockk<CategorizationEngine>(relaxed = true),
         descriptionEngine = mockk<DescriptionEngine>(relaxed = true),
         heuristicExtractor = mockk(relaxed = true),

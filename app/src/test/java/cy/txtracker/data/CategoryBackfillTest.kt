@@ -99,6 +99,8 @@ class CategoryBackfillTest {
         fundingSourceDao = mockk(relaxed = true),
         slDebitDao = mockk(relaxed = true),
         reimbursementEntryDao = mockk(relaxed = true),
+        customSourceLabelDao = mockk(relaxed = true),
+        autoPromoteSourceDao = mockk(relaxed = true),
         categorizationEngine = cat,
         descriptionEngine = desc,
         heuristicExtractor = mockk(relaxed = true),

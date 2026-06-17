@@ -246,6 +246,24 @@ data class RejectedSource(
     val rejectedAt: Instant,
 )
 
+/** User-supplied display name override for a tracked app, keyed by package. */
+@Entity(tableName = "custom_source_labels")
+data class CustomSourceLabel(
+    @PrimaryKey val packageName: String,
+    val label: String,
+    val updatedAt: Instant,
+)
+
+/**
+ * Packages the user has opted into "auto-add to home even when details can't be read".
+ * Presence = enabled. See CapturePipeline.decide().
+ */
+@Entity(tableName = "auto_promote_sources")
+data class AutoPromoteSource(
+    @PrimaryKey val packageName: String,
+    val enabledAt: Instant,
+)
+
 @Entity(
     tableName = "tracked_currencies",
 )

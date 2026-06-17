@@ -17,6 +17,8 @@ import cy.txtracker.data.SlDebitDao
 import cy.txtracker.data.TransactionDao
 import cy.txtracker.data.TxDatabase
 import cy.txtracker.data.ApprovedSourceDao
+import cy.txtracker.data.CustomSourceLabelDao
+import cy.txtracker.data.AutoPromoteSourceDao
 import cy.txtracker.BuildConfig
 import cy.txtracker.data.UserFacingSourceDao
 import cy.txtracker.data.TrackedCurrencyDao
@@ -96,6 +98,7 @@ object DatabaseModule {
                 MIGRATION_11_12,
                 MIGRATION_12_13,
                 MIGRATION_13_14,
+                MIGRATION_14_15,
             )
             .apply {
                 // DEBUG only: a missing/incompatible migration recreates the DB destructively,
@@ -157,6 +160,12 @@ object DatabaseModule {
     @Provides
     fun provideReimbursementEntryDao(db: TxDatabase): ReimbursementEntryDao =
         db.reimbursementEntryDao()
+
+    @Provides
+    fun provideCustomSourceLabelDao(db: TxDatabase): CustomSourceLabelDao = db.customSourceLabelDao()
+
+    @Provides
+    fun provideAutoPromoteSourceDao(db: TxDatabase): AutoPromoteSourceDao = db.autoPromoteSourceDao()
 }
 
 /**
@@ -558,6 +567,37 @@ private val MIGRATION_13_14 = object : Migration(13, 14) {
             SELECT `id`, `reimbursedMinor`, 'DEBIT_BANK', NULL, `occurredAt`
             FROM `transactions`
             WHERE `reimbursedMinor` IS NOT NULL AND `reimbursedMinor` > 0
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * v15 adds two source-config tables:
+ *   - `custom_source_labels`: user rename overrides for tracked apps.
+ *   - `auto_promote_sources`: packages opted into auto-adding amount-only notifications
+ *     to home (CapturePipeline auto-promote).
+ * Both are additive; no backfill.
+ */
+private val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `custom_source_labels` (
+                `packageName` TEXT NOT NULL,
+                `label` TEXT NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `auto_promote_sources` (
+                `packageName` TEXT NOT NULL,
+                `enabledAt` INTEGER NOT NULL,
+                PRIMARY KEY(`packageName`)
+            )
             """.trimIndent(),
         )
     }
