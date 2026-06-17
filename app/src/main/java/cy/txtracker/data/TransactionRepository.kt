@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Instant.Companion.DISTANT_FUTURE
@@ -274,11 +275,13 @@ class TransactionRepository @Inject constructor(
             flow {
                 emitAll(capturedNotificationDao.observePackageStatsSince(Clock.System.now() - 30.days))
             },
-        ) { approved, rejected, stats ->
+            customSourceLabelDao.observeAll(),
+        ) { approved, rejected, stats, labels ->
             buildTrackedPackageRows(
                 approved = approved.toSet(),
                 rejected = rejected.toSet(),
                 stats = stats,
+                customLabels = labels.associate { it.packageName to it.label },
             )
         }
 
@@ -603,6 +606,22 @@ class TransactionRepository @Inject constructor(
     suspend fun unrejectPackage(packageName: String, now: Instant = Clock.System.now()) {
         trackPackage(packageName, now)
     }
+
+    suspend fun renameTrackedApp(
+        packageName: String,
+        label: String,
+        now: Instant = Clock.System.now(),
+    ) {
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) {
+            customSourceLabelDao.delete(packageName)
+        } else {
+            customSourceLabelDao.upsert(CustomSourceLabel(packageName, trimmed, now))
+        }
+    }
+
+    fun observeCustomLabels(): Flow<Map<String, String>> =
+        customSourceLabelDao.observeAll().map { rows -> rows.associate { it.packageName to it.label } }
 
     suspend fun deleteRejectedPoolEntriesBefore(cutoff: Instant): Int =
         capturedNotificationDao.deleteRejectedBefore(cutoff)
@@ -1664,6 +1683,7 @@ private fun buildTrackedPackageRows(
     approved: Set<String>,
     rejected: Set<String>,
     stats: List<PoolPackageStats>,
+    customLabels: Map<String, String>,
 ): List<TrackedPackageRow> {
     val statsByPackage = stats.associateBy { it.packageName }
     val packages = SourcePackages.PERMISSIVE_PACKAGES + approved + rejected + statsByPackage.keys
@@ -1678,7 +1698,7 @@ private fun buildTrackedPackageRows(
             }
             TrackedPackageRow(
                 packageName = packageName,
-                label = SourceLabels.label(packageName),
+                label = customLabels[packageName] ?: SourceLabels.label(packageName),
                 status = status,
                 isBuiltIn = isBuiltIn,
                 poolEntryCountLast30Days = stat?.entryCount ?: 0,
