@@ -75,6 +75,10 @@ class HeuristicExtractor @Inject constructor() {
             if (it.isNotEmpty()) return it
         }
 
+        TRANSFER_SUCCESS_PATTERN.find(text)?.groups?.get("merchant")?.value?.trim()?.let {
+            if (it.isNotEmpty()) return it
+        }
+
         if (!OUT_VERB.containsMatchIn(text)) return null
         for (pattern in RECIPIENT_PATTERNS) {
             val raw = pattern.find(text)?.groups?.get("merchant")?.value
@@ -130,6 +134,15 @@ class HeuristicExtractor @Inject constructor() {
         // length to handle ••••1868 captures observed in the wild.
         private val CARD_SPEND_PATTERN = Regex(
             """^(?<merchant>.+?)\s+RM\s*[\d,]+\.\d{2}\s+with\s+.+?\s+[•*]+\s*(?<last4>\d{4})\s*$""",
+        )
+
+        // Transfer-success shape (head match): "RM<amt> to <RECIPIENT> is success(ful)".
+        // GX Bank and similar confirmation-style pushes have a `to <recipient>` anchor but no
+        // out-verb, so the OUT_VERB gate rejects them. The amount-led head + "is successful" tail
+        // is specific enough to exclude promo noise, so we accept it without requiring a verb.
+        private val TRANSFER_SUCCESS_PATTERN = Regex(
+            """^RM\s*[\d,]+(?:\.\d{2})?\s+to\s+(?<merchant>.+?)\s+is\s+success(?:ful)?\b""",
+            RegexOption.IGNORE_CASE,
         )
 
         // Each recipient pattern stops before common follow-on tokens ("on <date>", "for <X>",

@@ -381,4 +381,30 @@ class HeuristicExtractorTest {
         val r = extractor.extract(text, "anything", now)!!
         assertThat(r.merchantRaw).isEqualTo("JOHN")
     }
+
+    @Test
+    fun handles_gx_transfer_success_with_no_out_verb() {
+        // GX Bank: "RM<amt> to <RECIPIENT> is successful" — has a recipient anchor but NO
+        // out-verb, so the OUT_VERB gate used to reject it and the entry fell to the pool.
+        val r = extractor.extract("RM4.00 to CHEE NYOK LAN is successful", "my.com.gxsbank", now)!!
+        assertThat(r.amountMinor).isEqualTo(400L)
+        assertThat(r.currency).isEqualTo("MYR")
+        assertThat(r.merchantRaw).isEqualTo("CHEE NYOK LAN")
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
+
+    @Test
+    fun handles_gx_transfer_success_hyphenated_recipient() {
+        val r = extractor.extract("RM14.50 to AA PHARMACY-SEA PAR is successful", "my.com.gxsbank", now)!!
+        assertThat(r.amountMinor).isEqualTo(1450L)
+        assertThat(r.merchantRaw).isEqualTo("AA PHARMACY-SEA PAR")
+    }
+
+    @Test
+    fun transfer_success_shape_does_not_match_promo_without_recipient() {
+        // Promo text that mentions an amount + "successful" but is not a "to <X>" transfer.
+        assertThat(
+            extractor.extract("RM5.00 cashback claim is successful", "anything", now),
+        ).isNull()
+    }
 }
