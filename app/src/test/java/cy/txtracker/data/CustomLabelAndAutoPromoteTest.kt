@@ -37,41 +37,14 @@ class CustomLabelAndAutoPromoteTest {
     @Test
     fun setAutoPromote_true_inserts_and_false_deletes() = runTest {
         val dao = mockk<AutoPromoteSourceDao>(relaxed = true)
-        val repo = makeRepoWith(autoPromote = dao)
+        val repo = makeRepo(autoPromote = dao)
         repo.setAutoPromote("my.com.gxsbank", true, now)
         coVerify { dao.insert(match { it.packageName == "my.com.gxsbank" }) }
         repo.setAutoPromote("my.com.gxsbank", false, now)
         coVerify { dao.delete("my.com.gxsbank") }
     }
 
-    private fun makeRepoWith(autoPromote: AutoPromoteSourceDao): TransactionRepository =
-        TransactionRepository(
-            database = mockk(relaxed = true),
-            transactionDao = mockk(relaxed = true),
-            categoryDao = mockk(relaxed = true),
-            merchantMappingDao = mockk(relaxed = true),
-            descriptionMappingDao = mockk(relaxed = true),
-            merchantNoteDao = mockk(relaxed = true),
-            userFacingSourceDao = mockk(relaxed = true),
-            approvedSourceDao = mockk(relaxed = true),
-            capturedNotificationDao = mockk(relaxed = true),
-            rejectedSourceDao = mockk(relaxed = true),
-            trackedCurrencyDao = mockk(relaxed = true),
-            tripWindowDao = mockk(relaxed = true),
-            packageTextRewriteDao = mockk(relaxed = true),
-            fundingSourceDao = mockk(relaxed = true),
-            slDebitDao = mockk(relaxed = true),
-            reimbursementEntryDao = mockk(relaxed = true),
-            customSourceLabelDao = customLabelDao,
-            autoPromoteSourceDao = autoPromote,
-            categorizationEngine = mockk<CategorizationEngine>(relaxed = true),
-            descriptionEngine = mockk<DescriptionEngine>(relaxed = true),
-            heuristicExtractor = mockk(relaxed = true),
-            rewriteEngine = mockk(relaxed = true),
-            fundingSourceClassifier = mockk<FundingSourceClassifier>(relaxed = true),
-        )
-
-    private fun makeRepo(): TransactionRepository = TransactionRepository(
+    private fun makeRepo(autoPromote: AutoPromoteSourceDao = mockk(relaxed = true)): TransactionRepository = TransactionRepository(
         database = mockk(relaxed = true),
         transactionDao = mockk(relaxed = true),
         categoryDao = mockk(relaxed = true),
@@ -89,7 +62,7 @@ class CustomLabelAndAutoPromoteTest {
         slDebitDao = mockk(relaxed = true),
         reimbursementEntryDao = mockk(relaxed = true),
         customSourceLabelDao = customLabelDao,
-        autoPromoteSourceDao = mockk(relaxed = true),
+        autoPromoteSourceDao = autoPromote,
         categorizationEngine = mockk<CategorizationEngine>(relaxed = true),
         descriptionEngine = mockk<DescriptionEngine>(relaxed = true),
         heuristicExtractor = mockk(relaxed = true),

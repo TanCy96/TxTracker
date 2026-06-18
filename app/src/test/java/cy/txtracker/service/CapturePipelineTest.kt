@@ -147,6 +147,23 @@ class CapturePipelineTest {
     }
 
     @Test
+    fun auto_promote_does_not_override_a_real_heuristic_parse() {
+        val decision = pipeline.decide(
+            packageName = "my.com.gxsbank",
+            rawText = "Paid RM12.00 to Coffee Shop",
+            rewrittenText = "Paid RM12.00 to Coffee Shop",
+            postedAt = now,
+            symbolDefaults = emptyMap(),
+            capturedAt = now,
+            isAutoPromote = true,
+        )
+        assertThat(decision).isInstanceOf(CaptureDecision.Parsed::class.java)
+        val parsed = (decision as CaptureDecision.Parsed).parsed
+        assertThat(parsed.merchantRaw).isEqualTo("Coffee Shop")
+        assertThat(parsed.amountMinor).isEqualTo(1200L)
+    }
+
+    @Test
     fun auto_promote_does_not_override_rejected_package() {
         val decision = pipeline.decide(
             packageName = "my.com.gxsbank",
