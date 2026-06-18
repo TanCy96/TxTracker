@@ -665,6 +665,9 @@ class TransactionRepository @Inject constructor(
                 occurredAt = pool.postedAt,
                 currency = pool.currency,
             )
+            // Unlike promotePoolEntryBody, currency-confirmation is intentionally NOT computed here:
+            // batch-promoted rows land as needsVerification = true (PENDING on home), so the user
+            // reviews them anyway — no separate currency-review parking needed.
             val rowId = transactionDao.insert(
                 Transaction(
                     amountMinor = pool.amountMinor,

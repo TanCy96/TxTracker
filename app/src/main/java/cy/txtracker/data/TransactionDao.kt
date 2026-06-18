@@ -29,6 +29,8 @@ interface TransactionDao {
     @Query("SELECT DISTINCT sourceApp FROM transactions WHERE sourceApp != 'manual'")
     fun observeDistinctSourceApps(): Flow<List<String>>
 
+    // `ids` is bounded by the on-screen multi-selection (tens of rows), well under SQLite's
+    // bound-variable limit, so no chunking is needed.
     @Query("SELECT DISTINCT sourceApp FROM transactions WHERE id IN (:ids)")
     suspend fun distinctSourceAppsForIds(ids: List<Long>): List<String>
 
