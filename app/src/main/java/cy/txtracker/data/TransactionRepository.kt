@@ -275,13 +275,13 @@ class TransactionRepository @Inject constructor(
             flow {
                 emitAll(capturedNotificationDao.observePackageStatsSince(Clock.System.now() - 30.days))
             },
-            customSourceLabelDao.observeAll(),
-        ) { approved, rejected, stats, labels ->
+            observeCustomLabels(),
+        ) { approved, rejected, stats, customLabels ->
             buildTrackedPackageRows(
                 approved = approved.toSet(),
                 rejected = rejected.toSet(),
                 stats = stats,
-                customLabels = labels.associate { it.packageName to it.label },
+                customLabels = customLabels,
             )
         }
 
