@@ -46,4 +46,8 @@ class TrackedAppsViewModel @Inject constructor(
     fun reject(packageName: String) {
         viewModelScope.launch { repository.rejectPackage(packageName) }
     }
+
+    fun rename(packageName: String, label: String) {
+        viewModelScope.launch { repository.renameTrackedApp(packageName, label) }
+    }
 }
