@@ -223,7 +223,9 @@ class HomeViewModel @Inject constructor(
     }
 
     fun toggleSelect(id: Long) {
-        _selectedIds.update { if (id in it) it - id else it + id }
+        val updated = if (id in _selectedIds.value) _selectedIds.value - id else _selectedIds.value + id
+        _selectedIds.value = updated
+        if (updated.isEmpty()) _selectionMode.value = false
     }
 
     fun clearSelection() {

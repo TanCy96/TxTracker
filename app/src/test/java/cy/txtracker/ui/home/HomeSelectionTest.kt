@@ -1,8 +1,12 @@
 package cy.txtracker.ui.home
 
 import com.google.common.truth.Truth.assertThat
+import cy.txtracker.data.Direction
+import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
+import cy.txtracker.domain.TimeBucket
 import cy.txtracker.notify.DeeplinkBus
+import cy.txtracker.ui.edit.DeletedTransaction
 import cy.txtracker.service.CurrencyPrefs
 import cy.txtracker.service.FeatureFlags
 import io.mockk.coVerify
@@ -82,12 +86,35 @@ class HomeSelectionTest {
 
     @Test
     fun deleteSelected_passes_snapshots_to_callback_and_clears() = runTest {
+        val snapshot = DeletedTransaction(
+            transaction = sampleTx(5L),
+            reimbursements = emptyList(),
+        )
+        io.mockk.coEvery { repository.deleteTransactions(listOf(5L)) } returns listOf(snapshot)
         val m = vm()
         m.enterSelection(5L)
-        var got: List<cy.txtracker.ui.edit.DeletedTransaction>? = null
+        var got: List<DeletedTransaction>? = null
         m.deleteSelected { snapshots -> got = snapshots }
         coVerify { repository.deleteTransactions(listOf(5L)) }
+        assertThat(got).isEqualTo(listOf(snapshot))
         assertThat(m.selectionMode.value).isFalse()
-        assertThat(got).isNotNull()
     }
+
+    @Test
+    fun restoreTransactionsBatch_calls_repository() = runTest {
+        val snapshot = DeletedTransaction(sampleTx(7L), emptyList())
+        val m = vm()
+        m.restoreTransactionsBatch(listOf(snapshot))
+        coVerify { repository.restoreTransactions(listOf(snapshot)) }
+    }
+
+    private fun sampleTx(id: Long) = Transaction(
+        id = id, amountMinor = 100L, currency = "MYR", merchantRaw = "X",
+        merchantNormalized = "X", categoryId = null, description = null,
+        occurredAt = kotlinx.datetime.Instant.parse("2026-06-17T12:00:00Z"),
+        timeBucket = TimeBucket.AFTERNOON, sourceApp = "p",
+        rawText = null, direction = Direction.OUT,
+        createdAt = kotlinx.datetime.Instant.parse("2026-06-17T12:00:00Z"),
+        notificationDedupeKey = "k",
+    )
 }

@@ -581,62 +581,62 @@ internal fun TransactionRow(
                 )
             }
             Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = row.transaction.merchantRaw,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = formatTimeOfDay(row.transaction.occurredAt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (!note.isNullOrBlank()) {
+                            Text(
+                                text = note,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    RowAmount(transaction = row.transaction, amountFormatter = amountFormatter)
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CategoryChip(category = row.category)
+                    if (row.transaction.needsVerification) {
+                        Spacer(Modifier.size(8.dp))
+                        PendingPill()
+                    }
+                }
+                // Prefer the user's description when set. Otherwise, for Pending rows that came
+                // through the permissive layer (merchant is just "(review)"), show a snippet of
+                // the raw notification so the user can identify the payment without opening the
+                // edit sheet.
+                val hint = row.transaction.description?.takeIf { it.isNotBlank() }
+                    ?: if (row.transaction.needsVerification) {
+                        row.transaction.rawText
+                            ?.take(100)
+                            ?.replace('\n', ' ')
+                            ?.takeIf { it.isNotBlank() }
+                    } else null
+                hint?.let { text ->
+                    Spacer(Modifier.height(4.dp))
                     Text(
-                        text = row.transaction.merchantRaw,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = formatTimeOfDay(row.transaction.occurredAt),
+                        text = text,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (!note.isNullOrBlank()) {
-                        Text(
-                            text = note,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
-                RowAmount(transaction = row.transaction, amountFormatter = amountFormatter)
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CategoryChip(category = row.category)
-                if (row.transaction.needsVerification) {
-                    Spacer(Modifier.size(8.dp))
-                    PendingPill()
-                }
-            }
-            // Prefer the user's description when set. Otherwise, for Pending rows that came
-            // through the permissive layer (merchant is just "(review)"), show a snippet of
-            // the raw notification so the user can identify the payment without opening the
-            // edit sheet.
-            val hint = row.transaction.description?.takeIf { it.isNotBlank() }
-                ?: if (row.transaction.needsVerification) {
-                    row.transaction.rawText
-                        ?.take(100)
-                        ?.replace('\n', ' ')
-                        ?.takeIf { it.isNotBlank() }
-                } else null
-            hint?.let { text ->
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             }
         }
     }
