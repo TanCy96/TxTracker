@@ -127,4 +127,37 @@ class CapturePipelineTest {
         assertThat(decision.amountMinor).isEqualTo(5000L)
         assertThat(decision.currency).isEqualTo("MYR")
     }
+
+    @Test
+    fun auto_promote_package_amount_only_text_goes_to_home_as_undefined_merchant() {
+        val decision = pipeline.decide(
+            packageName = "my.com.gxsbank",
+            rawText = "Your balance updated. RM50.00 something",
+            rewrittenText = "Your balance updated. RM50.00 something",
+            postedAt = now,
+            symbolDefaults = emptyMap(),
+            capturedAt = now,
+            isAutoPromote = true,
+        )
+        assertThat(decision).isInstanceOf(CaptureDecision.Parsed::class.java)
+        val parsed = (decision as CaptureDecision.Parsed).parsed
+        assertThat(parsed.amountMinor).isEqualTo(5000L)
+        assertThat(parsed.merchantRaw).isEqualTo(cy.txtracker.data.UNDEFINED_MERCHANT)
+        assertThat(parsed.direction).isEqualTo(cy.txtracker.data.Direction.OUT)
+    }
+
+    @Test
+    fun auto_promote_does_not_override_rejected_package() {
+        val decision = pipeline.decide(
+            packageName = "my.com.gxsbank",
+            rawText = "Your balance updated. RM50.00 something",
+            rewrittenText = "Your balance updated. RM50.00 something",
+            postedAt = now,
+            symbolDefaults = emptyMap(),
+            capturedAt = now,
+            isAutoPromote = true,
+            isRejected = true,
+        )
+        assertThat(decision).isInstanceOf(CaptureDecision.Pooled::class.java)
+    }
 }

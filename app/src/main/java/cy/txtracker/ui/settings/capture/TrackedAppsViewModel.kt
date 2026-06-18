@@ -50,4 +50,8 @@ class TrackedAppsViewModel @Inject constructor(
     fun rename(packageName: String, label: String) {
         viewModelScope.launch { repository.renameTrackedApp(packageName, label) }
     }
+
+    fun setAutoPromote(packageName: String, enabled: Boolean) {
+        viewModelScope.launch { repository.setAutoPromote(packageName, enabled) }
+    }
 }

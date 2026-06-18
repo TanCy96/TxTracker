@@ -60,6 +60,7 @@ class TxNotificationListener : NotificationListenerService() {
                 val symbolDefaults = trackedCurrencyDao.getDefaultsForSymbol()
                     .associate { it.displaySymbol to it.code }
                 val isRejected = repository.isPackageRejected(sbn.packageName)
+                val isAutoPromote = repository.isAutoPromote(sbn.packageName)
 
                 when (val decision = capturePipeline.decide(
                     packageName = sbn.packageName,
@@ -69,6 +70,7 @@ class TxNotificationListener : NotificationListenerService() {
                     symbolDefaults = symbolDefaults,
                     capturedAt = Clock.System.now(),
                     isRejected = isRejected,
+                    isAutoPromote = isAutoPromote,
                 )) {
                     is CaptureDecision.Parsed -> {
                         val rowId = insert(

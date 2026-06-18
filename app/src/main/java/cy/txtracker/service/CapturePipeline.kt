@@ -1,5 +1,7 @@
 package cy.txtracker.service
 
+import cy.txtracker.data.Direction
+import cy.txtracker.data.UNDEFINED_MERCHANT
 import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.NotificationAmountParser
 import cy.txtracker.parsing.ParsedTransaction
@@ -33,6 +35,7 @@ class CapturePipeline @Inject constructor(
         symbolDefaults: Map<String, String>,
         capturedAt: Instant,
         isRejected: Boolean = false,
+        isAutoPromote: Boolean = false,
     ): CaptureDecision {
         val heuristic = heuristicExtractor.extract(
             text = rewrittenText,
@@ -59,6 +62,23 @@ class CapturePipeline @Inject constructor(
 
         val amount = NotificationAmountParser.findFirst(rewrittenText, symbolDefaults)
             ?: return CaptureDecision.Dropped
+
+        // Trusted package: a confident parse failed, but the user asked us to surface anything
+        // with an amount on home. Land it as a PENDING row with an UNDEFINED merchant for them
+        // to label. Rejected packages never auto-promote — rejection wins.
+        if (isAutoPromote && !isRejected) {
+            return CaptureDecision.Parsed(
+                ParsedTransaction(
+                    amountMinor = amount.amountMinor,
+                    currency = amount.currency,
+                    merchantRaw = UNDEFINED_MERCHANT,
+                    occurredAt = postedAt,
+                    sourceApp = packageName,
+                    rawText = rawText,
+                    direction = Direction.OUT,
+                ),
+            )
+        }
 
         return CaptureDecision.Pooled(
             packageName = packageName,

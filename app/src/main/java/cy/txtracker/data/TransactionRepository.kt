@@ -63,6 +63,7 @@ data class TrackedPackageRow(
     val isBuiltIn: Boolean,
     val poolEntryCountLast30Days: Int,
     val lastCapturedAt: Instant?,
+    val autoPromote: Boolean = false,
 )
 
 enum class PackageStatus { TRACKED, REJECTED, UNTRACKED }
@@ -276,12 +277,14 @@ class TransactionRepository @Inject constructor(
                 emitAll(capturedNotificationDao.observePackageStatsSince(Clock.System.now() - 30.days))
             },
             observeCustomLabels(),
-        ) { approved, rejected, stats, customLabels ->
+            autoPromoteSourceDao.observeAllPackageNames(),
+        ) { approved, rejected, stats, customLabels, autoPromote ->
             buildTrackedPackageRows(
                 approved = approved.toSet(),
                 rejected = rejected.toSet(),
                 stats = stats,
                 customLabels = customLabels,
+                autoPromote = autoPromote.toSet(),
             )
         }
 
@@ -622,6 +625,18 @@ class TransactionRepository @Inject constructor(
 
     fun observeCustomLabels(): Flow<Map<String, String>> =
         customSourceLabelDao.observeAll().map { rows -> rows.associate { it.packageName to it.label } }
+
+    suspend fun isAutoPromote(packageName: String): Boolean =
+        autoPromoteSourceDao.isAutoPromote(packageName)
+
+    suspend fun setAutoPromote(
+        packageName: String,
+        enabled: Boolean,
+        now: Instant = Clock.System.now(),
+    ) {
+        if (enabled) autoPromoteSourceDao.insert(AutoPromoteSource(packageName, now))
+        else autoPromoteSourceDao.delete(packageName)
+    }
 
     suspend fun deleteRejectedPoolEntriesBefore(cutoff: Instant): Int =
         capturedNotificationDao.deleteRejectedBefore(cutoff)
@@ -1684,6 +1699,7 @@ private fun buildTrackedPackageRows(
     rejected: Set<String>,
     stats: List<PoolPackageStats>,
     customLabels: Map<String, String>,
+    autoPromote: Set<String>,
 ): List<TrackedPackageRow> {
     val statsByPackage = stats.associateBy { it.packageName }
     val packages = SourcePackages.PERMISSIVE_PACKAGES + approved + rejected + statsByPackage.keys
@@ -1703,6 +1719,7 @@ private fun buildTrackedPackageRows(
                 isBuiltIn = isBuiltIn,
                 poolEntryCountLast30Days = stat?.entryCount ?: 0,
                 lastCapturedAt = stat?.lastCapturedAt,
+                autoPromote = packageName in autoPromote,
             )
         }
         .sortedWith(compareBy<TrackedPackageRow> { it.status.ordinal }.thenBy { it.label })

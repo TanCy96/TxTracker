@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -80,6 +81,8 @@ fun TrackedAppsScreen(
                 onPoolPackageClick(row.packageName)
             },
             onRename = { selected = null; renameTarget = row },
+            autoPromote = row.autoPromote,
+            onAutoPromoteChange = { enabled -> viewModel.setAutoPromote(row.packageName, enabled) },
             onDismiss = { selected = null },
         )
     }
@@ -151,6 +154,8 @@ private fun PackageActionSheet(
     onReject: () -> Unit,
     onViewPool: () -> Unit,
     onRename: () -> Unit,
+    autoPromote: Boolean,
+    onAutoPromoteChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -171,6 +176,15 @@ private fun PackageActionSheet(
                     ListItem(headlineContent = { Text("Move to Tracked") }, modifier = Modifier.clickable { onTrack() })
                     ListItem(headlineContent = { Text("Move to Rejected") }, modifier = Modifier.clickable { onReject() })
                 }
+            }
+            if (row.status == PackageStatus.TRACKED) {
+                ListItem(
+                    headlineContent = { Text("Auto-add to home") },
+                    supportingContent = { Text("Add to home even when details can't be read.") },
+                    trailingContent = {
+                        Switch(checked = autoPromote, onCheckedChange = onAutoPromoteChange)
+                    },
+                )
             }
             ListItem(headlineContent = { Text("Rename") }, modifier = Modifier.clickable { onRename() })
             ListItem(headlineContent = { Text("View entries in pool") }, modifier = Modifier.clickable { onViewPool() })
