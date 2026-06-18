@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.data.CapturedNotification
 import cy.txtracker.data.PoolFilter
-import cy.txtracker.parsing.SourceLabels
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
@@ -96,6 +95,7 @@ fun PoolScreen(
                         items(group.rows, key = { it.id }) { row ->
                             PoolRow(
                                 row = row,
+                                label = state.labelFor(row.packageName),
                                 expanded = row.id in expandedIds,
                                 onToggleExpanded = {
                                     expandedIds = if (row.id in expandedIds) {
@@ -117,6 +117,7 @@ fun PoolScreen(
     actionRow?.let { row ->
         PoolActionSheet(
             row = row,
+            label = state.labelFor(row.packageName),
             onPromote = {
                 actionRow = null
                 promoteRow = row
@@ -150,7 +151,7 @@ fun PoolScreen(
         AlertDialog(
             onDismissRequest = { rejectRow = null },
             title = { Text("Reject package?") },
-            text = { Text("Hide future pool entries from ${SourceLabels.label(row.packageName)} by default.") },
+            text = { Text("Hide future pool entries from ${state.labelFor(row.packageName)} by default.") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.rejectPackage(row.packageName)
@@ -187,6 +188,7 @@ private fun PoolFilterRow(
 @Composable
 private fun PoolRow(
     row: CapturedNotification,
+    label: String,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
     onClick: () -> Unit,
@@ -194,7 +196,7 @@ private fun PoolRow(
     ListItem(
         headlineContent = {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(SourceLabels.label(row.packageName))
+                Text(label)
                 Text(formatAmount(row.amountMinor, row.currency))
             }
         },
@@ -228,6 +230,7 @@ private fun PoolRow(
 @Composable
 private fun PoolActionSheet(
     row: CapturedNotification,
+    label: String,
     onPromote: () -> Unit,
     onNoise: () -> Unit,
     onReject: () -> Unit,
@@ -236,7 +239,7 @@ private fun PoolActionSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Text(
-                text = SourceLabels.label(row.packageName),
+                text = label,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )

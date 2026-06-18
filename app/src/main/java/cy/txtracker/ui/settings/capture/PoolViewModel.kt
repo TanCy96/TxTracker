@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,7 +26,11 @@ data class PoolUiState(
     val filter: PoolFilter = PoolFilter.PENDING,
     val packageName: String? = null,
     val rows: List<PoolDayGroup> = emptyList(),
-)
+    val customLabels: Map<String, String> = emptyMap(),
+) {
+    fun labelFor(packageName: String): String =
+        customLabels[packageName] ?: cy.txtracker.parsing.SourceLabels.label(packageName)
+}
 
 data class PoolDayGroup(
     val date: LocalDate,
@@ -50,7 +53,10 @@ class PoolViewModel @Inject constructor(
     val state: StateFlow<PoolUiState> =
         combine(filter, packageName) { f, pkg -> f to pkg }
             .flatMapLatest { (f, pkg) ->
-                repository.observePool(f, pkg).map { rows ->
+                combine(
+                    repository.observePool(f, pkg),
+                    repository.observeCustomLabels(),
+                ) { rows, labels ->
                     PoolUiState(
                         filter = f,
                         packageName = pkg,
@@ -58,6 +64,7 @@ class PoolViewModel @Inject constructor(
                             .groupBy { it.postedAt.toLocalDateTime(MalaysiaTimeZone).date }
                             .toSortedMap(reverseOrder())
                             .map { (date, list) -> PoolDayGroup(date, list) },
+                        customLabels = labels,
                     )
                 }
             }
