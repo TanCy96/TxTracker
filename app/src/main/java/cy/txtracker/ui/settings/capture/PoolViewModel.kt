@@ -74,6 +74,41 @@ class PoolViewModel @Inject constructor(
                 PoolUiState(),
             )
 
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode
+    private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedIds: StateFlow<Set<Long>> = _selectedIds
+
+    fun enterSelection(id: Long) {
+        _selectionMode.value = true
+        _selectedIds.value = setOf(id)
+    }
+
+    fun toggleSelect(id: Long) {
+        val updated = if (id in _selectedIds.value) _selectedIds.value - id else _selectedIds.value + id
+        _selectedIds.value = updated
+        if (updated.isEmpty()) _selectionMode.value = false
+    }
+
+    fun clearSelection() {
+        _selectionMode.value = false
+        _selectedIds.value = emptySet()
+    }
+
+    fun approveSelected() {
+        val ids = _selectedIds.value.toList()
+        if (ids.isEmpty()) { clearSelection(); return }
+        viewModelScope.launch { repository.promotePoolEntries(ids) }
+        clearSelection()
+    }
+
+    fun rejectSelected() {
+        val ids = _selectedIds.value.toList()
+        if (ids.isEmpty()) { clearSelection(); return }
+        viewModelScope.launch { repository.markPoolEntriesNoise(ids) }
+        clearSelection()
+    }
+
     fun setFilter(value: PoolFilter) {
         filter.value = value
     }

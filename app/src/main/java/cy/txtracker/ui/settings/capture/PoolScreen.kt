@@ -1,6 +1,8 @@
 package cy.txtracker.ui.settings.capture
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,7 +16,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -54,6 +60,8 @@ fun PoolScreen(
     LaunchedEffect(packageName) { viewModel.setPackageName(packageName) }
     val state by viewModel.state.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val selectionMode by viewModel.selectionMode.collectAsState()
+    val selectedIds by viewModel.selectedIds.collectAsState()
     var actionRow by remember { mutableStateOf<CapturedNotification?>(null) }
     var promoteRow by remember { mutableStateOf<CapturedNotification?>(null) }
     var rejectRow by remember { mutableStateOf<CapturedNotification?>(null) }
@@ -61,14 +69,33 @@ fun PoolScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (packageName == null) "Notification pool" else "Pool: $packageName") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("${selectedIds.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::approveSelected, enabled = selectedIds.isNotEmpty()) {
+                            Icon(Icons.Filled.Check, contentDescription = "Approve selected")
+                        }
+                        IconButton(onClick = viewModel::rejectSelected, enabled = selectedIds.isNotEmpty()) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Reject selected")
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(if (packageName == null) "Notification pool" else "Pool: $packageName") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
@@ -104,7 +131,12 @@ fun PoolScreen(
                                         expandedIds + row.id
                                     }
                                 },
-                                onClick = { actionRow = row },
+                                selectionMode = selectionMode,
+                                selected = row.id in selectedIds,
+                                onClick = {
+                                    if (selectionMode) viewModel.toggleSelect(row.id) else actionRow = row
+                                },
+                                onLongClick = { viewModel.enterSelection(row.id) },
                             )
                             HorizontalDivider()
                         }
@@ -185,15 +217,22 @@ private fun PoolFilterRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PoolRow(
     row: CapturedNotification,
     label: String,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
+    selectionMode: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     ListItem(
+        leadingContent = if (selectionMode) {
+            { Checkbox(checked = selected, onCheckedChange = { onClick() }) }
+        } else null,
         headlineContent = {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text(label)
@@ -222,7 +261,9 @@ private fun PoolRow(
                 }
             }
         },
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )
 }
 
