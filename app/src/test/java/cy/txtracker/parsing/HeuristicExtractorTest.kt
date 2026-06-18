@@ -407,4 +407,16 @@ class HeuristicExtractorTest {
             extractor.extract("RM5.00 cashback claim is successful", "anything", now),
         ).isNull()
     }
+
+    @Test
+    fun transfer_success_shape_does_not_hijack_successfully_transferred_phrasing() {
+        // "...successfully transferred to X" uses an out-verb (transferred) and the word
+        // "successfully" (not "is successful"), so it must be handled by the verb+recipient
+        // path, NOT the transfer-success shape. The trailing \b in TRANSFER_SUCCESS_PATTERN
+        // is what prevents this from matching there.
+        val r = extractor.extract("RM 1.00 has been successfully transferred to LIM SHER LYNN.", "my.com.tngdigital.ewallet", now)!!
+        assertThat(r.merchantRaw).isEqualTo("LIM SHER LYNN")
+        assertThat(r.amountMinor).isEqualTo(100L)
+        assertThat(r.direction).isEqualTo(Direction.OUT)
+    }
 }

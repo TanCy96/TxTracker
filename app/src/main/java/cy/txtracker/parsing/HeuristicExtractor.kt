@@ -140,6 +140,9 @@ class HeuristicExtractor @Inject constructor() {
         // GX Bank and similar confirmation-style pushes have a `to <recipient>` anchor but no
         // out-verb, so the OUT_VERB gate rejects them. The amount-led head + "is successful" tail
         // is specific enough to exclude promo noise, so we accept it without requiring a verb.
+        // The trailing \b is load-bearing: it makes "is successful" match but "is successfully"
+        // NOT match, so confirmation phrasing like "successfully transferred to X" still flows
+        // through the verb+recipient path instead of being captured here.
         private val TRANSFER_SUCCESS_PATTERN = Regex(
             """^RM\s*[\d,]+(?:\.\d{2})?\s+to\s+(?<merchant>.+?)\s+is\s+success(?:ful)?\b""",
             RegexOption.IGNORE_CASE,
