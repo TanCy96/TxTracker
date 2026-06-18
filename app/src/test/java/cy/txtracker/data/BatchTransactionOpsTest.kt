@@ -85,6 +85,23 @@ class BatchTransactionOpsTest {
         coVerify { txDao.insert(match { it.merchantRaw == UNDEFINED_MERCHANT && it.needsVerification }) }
     }
 
+    @Test
+    fun promotePoolEntriesBody_skips_entry_and_count_when_insert_collides() = runTest {
+        val pending = CapturedNotification(
+            id = 11L, packageName = "com.bank", postedAt = now, amountMinor = 500L,
+            currency = "MYR", rawText = "RM5.00 to SHOP is successful", rewrittenText = null,
+            disposition = CaptureDisposition.PENDING, promotedToTxId = null,
+            capturedAt = now, dedupeKey = "d11",
+        )
+        coEvery { capturedDao.get(11L) } returns pending
+        coEvery { txDao.insert(any()) } returns -1L   // dedupe collision (OnConflictStrategy.IGNORE)
+        val repo = makeRepo()
+        val promotedCount = repo.promotePoolEntriesBody(listOf(11L), now)
+        assertThat(promotedCount).isEqualTo(0)
+        coVerify(exactly = 0) { capturedDao.markPromoted(any(), any()) }
+        coVerify(exactly = 0) { approvedDao.insert(any()) }
+    }
+
     private fun sampleTx(id: Long) = Transaction(
         id = id, amountMinor = 100L, currency = "MYR", merchantRaw = "X",
         merchantNormalized = "X", categoryId = null, description = null,
