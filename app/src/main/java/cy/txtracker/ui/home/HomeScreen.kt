@@ -1,6 +1,8 @@
 package cy.txtracker.ui.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -38,6 +44,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -78,6 +85,8 @@ fun HomeRoute(
 ) {
     val state by viewModel.state.collectAsState()
     val slDebitUnlocked by viewModel.slDebitUnlocked.collectAsState()
+    val selectionMode by viewModel.selectionMode.collectAsState()
+    val selectedIds by viewModel.selectedIds.collectAsState()
     var editingTxId by remember { mutableStateOf<Long?>(null) }
     var showAddSheet by remember { mutableStateOf(false) }
     var tripDialogOffer by remember { mutableStateOf<BannerOffer?>(null) }
@@ -98,6 +107,26 @@ fun HomeRoute(
         slDebitUnlocked = slDebitUnlocked,
         onDismissBanner = { currency -> viewModel.dismissBanner(currency) },
         onStartTrip = { offer -> tripDialogOffer = offer },
+        selectionMode = selectionMode,
+        selectedIds = selectedIds,
+        onRowLongPress = { tx -> viewModel.enterSelection(tx.id) },
+        onRowToggle = { tx -> viewModel.toggleSelect(tx.id) },
+        onClearSelection = viewModel::clearSelection,
+        onConfirmSelected = viewModel::confirmSelected,
+        onDeleteSelected = {
+            viewModel.deleteSelected { snapshots ->
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "${snapshots.size} deleted",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.restoreTransactionsBatch(snapshots)
+                    }
+                }
+            }
+        },
     )
 
     editingTxId?.let { id ->
@@ -151,6 +180,13 @@ fun HomeScreen(
     slDebitUnlocked: Boolean = false,
     onDismissBanner: (String) -> Unit = {},
     onStartTrip: (BannerOffer) -> Unit = {},
+    selectionMode: Boolean = false,
+    selectedIds: Set<Long> = emptySet(),
+    onRowLongPress: (Transaction) -> Unit = {},
+    onRowToggle: (Transaction) -> Unit = {},
+    onClearSelection: () -> Unit = {},
+    onConfirmSelected: () -> Unit = {},
+    onDeleteSelected: () -> Unit = {},
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -160,27 +196,46 @@ fun HomeScreen(
             }
         },
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onPrevMonth) {
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month")
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("${selectedIds.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = onClearSelection) {
+                            Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
                         }
-                        Text(
-                            text = formatYearMonth(state.yearMonth),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        IconButton(onClick = onNextMonth) {
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
+                    },
+                    actions = {
+                        IconButton(onClick = onConfirmSelected, enabled = selectedIds.isNotEmpty()) {
+                            Icon(Icons.Filled.Check, contentDescription = "Confirm selected")
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                    }
-                },
-            )
+                        IconButton(onClick = onDeleteSelected, enabled = selectedIds.isNotEmpty()) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete selected")
+                        }
+                    },
+                )
+            } else {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onPrevMonth) {
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month")
+                            }
+                            Text(
+                                text = formatYearMonth(state.yearMonth),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            IconButton(onClick = onNextMonth) {
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
+                            }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -257,6 +312,10 @@ fun HomeScreen(
                     contentPadding = PaddingValues(vertical = 8.dp),
                     amountFormatter = ::formatMyr,
                     onTransactionClick = onTransactionClick,
+                    selectionMode = selectionMode,
+                    selectedIds = selectedIds,
+                    onRowLongPress = onRowLongPress,
+                    onRowToggle = onRowToggle,
                 )
             }
         }
@@ -430,6 +489,10 @@ internal fun TransactionList(
     contentPadding: PaddingValues,
     amountFormatter: (Long) -> String,
     onTransactionClick: (Transaction) -> Unit,
+    selectionMode: Boolean = false,
+    selectedIds: Set<Long> = emptySet(),
+    onRowLongPress: (Transaction) -> Unit = {},
+    onRowToggle: (Transaction) -> Unit = {},
 ) {
     LazyColumn(contentPadding = contentPadding) {
         days.forEachIndexed { index, group ->
@@ -441,7 +504,13 @@ internal fun TransactionList(
                     row = row,
                     note = notesByMerchant[row.transaction.merchantNormalized],
                     amountFormatter = amountFormatter,
-                    onClick = { onTransactionClick(row.transaction) },
+                    selectionMode = selectionMode,
+                    selected = row.transaction.id in selectedIds,
+                    onClick = {
+                        if (selectionMode) onRowToggle(row.transaction)
+                        else onTransactionClick(row.transaction)
+                    },
+                    onLongClick = { onRowLongPress(row.transaction) },
                 )
             }
         }
@@ -485,15 +554,33 @@ internal fun DayHeader(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TransactionRow(
     row: TransactionWithCategory,
     note: String?,
     amountFormatter: (Long) -> String,
     onClick: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onLongClick: () -> Unit = {},
 ) {
-    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+    val bg = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+    Surface(
+        color = bg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onClick() },
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -549,6 +636,7 @@ internal fun TransactionRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
             }
         }
     }

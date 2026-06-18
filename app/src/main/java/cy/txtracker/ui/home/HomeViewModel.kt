@@ -211,6 +211,47 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    // --- Multi-select (HOME) ---
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode
+    private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedIds: StateFlow<Set<Long>> = _selectedIds
+
+    fun enterSelection(id: Long) {
+        _selectionMode.value = true
+        _selectedIds.value = setOf(id)
+    }
+
+    fun toggleSelect(id: Long) {
+        _selectedIds.update { if (id in it) it - id else it + id }
+    }
+
+    fun clearSelection() {
+        _selectionMode.value = false
+        _selectedIds.value = emptySet()
+    }
+
+    fun confirmSelected() {
+        val ids = _selectedIds.value.toList()
+        if (ids.isEmpty()) { clearSelection(); return }
+        viewModelScope.launch { repository.confirmTransactions(ids) }
+        clearSelection()
+    }
+
+    fun deleteSelected(onDeleted: (List<DeletedTransaction>) -> Unit) {
+        val ids = _selectedIds.value.toList()
+        if (ids.isEmpty()) { clearSelection(); return }
+        viewModelScope.launch {
+            val snapshots = repository.deleteTransactions(ids)
+            onDeleted(snapshots)
+        }
+        clearSelection()
+    }
+
+    fun restoreTransactionsBatch(snapshots: List<DeletedTransaction>) {
+        viewModelScope.launch { repository.restoreTransactions(snapshots) }
+    }
+
     fun openTrip(currency: String, startAt: Instant, endAt: Instant?) {
         viewModelScope.launch {
             repository.openTrip(currency, startAt, endAt)
