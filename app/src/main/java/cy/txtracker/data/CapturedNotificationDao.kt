@@ -33,6 +33,9 @@ interface CapturedNotificationDao {
     @Query("UPDATE captured_notifications SET disposition = 'NOISE' WHERE id = :id")
     suspend fun markNoise(id: Long)
 
+    @Query("UPDATE captured_notifications SET disposition = 'NOISE' WHERE id IN (:ids)")
+    suspend fun markNoiseBatch(ids: List<Long>)
+
     @Query(
         """
         UPDATE captured_notifications

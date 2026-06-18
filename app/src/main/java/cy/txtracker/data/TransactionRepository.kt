@@ -14,6 +14,7 @@ import cy.txtracker.parsing.HeuristicExtractor
 import cy.txtracker.parsing.SourceLabels
 import cy.txtracker.parsing.SourcePackages
 import cy.txtracker.service.NotificationRewriteEngine
+import cy.txtracker.ui.edit.DeletedTransaction
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -591,6 +592,104 @@ class TransactionRepository @Inject constructor(
 
     suspend fun markPoolEntryNoise(id: Long) {
         capturedNotificationDao.markNoise(id)
+    }
+
+    // ---- Batch operations (multi-select UI) -----------------------------------------------
+
+    suspend fun confirmTransactions(ids: List<Long>, now: Instant = Clock.System.now()) {
+        if (ids.isEmpty()) return
+        database.withTransaction { confirmTransactionsBody(ids, now) }
+    }
+
+    /**
+     * Body of [confirmTransactions], extracted so unit tests can drive it directly without
+     * mocking Room's `withTransaction` extension. Production callers MUST go through
+     * [confirmTransactions] so the work runs atomically.
+     */
+    internal suspend fun confirmTransactionsBody(ids: List<Long>, now: Instant) {
+        transactionDao.distinctSourceAppsForIds(ids)
+            .filter { it != MANUAL_SOURCE_APP }
+            .forEach { approvedSourceDao.insert(ApprovedSource(it, now)) }
+        transactionDao.clearNeedsVerification(ids)
+    }
+
+    suspend fun deleteTransactions(ids: List<Long>): List<DeletedTransaction> =
+        database.withTransaction { deleteTransactionsBody(ids) }
+
+    /**
+     * Body of [deleteTransactions]; returns snapshots (transaction + reimbursements) for undo,
+     * deleting each row. Extracted for direct unit testing. See [deleteTransactions] for the
+     * atomic production entry point.
+     */
+    internal suspend fun deleteTransactionsBody(ids: List<Long>): List<DeletedTransaction> =
+        ids.mapNotNull { id ->
+            val tx = transactionDao.getById(id) ?: return@mapNotNull null
+            val reimbursements = reimbursementEntryDao.getForTransaction(id)
+            transactionDao.delete(id)
+            DeletedTransaction(tx, reimbursements)
+        }
+
+    suspend fun restoreTransactions(snapshots: List<DeletedTransaction>) =
+        database.withTransaction {
+            snapshots.forEach { restoreTransactionBody(it.transaction, it.reimbursements) }
+        }
+
+    suspend fun markPoolEntriesNoise(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        capturedNotificationDao.markNoiseBatch(ids)
+    }
+
+    suspend fun promotePoolEntries(ids: List<Long>, now: Instant = Clock.System.now()): Int =
+        database.withTransaction { promotePoolEntriesBody(ids, now) }
+
+    /**
+     * Body of [promotePoolEntries]; promotes each pending pool entry to a transaction, using
+     * the heuristic parser for the merchant (falling back to [UNDEFINED_MERCHANT]) and flagging
+     * each new row for verification. Extracted for direct unit testing. Returns the number of
+     * rows promoted.
+     */
+    internal suspend fun promotePoolEntriesBody(ids: List<Long>, now: Instant): Int {
+        var promoted = 0
+        for (id in ids) {
+            val pool = capturedNotificationDao.get(id) ?: continue
+            val parsed = heuristicExtractor.extract(
+                text = pool.rewrittenText ?: pool.rawText,
+                sourceApp = pool.packageName,
+                postedAt = pool.postedAt,
+            )
+            val merchant = parsed?.merchantRaw?.takeIf { it.isNotBlank() } ?: UNDEFINED_MERCHANT
+            val merchantNormalized = normalizeMerchant(merchant)
+            val dedupeKey = computeDedupeKey(
+                amountMinor = pool.amountMinor,
+                merchantNormalized = merchantNormalized,
+                occurredAt = pool.postedAt,
+                currency = pool.currency,
+            )
+            val rowId = transactionDao.insert(
+                Transaction(
+                    amountMinor = pool.amountMinor,
+                    currency = pool.currency,
+                    merchantRaw = merchant,
+                    merchantNormalized = merchantNormalized,
+                    categoryId = null,
+                    description = null,
+                    occurredAt = pool.postedAt,
+                    timeBucket = bucketOf(pool.postedAt),
+                    sourceApp = pool.packageName,
+                    rawText = pool.rawText,
+                    direction = Direction.OUT,
+                    createdAt = now,
+                    notificationDedupeKey = dedupeKey,
+                    needsVerification = true,
+                ),
+            )
+            val txId = rowId.takeIf { it >= 0 } ?: continue
+            capturedNotificationDao.markPromoted(id, txId)
+            rejectedSourceDao.delete(pool.packageName)
+            approvedSourceDao.insert(ApprovedSource(pool.packageName, now))
+            promoted++
+        }
+        return promoted
     }
 
     suspend fun rejectPackage(packageName: String, now: Instant = Clock.System.now()) =

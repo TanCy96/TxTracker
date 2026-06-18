@@ -29,6 +29,12 @@ interface TransactionDao {
     @Query("SELECT DISTINCT sourceApp FROM transactions WHERE sourceApp != 'manual'")
     fun observeDistinctSourceApps(): Flow<List<String>>
 
+    @Query("SELECT DISTINCT sourceApp FROM transactions WHERE id IN (:ids)")
+    suspend fun distinctSourceAppsForIds(ids: List<Long>): List<String>
+
+    @Query("UPDATE transactions SET needsVerification = 0 WHERE id IN (:ids)")
+    suspend fun clearNeedsVerification(ids: List<Long>)
+
     @Query("SELECT COUNT(*) FROM transactions")
     suspend fun countAll(): Long
 
