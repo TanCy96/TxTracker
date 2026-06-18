@@ -26,8 +26,8 @@ android {
         applicationId = "cy.txtracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.0.1"
+        versionCode = 4
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "cy.txtracker.HiltTestRunner"
     }
