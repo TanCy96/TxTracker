@@ -15,7 +15,7 @@
 - Commit message trailer (every commit): `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
 - Maybank merchant for the canonical example must parse to exactly `ILOVEYOO] PAV DAMANSAR` (the `]` artifact is kept; normalization handles display).
 - Footer button labels are unchanged: needs-verification → `Not a transaction` + `Confirm`; saved → `Delete` + `Done`.
-- "Only a button closes the open-transaction sheet" — swipe-down, scrim tap, and back all stop dismissing it (per the user's explicit choice).
+- The open-transaction sheet is not dismissible by **swipe-down** or **scrim tap**; the **system back button still dismisses it** (via a `BackHandler`), and the footer buttons dismiss it. (Per the user's explicit choice.)
 
 ---
 
@@ -250,11 +250,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Add the `SheetValue` import**
 
-In the import block of `EditTransactionSheet.kt`, add (alphabetically near the other `androidx.compose.material3` imports):
+In the import block of `EditTransactionSheet.kt`, add:
 
 ```kotlin
-import androidx.compose.material3.SheetValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.SheetValue
 ```
 
 - [ ] **Step 2: Block swipe-to-hide and scrim/back dismissal in `EditTransactionSheet()`**
@@ -268,13 +269,19 @@ Change the sheet-state declaration (line 90) to reject settling to `Hidden`:
     )
 ```
 
-Change `onDismissRequest` (line 93) to a no-op so scrim tap and back press do not close the sheet (only a button closes it, via the callbacks below):
+Change `onDismissRequest` (line 93) to a no-op so **scrim tap** does not close the sheet, then add a `BackHandler` at the top of the content lambda so the **system back button still closes it**. `onDismissRequest = {}` also neutralizes the sheet's built-in back handling, so the explicit `BackHandler` (registered deeper in composition, hence higher priority) is what restores back-to-close:
 
 ```kotlin
     ModalBottomSheet(
         onDismissRequest = {},
         sheetState = sheetState,
     ) {
+        // Back button still dismisses the sheet (swipe + scrim are blocked above).
+        BackHandler { onDismiss() }
+        when (val s = state) {
+            // ... unchanged ...
+        }
+    }
 ```
 
 Leave everything inside the `when (val s = state)` block unchanged — the content callbacks (`onClose = onDismiss`, `onConfirmVerification`, `onDelete`) already close the sheet by setting `editingTxId = null` in `HomeRoute`. `MissingContent(onClose = onDismiss)` is also unchanged (it stays dismissible via its own Close button, which is correct).
@@ -356,7 +363,8 @@ Confirm by code inspection:
 - The footer `Row` is a sibling of (not inside) the `.verticalScroll(...)` inner column.
 - The inner column has `Modifier.weight(1f)` and the scroll modifier; the outer column has `fillMaxHeight()` + `imePadding()`.
 - `sheetState` uses `confirmValueChange = { it != SheetValue.Hidden }` and `onDismissRequest = {}`.
-- Note in the task summary that **swipe-down, scrim tap, and system back no longer dismiss the sheet** (matches the chosen behavior: only a button closes it). If a back-to-close affordance is later wanted, add `BackHandler { onDismiss() }` inside the content lambda — out of scope here.
+- A `BackHandler { onDismiss() }` is present at the top of the content lambda.
+- Note in the task summary that **swipe-down and scrim tap no longer dismiss the sheet**, while the **system back button and the footer buttons still dismiss it** (matches the chosen behavior).
 
 - [ ] **Step 7: Commit**
 
@@ -379,6 +387,6 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Placeholder scan:** No TBD/TODO. The one `// === MOVE HERE … ===` marker in Task 3 Step 3 is an explicit verbatim-move instruction for a 300-line block, not a placeholder — the exact source line range (223–540) and the surrounding skeleton are given.
 
-**Type consistency:** `confirmValueChange = { it != SheetValue.Hidden }`, `onDismissRequest = {}`, `Modifier.weight(1f)`, `fillMaxHeight()`, `imePadding()` are used consistently across steps; imports for `SheetValue` and `fillMaxHeight` are added in Task 3 Step 1. Parser change touches only the line-174 `"at"` pattern; the test asserts the exact constants from Global Constraints (`ILOVEYOO] PAV DAMANSAR`, `2820L`).
+**Type consistency:** `confirmValueChange = { it != SheetValue.Hidden }`, `onDismissRequest = {}`, `BackHandler { onDismiss() }`, `Modifier.weight(1f)`, `fillMaxHeight()`, `imePadding()` are used consistently across steps; imports for `BackHandler`, `SheetValue`, and `fillMaxHeight` are added in Task 3 Step 1. Parser change touches only the line-174 `"at"` pattern; the test asserts the exact constants from Global Constraints (`ILOVEYOO] PAV DAMANSAR`, `2820L`).
 
-**Decision note:** Per the user's explicit selection ("the only way to close is tapping a button"), back-press dismissal is intentionally disabled along with swipe/scrim. This supersedes the spec's softer "keep back working" default; flagged in Task 3 Step 6.
+**Decision note:** Per the user's clarification, the **system back button still dismisses** the sheet (restored via `BackHandler`); only **swipe-down and scrim tap** are blocked. Flagged in Task 3 Steps 2 and 6.
