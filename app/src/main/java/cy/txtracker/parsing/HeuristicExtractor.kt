@@ -169,9 +169,10 @@ class HeuristicExtractor @Inject constructor() {
                 """\bto\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|at|via|using|by|accepted|successfully|completed|processed)\b|[\.\n,]|\s*$)""",
                 RegexOption.IGNORE_CASE,
             ),
-            // "at MERCHANT" — store-style ("paid at COFFEE BEAN")
+            // "at MERCHANT" — store-style ("paid at COFFEE BEAN"). `with` terminates the
+            // merchant for bank "spent at X with your <card>" forms (e.g. Maybank).
             Regex(
-                """\bat\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|via|using|by|accepted|successfully|completed|processed)\b|[\.\n,]|\s*$)""",
+                """\bat\s+(?<merchant>[^\.\n,]+?)(?=\s+(?:for|on|via|using|by|with|accepted|successfully|completed|processed)\b|[\.\n,]|\s*$)""",
                 RegexOption.IGNORE_CASE,
             ),
             // Wallet head-colon shape: "MERCHANT: RM<amt> ..." — TnG and other wallets put the

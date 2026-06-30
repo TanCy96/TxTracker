@@ -49,6 +49,18 @@ class HeuristicExtractorTest {
     }
 
     @Test
+    fun handles_maybank_spent_at_merchant_with_card_clause() {
+        // Maybank's "spent at X with your <card>" form: the merchant must stop at " with",
+        // not run all the way to the final period (regression: it captured up to "ending XXXX").
+        val text = "Maybank2u: Card Transaction You've just spent RM 28.20 at " +
+            "ILOVEYOO] PAV DAMANSAR with your Maybank Debit Card MasterCard ending XXXX. " +
+            "View your receipt now"
+        val r = extractor.extract(text, "com.maybank2u.life", now)!!
+        assertThat(r.merchantRaw).isEqualTo("ILOVEYOO] PAV DAMANSAR")
+        assertThat(r.amountMinor).isEqualTo(2820L)
+    }
+
+    @Test
     fun thousands_separator_works() {
         val r = extractor.extract("Paid RM 1,234.56 to BIG STORE", "anything", now)!!
         assertThat(r.amountMinor).isEqualTo(123456L)
