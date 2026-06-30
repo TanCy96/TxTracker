@@ -1,11 +1,13 @@
 package cy.txtracker.ui.edit
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -31,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -87,12 +90,17 @@ fun EditTransactionSheet(
 ) {
     LaunchedEffect(transactionId) { viewModel.load(transactionId) }
     val state by viewModel.state.collectAsState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden },
+    )
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {},
         sheetState = sheetState,
     ) {
+        // Back button still dismisses the sheet (swipe + scrim are blocked above).
+        BackHandler { onDismiss() }
         when (val s = state) {
             EditUiState.Loading -> LoadingContent()
             EditUiState.Missing -> MissingContent(onClose = onDismiss)
@@ -213,331 +221,340 @@ private fun EditingContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            // imePadding shifts the column up so the focused text field stays above the
-            // keyboard. verticalScroll lets the user reach any field that would otherwise
-            // be pushed past the top of the sheet when the keyboard is open.
-            .verticalScroll(rememberScrollState())
+            .fillMaxHeight()
+            // imePadding on the outer column keeps the pinned footer above the keyboard;
+            // the inner scroll column (weight 1f) shrinks to make room.
             .imePadding()
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
-        if (tx.needsVerification) {
-            VerificationBanner()
-            Spacer(Modifier.height(12.dp))
-        }
-
-        // Header: amount + occurred-at. Merchant is editable below so the user can fix
-        // a wrong/placeholder merchant name (e.g., "CIMB (review)" → "TAOBAO").
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
         ) {
-            val date = tx.occurredAt.toLocalDateTime(MalaysiaTimeZone).date
-            Text(
-                text = "${formatDayHeader(date)} • ${formatTimeOfDay(tx.occurredAt)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = formatMyr(tx.amountMinor),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(text = "Merchant", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = merchant,
-            onValueChange = { merchant = it },
-            placeholder = { Text("Merchant name") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(16.dp))
-
-        Text(text = "Category", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        CategoryPicker(
-            categories = state.categories,
-            selectedCategoryId = tx.categoryId,
-            onCategoryChange = onCategoryChange,
-        )
-
-        Spacer(Modifier.height(16.dp))
-        Text(text = "Description", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            placeholder = { Text("e.g. lunch, petrol, coffee") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(Modifier.height(16.dp))
-        Text(text = "Note about this merchant", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = merchantNote,
-            onValueChange = { merchantNote = it },
-            placeholder = { Text("e.g. SS15 warung uncle, friend's TnG, …") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(Modifier.height(16.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(16.dp))
-        Text(text = "Currency", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-
-        var showPicker by remember { mutableStateOf(false) }
-        var pendingCurrency by remember { mutableStateOf<String?>(null) }
-        var showAddDialog by remember { mutableStateOf(false) }
-        val scope = rememberCoroutineScope()
-
-        AssistChip(
-            onClick = { showPicker = true },
-            label = { Text(tx.currency) },
-        )
-
-        if (showPicker) {
-            CurrencyPickerSheet(
-                tracked = state.trackedCurrencies,
-                onPick = { picked ->
-                    showPicker = false
-                    if (picked == tx.currency) return@CurrencyPickerSheet
-                    if (picked == "MYR") {
-                        viewModel.setCurrency(transactionId, picked)
-                    } else {
-                        scope.launch {
-                            val active = viewModel.findActiveTrip(picked, tx.occurredAt)
-                            if (active != null) {
-                                viewModel.setCurrency(transactionId, picked)
-                            } else {
-                                pendingCurrency = picked
-                            }
-                        }
-                    }
-                },
-                onAddNew = {
-                    showPicker = false
-                    showAddDialog = true
-                },
-                onDismiss = { showPicker = false },
-            )
-        }
-
-        if (showAddDialog) {
-            AddCurrencyDialog(
-                alreadyTracked = state.trackedCurrencies.map { it.code }.toSet() + "MYR",
-                onPick = { code ->
-                    showAddDialog = false
-                    viewModel.addCurrency(code)
-                    pendingCurrency = code
-                },
-                onDismiss = { showAddDialog = false },
-            )
-        }
-
-        val pending = pendingCurrency
-        if (pending != null) {
-            TripCreationDialog(
-                currency = pending,
-                defaultStartAt = tx.occurredAt,
-                defaultEndAt = tx.occurredAt.plus(14, DateTimeUnit.DAY, MalaysiaTimeZone),
-                onConfirm = { startAt, endAt ->
-                    pendingCurrency = null
-                    scope.launch {
-                        viewModel.setCurrency(transactionId, pending)
-                        viewModel.openTrip(pending, startAt, endAt) { }
-                    }
-                },
-                onDismiss = { pendingCurrency = null },
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(16.dp))
-
-        Text(text = "Funding source", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-
-        var showFundingSourcePicker by remember { mutableStateOf(false) }
-        AssistChip(
-            onClick = { showFundingSourcePicker = true },
-            label = { Text(state.fundingSource?.displayName ?: "None") },
-        )
-        if (showFundingSourcePicker) {
-            FundingSourcePickerSheet(
-                sources = state.availableFundingSources,
-                selected = state.fundingSource,
-                onDismiss = { showFundingSourcePicker = false },
-                onPick = { picked ->
-                    onFundingSourceChange(picked?.id)
-                },
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(16.dp))
-
-        if (tx.currency == "MYR" && state.slDebitUnlocked) {
-            Text(text = "Share with SL Debit", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(8.dp))
-
-            val shareEnabled = tx.slShareMinor != null
-            val defaultPercent = state.slDebitAccount?.defaultSharePercent ?: 40
-            var shareText by remember(tx.id) {
-                mutableStateOf(tx.slShareMinor?.let { formatMyr(it).removePrefix("RM ") } ?: "")
+            if (tx.needsVerification) {
+                VerificationBanner()
+                Spacer(Modifier.height(12.dp))
             }
 
+            // Header: amount + occurred-at. Merchant is editable below so the user can fix
+            // a wrong/placeholder merchant name (e.g., "CIMB (review)" → "TAOBAO").
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val date = tx.occurredAt.toLocalDateTime(MalaysiaTimeZone).date
                 Text(
-                    text = if (shareEnabled) "Sharing ${formatMyr(tx.slShareMinor!!)} of ${formatMyr(tx.amountMinor)}"
-                    else "Off",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "${formatDayHeader(date)} • ${formatTimeOfDay(tx.occurredAt)}",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Switch(
-                    checked = shareEnabled,
-                    onCheckedChange = { checked ->
-                        if (checked) {
-                            val def = slDebitDefaultShareMinor(tx.amountMinor, defaultPercent)
-                            shareText = formatMyr(def).removePrefix("RM ")
-                            onShareChange(def)
-                        } else {
-                            shareText = ""
-                            onShareChange(null)
-                        }
-                    },
+                Text(
+                    text = formatMyr(tx.amountMinor),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
-            if (shareEnabled) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = shareText,
-                    onValueChange = { shareText = it },
-                    label = { Text("Share amount (RM)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                LaunchedEffect(shareText) {
-                    val parsed = parseAmountMinor(shareText)
-                    if (parsed != null && isValidShareMinor(parsed, tx.amountMinor) && parsed != tx.slShareMinor) {
-                        onShareChange(parsed)
-                    }
-                }
-            }
+            Spacer(Modifier.height(12.dp))
+            Text(text = "Merchant", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = merchant,
+                onValueChange = { merchant = it },
+                placeholder = { Text("Merchant name") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(16.dp))
+
+            Text(text = "Category", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            CategoryPicker(
+                categories = state.categories,
+                selectedCategoryId = tx.categoryId,
+                onCategoryChange = onCategoryChange,
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text(text = "Description", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                placeholder = { Text("e.g. lunch, petrol, coffee") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text(text = "Note about this merchant", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = merchantNote,
+                onValueChange = { merchantNote = it },
+                placeholder = { Text("e.g. SS15 warung uncle, friend's TnG, …") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(Modifier.height(16.dp))
-        }
+            Text(text = "Currency", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
 
-        Text(text = "Reimbursed by others", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(4.dp))
-        run {
-            val entries = state.reimbursements
-            val totalReimbursed = entries.sumOf { it.amountMinor }
-            if (entries.isEmpty()) {
-                Text(
-                    text = "No reimbursements",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            var showPicker by remember { mutableStateOf(false) }
+            var pendingCurrency by remember { mutableStateOf<String?>(null) }
+            var showAddDialog by remember { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
+
+            AssistChip(
+                onClick = { showPicker = true },
+                label = { Text(tx.currency) },
+            )
+
+            if (showPicker) {
+                CurrencyPickerSheet(
+                    tracked = state.trackedCurrencies,
+                    onPick = { picked ->
+                        showPicker = false
+                        if (picked == tx.currency) return@CurrencyPickerSheet
+                        if (picked == "MYR") {
+                            viewModel.setCurrency(transactionId, picked)
+                        } else {
+                            scope.launch {
+                                val active = viewModel.findActiveTrip(picked, tx.occurredAt)
+                                if (active != null) {
+                                    viewModel.setCurrency(transactionId, picked)
+                                } else {
+                                    pendingCurrency = picked
+                                }
+                            }
+                        }
+                    },
+                    onAddNew = {
+                        showPicker = false
+                        showAddDialog = true
+                    },
+                    onDismiss = { showPicker = false },
                 )
-            } else {
-                Text(
-                    text = "Others returned ${formatAmount(totalReimbursed, "").trim()} of " +
-                        "${formatAmount(tx.amountMinor, "").trim()} ${tx.currency}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                entries.forEach { entry ->
-                    ReimbursementRow(
-                        entry = entry,
-                        currency = tx.currency,
-                        onRemove = { onRemoveReimbursement(entry) },
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
             }
 
-            var newAmount by remember(tx.id, entries.size) { mutableStateOf("") }
-            var newKind by remember(tx.id, entries.size) { mutableStateOf(FundingSourceKind.DEBIT_BANK) }
-            var newPerson by remember(tx.id, entries.size) { mutableStateOf("") }
+            if (showAddDialog) {
+                AddCurrencyDialog(
+                    alreadyTracked = state.trackedCurrencies.map { it.code }.toSet() + "MYR",
+                    onPick = { code ->
+                        showAddDialog = false
+                        viewModel.addCurrency(code)
+                        pendingCurrency = code
+                    },
+                    onDismiss = { showAddDialog = false },
+                )
+            }
 
-            OutlinedTextField(
-                value = newAmount,
-                onValueChange = { newAmount = it },
-                label = { Text("Reimbursed amount (${tx.currency})") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            KindDropdown(selected = newKind, onSelect = { newKind = it })
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = newPerson,
-                onValueChange = { newPerson = it },
-                label = { Text("Who (optional)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
+            val pending = pendingCurrency
+            if (pending != null) {
+                TripCreationDialog(
+                    currency = pending,
+                    defaultStartAt = tx.occurredAt,
+                    defaultEndAt = tx.occurredAt.plus(14, DateTimeUnit.DAY, MalaysiaTimeZone),
+                    onConfirm = { startAt, endAt ->
+                        pendingCurrency = null
+                        scope.launch {
+                            viewModel.setCurrency(transactionId, pending)
+                            viewModel.openTrip(pending, startAt, endAt) { }
+                        }
+                    },
+                    onDismiss = { pendingCurrency = null },
+                )
+            }
 
-            val parsedNew = parseAmountMinor(newAmount)
-            val prospective = entries.map { it.amountMinor } + (parsedNew ?: 0L)
-            val canAdd = parsedNew != null && isValidReimbursementTotal(prospective, tx.amountMinor)
-            Button(
-                onClick = {
-                    onAddReimbursement(parsedNew!!, newKind, newPerson.takeIf { it.isNotBlank() })
-                    newAmount = ""; newPerson = ""
-                },
-                enabled = canAdd,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Add reimbursement") }
-        }
-
-        // "Improve parsing for this app" — only meaningful when we have both a package
-        // and a captured rawText to anchor a rule against. Manual entries are excluded.
-        var showRewriteDialog by remember { mutableStateOf(false) }
-        if (tx.sourceApp != cy.txtracker.data.MANUAL_SOURCE_APP && !tx.rawText.isNullOrBlank()) {
             Spacer(Modifier.height(16.dp))
-            OutlinedButton(
-                onClick = { showRewriteDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Improve parsing for this app") }
-        }
-        if (showRewriteDialog && !tx.rawText.isNullOrBlank()) {
-            ImproveParsingDialog(
-                packageName = tx.sourceApp,
-                rawText = tx.rawText,
-                onDismiss = { showRewriteDialog = false },
-                onSave = { pattern, replacement ->
-                    viewModel.upsertRewrite(
-                        packageName = tx.sourceApp,
-                        pattern = pattern,
-                        replacement = replacement,
-                        onDone = { showRewriteDialog = false },
-                    )
-                },
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            Text(text = "Funding source", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+
+            var showFundingSourcePicker by remember { mutableStateOf(false) }
+            AssistChip(
+                onClick = { showFundingSourcePicker = true },
+                label = { Text(state.fundingSource?.displayName ?: "None") },
             )
+            if (showFundingSourcePicker) {
+                FundingSourcePickerSheet(
+                    sources = state.availableFundingSources,
+                    selected = state.fundingSource,
+                    onDismiss = { showFundingSourcePicker = false },
+                    onPick = { picked ->
+                        onFundingSourceChange(picked?.id)
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            if (tx.currency == "MYR" && state.slDebitUnlocked) {
+                Text(text = "Share with SL Debit", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(8.dp))
+
+                val shareEnabled = tx.slShareMinor != null
+                val defaultPercent = state.slDebitAccount?.defaultSharePercent ?: 40
+                var shareText by remember(tx.id) {
+                    mutableStateOf(tx.slShareMinor?.let { formatMyr(it).removePrefix("RM ") } ?: "")
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (shareEnabled) "Sharing ${formatMyr(tx.slShareMinor!!)} of ${formatMyr(tx.amountMinor)}"
+                        else "Off",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Switch(
+                        checked = shareEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                val def = slDebitDefaultShareMinor(tx.amountMinor, defaultPercent)
+                                shareText = formatMyr(def).removePrefix("RM ")
+                                onShareChange(def)
+                            } else {
+                                shareText = ""
+                                onShareChange(null)
+                            }
+                        },
+                    )
+                }
+                if (shareEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = shareText,
+                        onValueChange = { shareText = it },
+                        label = { Text("Share amount (RM)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    LaunchedEffect(shareText) {
+                        val parsed = parseAmountMinor(shareText)
+                        if (parsed != null && isValidShareMinor(parsed, tx.amountMinor) && parsed != tx.slShareMinor) {
+                            onShareChange(parsed)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(16.dp))
+            }
+
+            Text(text = "Reimbursed by others", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            run {
+                val entries = state.reimbursements
+                val totalReimbursed = entries.sumOf { it.amountMinor }
+                if (entries.isEmpty()) {
+                    Text(
+                        text = "No reimbursements",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        text = "Others returned ${formatAmount(totalReimbursed, "").trim()} of " +
+                            "${formatAmount(tx.amountMinor, "").trim()} ${tx.currency}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    entries.forEach { entry ->
+                        ReimbursementRow(
+                            entry = entry,
+                            currency = tx.currency,
+                            onRemove = { onRemoveReimbursement(entry) },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+
+                var newAmount by remember(tx.id, entries.size) { mutableStateOf("") }
+                var newKind by remember(tx.id, entries.size) { mutableStateOf(FundingSourceKind.DEBIT_BANK) }
+                var newPerson by remember(tx.id, entries.size) { mutableStateOf("") }
+
+                OutlinedTextField(
+                    value = newAmount,
+                    onValueChange = { newAmount = it },
+                    label = { Text("Reimbursed amount (${tx.currency})") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                KindDropdown(selected = newKind, onSelect = { newKind = it })
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = newPerson,
+                    onValueChange = { newPerson = it },
+                    label = { Text("Who (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+
+                val parsedNew = parseAmountMinor(newAmount)
+                val prospective = entries.map { it.amountMinor } + (parsedNew ?: 0L)
+                val canAdd = parsedNew != null && isValidReimbursementTotal(prospective, tx.amountMinor)
+                Button(
+                    onClick = {
+                        onAddReimbursement(parsedNew!!, newKind, newPerson.takeIf { it.isNotBlank() })
+                        newAmount = ""; newPerson = ""
+                    },
+                    enabled = canAdd,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Add reimbursement") }
+            }
+
+            // "Improve parsing for this app" — only meaningful when we have both a package
+            // and a captured rawText to anchor a rule against. Manual entries are excluded.
+            var showRewriteDialog by remember { mutableStateOf(false) }
+            if (tx.sourceApp != cy.txtracker.data.MANUAL_SOURCE_APP && !tx.rawText.isNullOrBlank()) {
+                Spacer(Modifier.height(16.dp))
+                OutlinedButton(
+                    onClick = { showRewriteDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Improve parsing for this app") }
+            }
+            if (showRewriteDialog && !tx.rawText.isNullOrBlank()) {
+                ImproveParsingDialog(
+                    packageName = tx.sourceApp,
+                    rawText = tx.rawText,
+                    onDismiss = { showRewriteDialog = false },
+                    onSave = { pattern, replacement ->
+                        viewModel.upsertRewrite(
+                            packageName = tx.sourceApp,
+                            pattern = pattern,
+                            replacement = replacement,
+                            onDone = { showRewriteDialog = false },
+                        )
+                    },
+                )
+            }
         }
 
-        Spacer(Modifier.height(20.dp))
+        // Pinned footer — never scrolls.
+        Spacer(Modifier.height(12.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(12.dp))
         if (tx.needsVerification) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
