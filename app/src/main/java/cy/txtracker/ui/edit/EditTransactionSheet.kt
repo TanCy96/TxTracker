@@ -256,6 +256,40 @@ private fun EditingContent(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(16.dp))
+
+        Text(text = "Category", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        CategoryPicker(
+            categories = state.categories,
+            selectedCategoryId = tx.categoryId,
+            onCategoryChange = onCategoryChange,
+        )
+
+        Spacer(Modifier.height(16.dp))
+        Text(text = "Description", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = description,
+            onValueChange = { description = it },
+            placeholder = { Text("e.g. lunch, petrol, coffee") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(16.dp))
+        Text(text = "Note about this merchant", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = merchantNote,
+            onValueChange = { merchantNote = it },
+            placeholder = { Text("e.g. SS15 warung uncle, friend's TnG, …") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
         Text(text = "Currency", style = MaterialTheme.typography.labelLarge)
@@ -476,42 +510,6 @@ private fun EditingContent(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Add reimbursement") }
         }
-
-        Spacer(Modifier.height(16.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(16.dp))
-
-        Text(text = "Category", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        CategoryPicker(
-            categories = state.categories,
-            selectedCategoryId = tx.categoryId,
-            onCategoryChange = onCategoryChange,
-        )
-
-        Spacer(Modifier.height(16.dp))
-        Text(text = "Description", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            placeholder = { Text("e.g. lunch, petrol, coffee") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(Modifier.height(16.dp))
-        Text(text = "Note about this merchant", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = merchantNote,
-            onValueChange = { merchantNote = it },
-            placeholder = { Text("e.g. SS15 warung uncle, friend's TnG, …") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
-        )
 
         // "Improve parsing for this app" — only meaningful when we have both a package
         // and a captured rawText to anchor a rule against. Manual entries are excluded.
