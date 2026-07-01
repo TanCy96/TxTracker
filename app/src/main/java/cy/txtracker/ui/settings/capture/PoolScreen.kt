@@ -31,6 +31,8 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -40,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +53,7 @@ import cy.txtracker.data.PoolFilter
 import cy.txtracker.ui.format.formatDayHeader
 import cy.txtracker.ui.format.formatMyr
 import cy.txtracker.ui.format.formatTimeOfDay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,8 +71,11 @@ fun PoolScreen(
     var promoteRow by remember { mutableStateOf<CapturedNotification?>(null) }
     var rejectRow by remember { mutableStateOf<CapturedNotification?>(null) }
     var expandedIds by remember { mutableStateOf(emptySet<Long>()) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             if (selectionMode) {
                 TopAppBar(
@@ -173,7 +180,14 @@ fun PoolScreen(
             categories = categories,
             onSave = { edit ->
                 viewModel.promote(row.id, edit) { ok ->
-                    if (ok) promoteRow = null
+                    promoteRow = null
+                    if (!ok) {
+                        scope.launch {
+                            snackbar.showSnackbar(
+                                "Couldn't save — a matching transaction already exists.",
+                            )
+                        }
+                    }
                 }
             },
             onDismiss = { promoteRow = null },

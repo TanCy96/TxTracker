@@ -144,6 +144,33 @@ class PromotePoolEntryTest {
         coVerify(exactly = 0) { capturedDao.markPromoted(any(), any()) }
     }
 
+    // A dedupe collision (unique notificationDedupeKey, OnConflictStrategy.IGNORE) makes the
+    // insert a no-op returning -1, so the body returns null WITHOUT flipping the pool entry.
+    // The Pool screen must surface this as an error rather than silently doing nothing.
+    @Test
+    fun promote_returns_null_when_insert_collides() = runTest {
+        coEvery { capturedDao.get(42L) } returns poolEntry
+        coEvery { txDao.insert(any()) } returns -1L
+
+        val repo = makeRepo()
+        val result = repo.promotePoolEntryBody(
+            id = 42L,
+            edit = PromoteEdit(
+                merchantRaw = "ML Traditional Dessert",
+                amountMinor = 1234L,
+                currency = "MYR",
+                occurredAt = now,
+                categoryId = null,
+                description = null,
+            ),
+            now = now,
+        )
+
+        assertThat(result).isNull()
+        coVerify(exactly = 0) { capturedDao.markPromoted(any(), any()) }
+        coVerify(exactly = 0) { approvedDao.insert(any()) }
+    }
+
     private fun makeRepo(): TransactionRepository = TransactionRepository(
         database = database,
         transactionDao = txDao,
