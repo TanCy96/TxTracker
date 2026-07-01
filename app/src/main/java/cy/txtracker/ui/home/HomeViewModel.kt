@@ -103,7 +103,7 @@ class HomeViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<HomeUiState> =
         combine(
-            combine(_yearMonth, _filter, repository.observeAllCategories(), _bannerOffer, _currencyReviewCount) { ym, filter, cats, banner, crCount ->
+            combine(_yearMonth, _filter, repository.observeGlobalCategories(), _bannerOffer, _currencyReviewCount) { ym, filter, cats, banner, crCount ->
                 object {
                     val yearMonth = ym
                     val filter = filter

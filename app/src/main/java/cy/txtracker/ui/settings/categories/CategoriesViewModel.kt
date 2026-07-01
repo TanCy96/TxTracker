@@ -24,7 +24,7 @@ class CategoriesViewModel @Inject constructor(
     private val repository: TransactionRepository,
 ) : ViewModel() {
 
-    val categories: StateFlow<List<Category>> = repository.observeAllCategories()
+    val categories: StateFlow<List<Category>> = repository.observeGlobalCategories()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -79,17 +79,12 @@ class CategoriesViewModel @Inject constructor(
         if (cleanName.isEmpty()) return
         val cleanPattern = keywordPattern?.trim()?.takeIf { it.isNotEmpty() }
         viewModelScope.launch {
-            val existing = categories.value
-            val nextSortOrder = (existing.maxOfOrNull { it.sortOrder } ?: -1) + 1
             runCatching {
-                repository.addCategory(
-                    Category(
-                        name = cleanName,
-                        color = color,
-                        isCustom = true,
-                        sortOrder = nextSortOrder,
-                        keywordPattern = cleanPattern,
-                    ),
+                repository.addCategoryInScope(
+                    name = cleanName,
+                    color = color,
+                    keywordPattern = cleanPattern,
+                    tripId = null,
                 )
             }
         }
@@ -107,12 +102,11 @@ class CategoriesViewModel @Inject constructor(
         val cleanPattern = newKeywordPattern?.trim()?.takeIf { it.isNotEmpty() }
         viewModelScope.launch {
             runCatching {
-                repository.updateCategory(
-                    original.copy(
-                        name = cleanName,
-                        color = newColor,
-                        keywordPattern = cleanPattern,
-                    ),
+                repository.renameCategoryInScope(
+                    original = original,
+                    newName = cleanName,
+                    newColor = newColor,
+                    newKeywordPattern = cleanPattern,
                 )
             }
         }

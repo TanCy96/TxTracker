@@ -46,7 +46,7 @@ class PoolViewModel @Inject constructor(
     private val packageName = MutableStateFlow<String?>(null)
 
     val categories: StateFlow<List<Category>> =
-        repository.observeAllCategories()
+        repository.observeGlobalCategories()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)

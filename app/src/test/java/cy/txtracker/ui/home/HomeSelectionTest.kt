@@ -1,6 +1,8 @@
 package cy.txtracker.ui.home
 
+import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import cy.txtracker.data.Category
 import cy.txtracker.data.Direction
 import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
@@ -12,6 +14,7 @@ import cy.txtracker.service.FeatureFlags
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -40,9 +43,11 @@ class HomeSelectionTest {
         Dispatchers.resetMain()
     }
 
-    private fun vm(): HomeViewModel {
+    private fun vm(
+        categories: List<Category> = emptyList(),
+    ): HomeViewModel {
         every { repository.observeCurrencyReviewTransactions() } returns flowOf(emptyList())
-        every { repository.observeAllCategories() } returns flowOf(emptyList())
+        every { repository.observeGlobalCategories() } returns flowOf(categories)
         every { repository.observeFundingSources() } returns flowOf(emptyList())
         every { repository.observeSlDebitBalance() } returns flowOf(0L)
         every { repository.observeSlDebitAccount() } returns flowOf(null)
@@ -106,6 +111,31 @@ class HomeSelectionTest {
         val m = vm()
         m.restoreTransactionsBatch(listOf(snapshot))
         coVerify { repository.restoreTransactions(listOf(snapshot)) }
+    }
+
+    @Test
+    fun home_state_categories_come_from_observeGlobalCategories() = runTest {
+        val globalCat = Category(id = 10L, name = "Food", color = 0xFF0000, isCustom = true, sortOrder = 0)
+
+        // Stub additional inner-flatMapLatest flows required for the non-CurrencyReview path.
+        every { repository.observeMyrTransactionsBetween(any(), any()) } returns flowOf(emptyList())
+        every { repository.observeCategoryTotalsBetween(any(), any()) } returns flowOf(emptyList())
+        every { repository.observeTotalBetween(any(), any()) } returns flowOf(0L)
+
+        val m = vm(categories = listOf(globalCat))
+
+        // HomeViewModel reads categories via observeGlobalCategories(); the stub above returns
+        // [globalCat]. If the VM still called observeAllCategories() instead, the stub would be
+        // unused and state.categories would be empty — failing the assertion.
+        m.state.test {
+            var s = awaitItem()
+            // Skip any initial loading state
+            if (s.isLoading) s = awaitItem()
+            assertThat(s.categories).containsExactly(globalCat)
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        verify(exactly = 0) { repository.observeAllCategories() }
     }
 
     private fun sampleTx(id: Long) = Transaction(

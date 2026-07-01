@@ -25,7 +25,7 @@ class PoolSelectionTest {
     @After fun tearDown() { Dispatchers.resetMain() }
 
     private fun vm(): PoolViewModel {
-        every { repository.observeAllCategories() } returns flowOf(emptyList())
+        every { repository.observeGlobalCategories() } returns flowOf(emptyList())
         every { repository.observePool(any(), any()) } returns flowOf(emptyList())
         every { repository.observeCustomLabels() } returns flowOf(emptyMap())
         return PoolViewModel(repository)
