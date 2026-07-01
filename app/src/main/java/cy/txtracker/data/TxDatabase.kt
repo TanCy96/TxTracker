@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    version = 15,
+    version = 16,
     exportSchema = true,
     entities = [
         Transaction::class,
@@ -66,6 +66,17 @@ abstract class TxDatabase : RoomDatabase() {
                     VALUES (?, ?, 0, ?, ?)
                     """.trimIndent(),
                     arrayOf<Any?>(seed.name, seed.color, seed.sortOrder, pattern),
+                )
+            }
+        }
+
+        /** Seeds the travel template for one trip. Used by migration 15->16. */
+        fun seedTripCategories(db: SupportSQLiteDatabase, tripId: Long) {
+            DefaultTripCategories.template.forEachIndexed { index, seed ->
+                db.execSQL(
+                    "INSERT INTO categories (name, color, isCustom, sortOrder, keywordPattern, tripId) " +
+                        "VALUES (?, ?, 0, ?, NULL, ?)",
+                    arrayOf<Any?>(seed.name, seed.color, index, tripId),
                 )
             }
         }

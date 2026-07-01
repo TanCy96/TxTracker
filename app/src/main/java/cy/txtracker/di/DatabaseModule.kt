@@ -99,6 +99,7 @@ object DatabaseModule {
                 MIGRATION_12_13,
                 MIGRATION_13_14,
                 MIGRATION_14_15,
+                MIGRATION_15_16,
             )
             .apply {
                 // DEBUG only: a missing/incompatible migration recreates the DB destructively,
@@ -600,5 +601,54 @@ private val MIGRATION_14_15 = object : Migration(14, 15) {
             )
             """.trimIndent(),
         )
+    }
+}
+
+/**
+ * v16 adds per-trip categories. The `categories` table gains a nullable `tripId` FK to
+ * `trip_windows(id)` (ON DELETE CASCADE). Because SQLite cannot add a foreign key via
+ * ALTER, the table is recreated. The old unique index on `name` is intentionally NOT
+ * recreated — name uniqueness is now enforced per-scope in the repository. Existing
+ * categories become global (tripId = NULL); every existing trip is seeded with the travel
+ * template; and categoryId is cleared on all non-MYR transactions (they will be
+ * re-categorized manually against their trip's categories).
+ */
+private val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `categories_new` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `name` TEXT NOT NULL,
+                `color` INTEGER NOT NULL,
+                `isCustom` INTEGER NOT NULL,
+                `sortOrder` INTEGER NOT NULL,
+                `keywordPattern` TEXT,
+                `tripId` INTEGER,
+                FOREIGN KEY(`tripId`) REFERENCES `trip_windows`(`id`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            INSERT INTO `categories_new` (id, name, color, isCustom, sortOrder, keywordPattern, tripId)
+            SELECT id, name, color, isCustom, sortOrder, keywordPattern, NULL FROM `categories`
+            """.trimIndent(),
+        )
+        db.execSQL("DROP TABLE `categories`")
+        db.execSQL("ALTER TABLE `categories_new` RENAME TO `categories`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_categories_tripId` ON `categories`(`tripId`)")
+
+        // Seed template categories for every existing trip.
+        val tripIds = mutableListOf<Long>()
+        db.query("SELECT id FROM `trip_windows`").use { c ->
+            while (c.moveToNext()) tripIds.add(c.getLong(0))
+        }
+        tripIds.forEach { TxDatabase.seedTripCategories(db, it) }
+
+        // Existing foreign categorizations pointed at Home categories; clear them so trips
+        // start clean against their travel template (see design doc, "Existing data").
+        db.execSQL("UPDATE `transactions` SET `categoryId` = NULL WHERE `currency` != 'MYR'")
     }
 }
