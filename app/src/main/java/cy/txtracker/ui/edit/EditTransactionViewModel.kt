@@ -57,9 +57,15 @@ class EditTransactionViewModel @Inject constructor(
             } else {
                 val sources = repository.observeFundingSources().first()
                 val slAccount = repository.getSlDebitAccount()
+                val categories = if (tx.currency == "MYR") {
+                    repository.observeGlobalCategories().first()
+                } else {
+                    val trip = repository.findActiveTrip(tx.currency, tx.occurredAt)
+                    if (trip != null) repository.observeCategoriesForTrip(trip.id).first() else emptyList()
+                }
                 EditUiState.Editing(
                     transaction = tx,
-                    categories = repository.observeAllCategories().first(),
+                    categories = categories,
                     merchantNote = repository.getMerchantNote(tx.merchantNormalized)?.note,
                     trackedCurrencies = repository.observeTrackedCurrencies().first(),
                     availableFundingSources = sources,

@@ -880,7 +880,9 @@ class TransactionRepository @Inject constructor(
         now: Instant,
     ) {
         transactionDao.updateCategory(txId, categoryId)
-        if (learnMapping && categoryId != null) {
+        val isTripCategory = categoryId?.let { categoryDao.getById(it)?.tripId != null } ?: false
+        val doLearn = learnMapping && !isTripCategory
+        if (doLearn && categoryId != null) {
             val tx = transactionDao.getById(txId) ?: return
             // Skip merchant→category learning when the merchant is the parser's UNDEFINED
             // sentinel — otherwise the user's first manual labeling of an unattributed tx

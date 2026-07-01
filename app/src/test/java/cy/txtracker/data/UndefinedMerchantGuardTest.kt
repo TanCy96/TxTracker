@@ -157,7 +157,11 @@ class UndefinedMerchantGuardTest {
     ): TransactionRepository = TransactionRepository(
         database = mockk(relaxed = true),
         transactionDao = txDao,
-        categoryDao = mockk(relaxed = true),
+        // Stub getById to return null (global category) so the learn guard doesn't suppress
+        // merchant-mapping writes in tests that are unrelated to trip-category scoping.
+        categoryDao = mockk<CategoryDao>(relaxed = true).also {
+            coEvery { it.getById(any()) } returns null
+        },
         merchantMappingDao = merchantMapping,
         descriptionMappingDao = descriptionMapping,
         merchantNoteDao = merchantNote,
