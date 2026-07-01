@@ -9,7 +9,6 @@ import cy.txtracker.cloud.CloudSyncGuard
 import cy.txtracker.cloud.CloudSyncScheduler
 import cy.txtracker.cloud.DriveClient
 import cy.txtracker.cloud.GoogleSignInStateProvider
-import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.export.BackupExporter
 import cy.txtracker.export.BackupImporter
@@ -50,15 +49,6 @@ class SettingsViewModel @Inject constructor(
     private val repository: TransactionRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
-
-    /** Tracked currencies for the CSV export chooser sheet. */
-    val trackedCurrencies: StateFlow<List<TrackedCurrency>> =
-        repository.observeTrackedCurrencies()
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5_000L),
-                initialValue = emptyList(),
-            )
 
     val lockEnabled: StateFlow<Boolean> = lockPrefs.enabled
 
