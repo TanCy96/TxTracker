@@ -49,9 +49,8 @@ class ForeignViewModel @Inject constructor(
             repository.observeAllTrips(),
             _selectedTripIndex,
             _filter,
-            repository.observeAllCategories(),
-        ) { trips, idx, filter, cats -> Quad(trips.sortedByDescending { it.startAt }, idx, filter, cats) }
-            .flatMapLatest { (trips, requestedIdx, filter, cats) ->
+        ) { trips, idx, filter -> Triple(trips.sortedByDescending { it.startAt }, idx, filter) }
+            .flatMapLatest { (trips, requestedIdx, filter) ->
                 if (trips.isEmpty()) {
                     MutableStateFlow(ForeignUiState.NoTrips)
                 } else {
@@ -63,7 +62,8 @@ class ForeignViewModel @Inject constructor(
                     combine(
                         repository.observeTransactionsForTrip(trip.currency, trip.startAt, end),
                         repository.observeMerchantNotes(),
-                    ) { txs, notes ->
+                        repository.observeCategoriesForTrip(trip.id),
+                    ) { txs, notes, cats ->
                         buildLoaded(
                             trips = trips,
                             tripIndex = idx,
@@ -162,6 +162,4 @@ class ForeignViewModel @Inject constructor(
     private val TripWindow.endAtExclusive: Instant
         get() = endAt ?: DISTANT_FUTURE
 
-    /** Lightweight 4-tuple — Kotlin's stdlib stops at Triple. */
-    private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 }
