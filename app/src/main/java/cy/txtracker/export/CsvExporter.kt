@@ -68,34 +68,6 @@ class CsvExporter @Inject constructor(
         return uriFor(file)
     }
 
-    /**
-     * Exports one CSV per currency (MYR + every tracked currency that has rows) into a
-     * single zip file. Returns a content URI sharable via Intent.
-     * Currencies with zero rows are skipped so the zip contains no empty CSVs.
-     */
-    suspend fun exportAllCurrenciesZip(range: ExportDateRange? = null): Uri {
-        val categories = repository.getAllCategoriesOnce()
-        val fundingSourcesById = repository.observeFundingSources().first().associateBy { it.id }
-        val reimbursementsByTxId = repository.getReimbursementEntriesByTransaction()
-        val trackedCodes = repository.observeTrackedCurrencies().first().map { it.code }
-        val codes = (listOf("MYR") + trackedCodes).distinct()
-        val allDeposits = filterDepositsByRange(repository.getSlDebitDepositsOnce(), range)
-
-        val dir = exportDir()
-        val zipFile = File(dir, zipFileName(range))
-        java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zip ->
-            for (code in codes) {
-                val rows = filterByRange(repository.getAllTransactionsOnceForCurrency(code), range)
-                val deposits = if (code == "MYR") allDeposits else emptyList()
-                if (rows.isEmpty() && deposits.isEmpty()) continue
-                zip.putNextEntry(java.util.zip.ZipEntry("transactions-$code.csv"))
-                writeCsv(rows, categories, fundingSourcesById, deposits, reimbursementsByTxId, zip)
-                zip.closeEntry()
-            }
-        }
-        return uriFor(zipFile)
-    }
-
     /** Legacy single-file export (all transactions, no currency filter). Kept for call-site
      *  compatibility during the transition. */
     suspend fun export(): Uri = exportCsv("MYR")
@@ -103,11 +75,6 @@ class CsvExporter @Inject constructor(
     private fun csvFileName(currency: String, range: ExportDateRange?): String {
         val suffix = if (range == null) "" else "-${range.start}_to_${range.end}"
         return "transactions-$currency$suffix-${System.currentTimeMillis()}.csv"
-    }
-
-    private fun zipFileName(range: ExportDateRange?): String {
-        val suffix = if (range == null) "" else "-${range.start}_to_${range.end}"
-        return "transactions-all$suffix-${System.currentTimeMillis()}.zip"
     }
 
     private fun exportDir(): File =

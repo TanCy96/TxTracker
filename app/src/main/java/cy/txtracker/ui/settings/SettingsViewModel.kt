@@ -171,20 +171,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Export all currencies as a zip of per-currency CSVs and share via ACTION_SEND. */
-    fun exportAllZip(range: ExportDateRange? = null) {
-        if (_exportStatus.value is ExportStatus.Running) return
-        _exportStatus.value = ExportStatus.Running
-        viewModelScope.launch {
-            try {
-                val uri = csvExporter.exportAllCurrenciesZip(range)
-                _exportStatus.value = ExportStatus.ZipReady(uri.toString())
-            } catch (t: Throwable) {
-                _exportStatus.value = ExportStatus.Error(t.message ?: "Export failed")
-            }
-        }
-    }
-
     fun consumeStatus() {
         _exportStatus.value = ExportStatus.Idle
     }
@@ -392,8 +378,6 @@ class SettingsViewModel @Inject constructor(
         data object Running : ExportStatus
         /** Stringified [Uri] of the exported CSV ready to be shared via ACTION_SEND. */
         data class Ready(val uri: String) : ExportStatus
-        /** Stringified [Uri] of the exported zip file ready to be shared via ACTION_SEND. */
-        data class ZipReady(val uri: String) : ExportStatus
         data class Error(val message: String) : ExportStatus
     }
 

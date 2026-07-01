@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.BuildConfig
-import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.export.ExportDateRange
 import cy.txtracker.ui.common.shareCsv
 import kotlinx.coroutines.launch
@@ -94,7 +93,6 @@ fun SettingsScreen(
     val cloudSyncInFlight by viewModel.cloudSyncInFlight.collectAsState()
     val cloudSyncBlockedReason by viewModel.cloudSyncBlockedReason.collectAsState()
     val cloudRestorePickerState by viewModel.cloudRestorePickerState.collectAsState()
-    val trackedCurrencies by viewModel.trackedCurrencies.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showCutoffDialog by remember { mutableStateOf(false) }
@@ -124,15 +122,6 @@ fun SettingsScreen(
         when (val s = exportStatus) {
             is SettingsViewModel.ExportStatus.Ready -> {
                 shareCsv(context, Uri.parse(s.uri))
-                viewModel.consumeStatus()
-            }
-            is SettingsViewModel.ExportStatus.ZipReady -> {
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/zip"
-                    putExtra(Intent.EXTRA_STREAM, Uri.parse(s.uri))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                context.startActivity(Intent.createChooser(intent, "Export transactions"))
                 viewModel.consumeStatus()
             }
             is SettingsViewModel.ExportStatus.Error -> {
@@ -468,15 +457,10 @@ fun SettingsScreen(
         }
 
         if (showExportChooser) {
-            ExportCsvChooserSheet(
-                trackedCurrencies = trackedCurrencies,
-                onExportCurrency = { currency, range ->
+            ExportRangeChooserSheet(
+                onExport = { range ->
                     showExportChooser = false
-                    viewModel.exportCsv(currency, range)
-                },
-                onExportAllZip = { range ->
-                    showExportChooser = false
-                    viewModel.exportAllZip(range)
+                    viewModel.exportCsv("MYR", range)
                 },
                 onDismiss = { showExportChooser = false },
             )
@@ -591,17 +575,13 @@ private fun Modifier.clickableRow(
 
 /**
  * Bottom-sheet chooser for the CSV export action. Shows:
- *  - An optional "Date range" filter (blank = all time) applied to whichever export is tapped
- *  - "Export MYR" (always)
- *  - "Export <code>" for each tracked currency
- *  - "Export all currencies (zip)" when more than one currency is available
+ *  - An optional "Date range" filter (blank = all time)
+ *  - A single "Export" button that triggers MYR export for the selected range
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExportCsvChooserSheet(
-    trackedCurrencies: List<TrackedCurrency>,
-    onExportCurrency: (String, ExportDateRange?) -> Unit,
-    onExportAllZip: (ExportDateRange?) -> Unit,
+private fun ExportRangeChooserSheet(
+    onExport: (ExportDateRange?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var range by remember { mutableStateOf<ExportDateRange?>(null) }
@@ -631,23 +611,9 @@ private fun ExportCsvChooserSheet(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
             ListItem(
-                headlineContent = { Text("Export MYR") },
-                modifier = Modifier.fillMaxWidth().clickable { onExportCurrency("MYR", range) },
+                headlineContent = { Text("Export") },
+                modifier = Modifier.fillMaxWidth().clickable { onExport(range) },
             )
-            for (tc in trackedCurrencies) {
-                ListItem(
-                    headlineContent = { Text("Export ${tc.code}") },
-                    modifier = Modifier.fillMaxWidth().clickable { onExportCurrency(tc.code, range) },
-                )
-            }
-            if (trackedCurrencies.isNotEmpty()) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                ListItem(
-                    headlineContent = { Text("Export all currencies (zip)") },
-                    supportingContent = { Text("One CSV per currency in a single zip file.") },
-                    modifier = Modifier.fillMaxWidth().clickable { onExportAllZip(range) },
-                )
-            }
         }
     }
 
