@@ -5,11 +5,14 @@ import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.data.TripWindow
+import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.export.CsvExporter
+import cy.txtracker.export.ExportDateRange
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -18,6 +21,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.datetime.Instant
+import kotlinx.datetime.toLocalDateTime
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -42,6 +46,8 @@ class ForeignExportTest {
         Dispatchers.resetMain()
     }
 
+    private val rangeSlot = slot<ExportDateRange>()
+
     private fun vm(): ForeignViewModel {
         val trip = TripWindow(id = 7, currency = "USD", startAt = t0, endAt = null, createdAt = t0)
 
@@ -50,7 +56,7 @@ class ForeignExportTest {
         every { repository.observeTransactionsForTrip(any(), any(), any()) } returns flowOf(emptyList())
         every { repository.observeMerchantNotes() } returns flowOf(emptyList())
 
-        coEvery { csvExporter.exportCsv("USD", any()) } returns fakeUri
+        coEvery { csvExporter.exportCsv("USD", capture(rangeSlot)) } returns fakeUri
 
         return ForeignViewModel(repository, csvExporter)
     }
@@ -81,6 +87,10 @@ class ForeignExportTest {
         }
 
         coVerify { csvExporter.exportCsv("USD", any()) }
+
+        // Verify the export range's start matches the trip's startAt in Malaysia-local date
+        assertThat(rangeSlot.captured.start)
+            .isEqualTo(t0.toLocalDateTime(MalaysiaTimeZone).date)
     }
 
     @Test
