@@ -106,7 +106,15 @@ data class Transaction(
 
 @Entity(
     tableName = "categories",
-    indices = [Index(value = ["name"], unique = true)],
+    foreignKeys = [
+        ForeignKey(
+            entity = TripWindow::class,
+            parentColumns = ["id"],
+            childColumns = ["tripId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("tripId")],
 )
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -118,6 +126,8 @@ data class Category(
     /** Smaller values render first in the home screen and CSV export. */
     val sortOrder: Int,
     val keywordPattern: String? = null,
+    /** null = global/Home category; else the id of the owning trip. */
+    val tripId: Long? = null,
 )
 
 @Entity(
