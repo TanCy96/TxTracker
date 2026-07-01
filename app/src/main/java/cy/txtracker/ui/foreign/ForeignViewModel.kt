@@ -7,6 +7,8 @@ import cy.txtracker.data.Transaction
 import cy.txtracker.data.TransactionRepository
 import cy.txtracker.data.TripWindow
 import cy.txtracker.domain.MalaysiaTimeZone
+import cy.txtracker.export.CsvExporter
+import cy.txtracker.export.tripExportRange
 import cy.txtracker.parsing.Currencies
 import cy.txtracker.ui.home.CategoryBreakdownEntry
 import cy.txtracker.ui.home.DayGroup
@@ -18,10 +20,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.toLocalDateTime
 
@@ -33,11 +38,36 @@ import kotlinx.datetime.toLocalDateTime
  *   - Totals and breakdowns are in the trip's currency, not MYR.
  *   - The "Currency review" filter doesn't exist here — those rows are parked on Home.
  */
+sealed interface ForeignExport {
+    data class Ready(val uri: String) : ForeignExport
+    data class Error(val message: String) : ForeignExport
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ForeignViewModel @Inject constructor(
     private val repository: TransactionRepository,
+    private val csvExporter: CsvExporter,
 ) : ViewModel() {
+
+    private val _exportEvent = MutableStateFlow<ForeignExport?>(null)
+    val exportEvent: StateFlow<ForeignExport?> = _exportEvent.asStateFlow()
+    fun consumeExportEvent() { _exportEvent.value = null }
+
+    fun exportCurrentTrip() {
+        val loaded = state.value as? ForeignUiState.Loaded ?: return
+        val trip = loaded.trip
+        val today = Clock.System.now().toLocalDateTime(MalaysiaTimeZone).date
+        viewModelScope.launch {
+            _exportEvent.value = try {
+                val range = tripExportRange(trip.startAt, trip.endAt, today)
+                val uri = csvExporter.exportCsv(trip.currency, range)
+                ForeignExport.Ready(uri.toString())
+            } catch (t: Throwable) {
+                ForeignExport.Error(t.message ?: "Export failed")
+            }
+        }
+    }
 
     /** Selected position in the sorted trips list (0 = newest). Coerced into range on
      *  every projection so deletion of the current trip doesn't leave a dangling index. */
