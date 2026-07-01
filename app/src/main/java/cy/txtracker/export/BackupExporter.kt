@@ -60,6 +60,13 @@ class BackupExporter @Inject constructor(
         val categories = repository.getAllCategoriesOnce()
         val nameById = categories.associate { it.id to it.name }
 
+        // Build a map from tripId -> tripKey ("<currency>|<startAtEpochMs>") so that
+        // per-trip categories can be tagged with a stable identifier that survives reinstalls.
+        val tripWindows = tripWindowDao.observeAll().first()
+        val tripKeyById: Map<Long, String> = tripWindows.associate { tw ->
+            tw.id to "${tw.currency}|${tw.startAt.toEpochMilliseconds()}"
+        }
+
         val txs = if (transactionCutoff != null) {
             val cutoffStart = LocalDate(transactionCutoff.year, transactionCutoff.month, 1)
                 .atStartOfDayIn(MalaysiaTimeZone)
@@ -100,6 +107,7 @@ class BackupExporter @Inject constructor(
                     sortOrder = it.sortOrder,
                     isCustom = it.isCustom,
                     keywordPattern = it.keywordPattern,
+                    tripKey = it.tripId?.let { tid -> tripKeyById[tid] },
                 )
             },
             merchantMappings = repository.observeMerchantMappings().first().mapNotNull { m ->
@@ -183,7 +191,7 @@ class BackupExporter @Inject constructor(
                     addedAt = it.addedAt,
                 )
             },
-            tripWindows = tripWindowDao.observeAll().first().map {
+            tripWindows = tripWindows.map {
                 BackupTripWindow(
                     currency = it.currency,
                     startAt = it.startAt,

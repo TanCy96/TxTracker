@@ -59,4 +59,60 @@ class BackupImporterTest {
 
         coVerify { repository.applyBackup(any()) }
     }
+
+    @Test
+    fun `v12 backup with tripKey categories is accepted and forwarded to repository`() = runTest {
+        val t0 = Instant.parse("2026-06-01T00:00:00Z")
+        val tripKey = "USD|${t0.toEpochMilliseconds()}"
+        val json = """
+            {
+              "version": 12,
+              "exportedAt": "2026-07-01T00:00:00Z",
+              "categories": [
+                {"name":"Food","color":-1088257,"sortOrder":0,"isCustom":false,"tripKey":null},
+                {"name":"Attractions","color":-6184960,"sortOrder":0,"isCustom":false,"tripKey":"$tripKey"}
+              ],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": [],
+              "tripWindows": [
+                {"currency":"USD","startAt":"2026-06-01T00:00:00Z","endAt":null,"createdAt":"2026-06-01T00:00:00Z"}
+              ],
+              "transactions": [
+                {
+                  "amountMinor":2500,"currency":"USD","merchantRaw":"UNIVERSAL STUDIOS",
+                  "merchantNormalized":"UNIVERSAL STUDIOS","categoryName":"Attractions",
+                  "description":null,"occurredAt":"2026-06-15T10:00:00Z","timeBucket":"MIDDAY",
+                  "sourceApp":"com.example.bank","rawText":null,"direction":"OUT",
+                  "createdAt":"2026-06-15T10:00:00Z","notificationDedupeKey":"trip-test-001",
+                  "needsVerification":false
+                }
+              ]
+            }
+        """.trimIndent()
+
+        importer.importFromJsonString(json)
+
+        coVerify { repository.applyBackup(any()) }
+    }
+
+    @Test
+    fun `v11 backup without tripKey is still accepted`() = runTest {
+        val json = """
+            {
+              "version": 11,
+              "exportedAt": "2026-06-08T00:00:00Z",
+              "categories": [
+                {"name":"Food","color":-1088257,"sortOrder":0,"isCustom":false}
+              ],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": []
+            }
+        """.trimIndent()
+
+        importer.importFromJsonString(json)
+
+        coVerify { repository.applyBackup(any()) }
+    }
 }

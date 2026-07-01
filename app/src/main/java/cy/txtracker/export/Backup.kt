@@ -45,6 +45,8 @@ data class BackupFundingSource(
  *   v11 – added [reimbursementEntries] (multi-person reimbursement entries; the per-tx
  *         reimbursedMinor is the cached sum and is also carried on each BackupTransaction).
  *         Re-sequenced from main's v10 because this branch's v10 is the reimbursedMinor bump.
+ *   v12 – added [BackupCategory.tripKey] (`"<currency>|<startAtEpochMs>"`, null = global) so
+ *         per-trip categories round-trip correctly across reinstalls and devices.
  */
 @Serializable
 data class Backup(
@@ -68,7 +70,7 @@ data class Backup(
     val reimbursementEntries: List<BackupReimbursementEntry> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 11
+        const val CURRENT_VERSION = 12
     }
 }
 
@@ -79,6 +81,12 @@ data class BackupCategory(
     val sortOrder: Int,
     val isCustom: Boolean,
     val keywordPattern: String? = null,
+    /**
+     * Stable trip identifier: `"<currency>|<startAtEpochMillis>"`. Null means the category
+     * belongs to the global (Home) scope. Defaults to null so v5–v11 backups (which lack this
+     * field) still parse correctly — those categories are treated as global.
+     */
+    val tripKey: String? = null,
 )
 
 @Serializable

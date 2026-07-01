@@ -1477,12 +1477,40 @@ class TransactionRepository @Inject constructor(
      *     normal use because the category-create pass creates everything referenced.
      */
     suspend fun applyBackup(backup: Backup): ImportResult = database.withTransaction {
+        // 0. Trip windows first — trip IDs must exist before we can attach per-trip categories.
+        //    Dedupe by (currency, startAt). After all inserts/matches, build a stable
+        //    tripKey ("<currency>|<startAtEpochMs>") -> local-tripId map so the category step
+        //    can resolve BackupCategory.tripKey to a local id.
+        val existingTripsBeforeCategories = tripWindowDao.observeAll().first()
+            .associateBy { it.currency to it.startAt }
+        val tripKeyToLocalId = mutableMapOf<String, Long>()
+        // Seed from already-local trips (handles the "device already has trips" case).
+        for ((_, tw) in existingTripsBeforeCategories) {
+            tripKeyToLocalId["${tw.currency}|${tw.startAt.toEpochMilliseconds()}"] = tw.id
+        }
+        for (bt in backup.tripWindows) {
+            val key = "${bt.currency}|${bt.startAt.toEpochMilliseconds()}"
+            val existing = existingTripsBeforeCategories[bt.currency to bt.startAt]
+            if (existing == null) {
+                val newId = tripWindowDao.insert(
+                    TripWindow(
+                        currency = bt.currency,
+                        startAt = bt.startAt,
+                        endAt = bt.endAt,
+                        createdAt = bt.createdAt,
+                    ),
+                )
+                if (newId > 0) tripKeyToLocalId[key] = newId
+            }
+            // If already exists, tripKeyToLocalId was seeded above.
+        }
+
         // 1. Categories: the backup is AUTHORITATIVE. Make the local set match the backup's
         //    exactly — categories absent from the backup are deleted, those present are
-        //    upserted (updated in place by name so referencing rows keep their link, or
-        //    inserted when new). This stops seed defaults the user deleted/renamed on the
-        //    source device from surviving a restore: a fresh install re-seeds the 10 defaults
-        //    in onCreate, and the old additive merge never removed the ones the backup omitted.
+        //    upserted (updated in place so referencing rows keep their link, or inserted when
+        //    new). This stops seed defaults the user deleted/renamed on the source device from
+        //    surviving a restore. Per-trip categories are matched by (name, tripId scope) rather
+        //    than name alone, because the same name can exist in global and trip scopes.
         //
         //    Guard: an EMPTY backup category list leaves the local set untouched. Real exports
         //    always carry the full category list (BackupExporter exports getAllCategoriesOnce),
@@ -1493,13 +1521,18 @@ class TransactionRepository @Inject constructor(
         //    Backup mappings and transactions are re-resolved by category name in later steps.
         var categoriesCreated = 0
         if (backup.categories.isNotEmpty()) {
-            val backupNames = backup.categories.mapTo(mutableSetOf()) { it.name }
-            for (local in categoryDao.getAll()) {
-                if (local.name !in backupNames) categoryDao.delete(local)
+            // Build the set of (name, localTripId?) pairs the backup carries.
+            val backupScopeKeys = backup.categories.mapTo(mutableSetOf()) { bc ->
+                bc.name to bc.tripKey?.let { tripKeyToLocalId[it] }
             }
-            val survivingByName = categoryDao.getAll().associateBy { it.name }
+            for (local in categoryDao.getAll()) {
+                if (local.name to local.tripId !in backupScopeKeys) categoryDao.delete(local)
+            }
+            // Surviving categories, keyed by (name, tripId?).
+            val survivingByScope = categoryDao.getAll().associateBy { it.name to it.tripId }
             for (bc in backup.categories) {
-                val local = survivingByName[bc.name]
+                val localTripId = bc.tripKey?.let { tripKeyToLocalId[it] }
+                val local = survivingByScope[bc.name to localTripId]
                 if (local == null) {
                     categoryDao.insert(
                         Category(
@@ -1508,6 +1541,7 @@ class TransactionRepository @Inject constructor(
                             isCustom = bc.isCustom,
                             sortOrder = bc.sortOrder,
                             keywordPattern = bc.keywordPattern,
+                            tripId = localTripId,
                         ),
                     )
                     categoriesCreated++
@@ -1518,19 +1552,61 @@ class TransactionRepository @Inject constructor(
                             isCustom = bc.isCustom,
                             sortOrder = bc.sortOrder,
                             keywordPattern = bc.keywordPattern,
+                            tripId = localTripId,
                         ),
                     )
                 }
             }
         }
 
-        // 2. Refresh the name → category map so newly inserted ones are referenceable.
-        val categoriesByName = categoryDao.getAll().associateBy { it.name }
+        // 2. Refresh the category map so newly inserted ones are referenceable.
+        //    For global categories (tripId == null), key by name alone — merchant mappings and
+        //    category-description mappings always reference global categories by name.
+        //    For scoped resolution of transactions, build a separate (name, tripId?) -> id map.
+        val allCategories = categoryDao.getAll()
+        // Global-only name map: used by merchant/category-description mapping resolution.
+        val globalCategoriesByName: Map<String, Category> = allCategories
+            .filter { it.tripId == null }
+            .associateBy { it.name }
+        // Full scoped map: (name, localTripId?) -> category. Used for transaction resolution.
+        val categoriesByScope: Map<Pair<String, Long?>, Category> = allCategories
+            .associateBy { it.name to it.tripId }
 
-        // 3. Merchant mappings.
+        // Build a list of all local trip windows for transaction-scope matching.
+        // Each entry: (currency, startAt, endAt, localTripId) — used to determine which
+        // trip (if any) a given transaction falls inside at import time.
+        val localTripWindows = tripWindowDao.observeAll().first()
+
+        // Helper: resolve a categoryName within a transaction's scope.
+        // Scope is determined by finding the covering trip for the transaction's currency +
+        // occurredAt. If a trip-scoped category with that name exists in the covering trip,
+        // it wins; otherwise fall back to global. MYR transactions and transactions not
+        // covered by any trip always use global scope.
+        fun resolveCategoryId(categoryName: String?, currency: String, occurredAt: Instant): Long? {
+            if (categoryName == null) return null
+            return if (currency != "MYR") {
+                // Find the covering trip for this transaction.
+                val coveringTrip = localTripWindows.firstOrNull { tw ->
+                    tw.currency == currency &&
+                        tw.startAt <= occurredAt &&
+                        (tw.endAt == null || tw.endAt > occurredAt)
+                }
+                if (coveringTrip != null) {
+                    // Prefer the trip-scoped category by that name; fall back to global.
+                    categoriesByScope[categoryName to coveringTrip.id]?.id
+                        ?: globalCategoriesByName[categoryName]?.id
+                } else {
+                    globalCategoriesByName[categoryName]?.id
+                }
+            } else {
+                globalCategoriesByName[categoryName]?.id
+            }
+        }
+
+        // 3. Merchant mappings (always reference global categories by name).
         var mAdded = 0; var mUpdated = 0; var skipped = 0
         for (bm in backup.merchantMappings) {
-            val target = categoriesByName[bm.categoryName]
+            val target = globalCategoriesByName[bm.categoryName]
             if (target == null) { skipped++; continue }
             val existing = merchantMappingDao.get(bm.merchant)
             if (existing != null && existing.learnedAt >= bm.learnedAt) continue
@@ -1560,10 +1636,10 @@ class TransactionRepository @Inject constructor(
             if (existing == null) mdAdded++ else mdUpdated++
         }
 
-        // 5. Category + bucket description mappings.
+        // 5. Category + bucket description mappings (global categories only).
         var cdAdded = 0; var cdUpdated = 0
         for (bcd in backup.categoryDescriptionMappings) {
-            val target = categoriesByName[bcd.categoryName]
+            val target = globalCategoriesByName[bcd.categoryName]
             if (target == null) { skipped++; continue }
             val existing = descriptionMappingDao.getCategoryBucket(target.id, bcd.bucket)
             if (existing != null && existing.learnedAt >= bcd.learnedAt) continue
@@ -1622,22 +1698,8 @@ class TransactionRepository @Inject constructor(
             )
         }
 
-        // 10. Trip windows. Dedupe by (currency, startAt) at the application level
-        //     since the primary key is an autoincrement id, not the natural key.
-        val existingTrips = tripWindowDao.observeAll().first()
-            .map { it.currency to it.startAt }
-            .toSet()
-        for (bt in backup.tripWindows) {
-            if (bt.currency to bt.startAt in existingTrips) continue
-            tripWindowDao.insert(
-                TripWindow(
-                    currency = bt.currency,
-                    startAt = bt.startAt,
-                    endAt = bt.endAt,
-                    createdAt = bt.createdAt,
-                ),
-            )
-        }
+        // 10. Trip windows were already created in step 0 (moved earlier so category step
+        //     can resolve tripKey -> localTripId). No additional work needed here.
 
         // 11. Funding sources. Match on (sourceAppHint, last4) — displayName is mutable and
         //     excluded from the key to avoid insert conflicts when the same card was renamed
@@ -1706,10 +1768,12 @@ class TransactionRepository @Inject constructor(
         //     local transactions always win on conflict. Backup transactions whose
         //     categoryName doesn't resolve to a local category get inserted with
         //     categoryId = null (Unverified, same as a fresh capture).
+        //     Category resolution is scope-aware: for non-MYR transactions covered by a trip
+        //     window, the trip-scoped category (if any) is preferred over the global one.
         val newTxIdByDedupe = mutableMapOf<String, Long>()
         var transactionsAdded = 0
         for (bt in backup.transactions) {
-            val categoryId = bt.categoryName?.let { categoriesByName[it]?.id }
+            val categoryId = resolveCategoryId(bt.categoryName, bt.currency, bt.occurredAt)
             val fundingSourceId = bt.fundingSourceLookupKey?.let { lookupKeyToId[it] }
             val rowId = transactionDao.insert(
                 Transaction(

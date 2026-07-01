@@ -106,7 +106,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.userFacingSources).hasSize(1)
         assertThat(parsed.userFacingSources.single().packageName).isEqualTo("com.example.app")
-        assertThat(parsed.version).isEqualTo(11)
+        assertThat(parsed.version).isEqualTo(12)
     }
 
     @Test
@@ -147,7 +147,7 @@ class BackupSerializationTest {
 
         assertThat(parsed.approvedSources).hasSize(1)
         assertThat(parsed.approvedSources.single().packageName).isEqualTo("com.cimb.cimbocto")
-        assertThat(parsed.version).isEqualTo(11)
+        assertThat(parsed.version).isEqualTo(12)
     }
 
     @Test
@@ -195,7 +195,7 @@ class BackupSerializationTest {
         assertThat(note.merchant).isEqualTo("WARUNG UNCLE")
         assertThat(note.note).isEqualTo("SS15 kopitiam, only takes cash")
         assertThat(note.updatedAt).isEqualTo(Instant.parse("2026-05-10T10:00:00Z"))
-        assertThat(parsed.version).isEqualTo(11)
+        assertThat(parsed.version).isEqualTo(12)
     }
 
     @Test
@@ -250,7 +250,7 @@ class BackupSerializationTest {
         val json = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
         val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), json)
 
-        assertThat(parsed.version).isEqualTo(11)
+        assertThat(parsed.version).isEqualTo(12)
         assertThat(parsed.transactions).hasSize(1)
         val tx = parsed.transactions.single()
         assertThat(tx.merchantRaw).isEqualTo("GRAB")
@@ -362,7 +362,7 @@ class BackupSerializationTest {
         )
         val text = BackupExporter.JSON.encodeToString(Backup.serializer(), backup)
         val decoded = BackupImporter.JSON.decodeFromString(Backup.serializer(), text)
-        assertThat(decoded.version).isEqualTo(11)
+        assertThat(decoded.version).isEqualTo(12)
         assertThat(decoded.slDebitAccount?.displayName).isEqualTo("SL Debit")
         assertThat(decoded.slDebitAccount?.defaultSharePercent).isEqualTo(40)
         assertThat(decoded.slDebitDeposits).hasSize(1)
@@ -376,5 +376,77 @@ class BackupSerializationTest {
         assertThat(decoded.version).isEqualTo(8)
         assertThat(decoded.slDebitAccount).isNull()
         assertThat(decoded.slDebitDeposits).hasSize(0)
+    }
+
+    // ── v12 trip-scoped category tests ──────────────────────────────────────
+
+    @Test
+    fun `v12 BackupCategory tripKey round-trips through JSON`() {
+        val t0 = Instant.parse("2026-06-01T00:00:00Z")
+        val tripKey = "USD|${t0.toEpochMilliseconds()}"
+        val original = Backup(
+            exportedAt = Instant.parse("2026-07-01T00:00:00Z"),
+            categories = listOf(
+                BackupCategory("Food", color = 0xFFEF5350.toInt(), sortOrder = 0, isCustom = false),
+                BackupCategory("Attractions", color = 0xFF42A5F5.toInt(), sortOrder = 0, isCustom = false, tripKey = tripKey),
+            ),
+            merchantMappings = emptyList(),
+            merchantDescriptionMappings = emptyList(),
+            categoryDescriptionMappings = emptyList(),
+            tripWindows = listOf(
+                BackupTripWindow(currency = "USD", startAt = t0, endAt = null, createdAt = t0),
+            ),
+            transactions = listOf(
+                BackupTransaction(
+                    amountMinor = 2500L,
+                    currency = "USD",
+                    merchantRaw = "UNIVERSAL STUDIOS",
+                    merchantNormalized = "UNIVERSAL STUDIOS",
+                    categoryName = "Attractions",
+                    description = null,
+                    occurredAt = Instant.parse("2026-06-15T10:00:00Z"),
+                    timeBucket = cy.txtracker.domain.TimeBucket.MIDDAY,
+                    sourceApp = "com.example.bank",
+                    rawText = null,
+                    direction = cy.txtracker.data.Direction.OUT,
+                    createdAt = Instant.parse("2026-06-15T10:00:00Z"),
+                    notificationDedupeKey = "trip-test-001",
+                    needsVerification = false,
+                ),
+            ),
+        )
+
+        val text = BackupExporter.JSON.encodeToString(Backup.serializer(), original)
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), text)
+
+        assertThat(parsed.version).isEqualTo(12)
+        assertThat(parsed.categories).hasSize(2)
+        val globalFood = parsed.categories.first { it.name == "Food" }
+        val tripAttractions = parsed.categories.first { it.name == "Attractions" }
+        assertThat(globalFood.tripKey).isNull()
+        assertThat(tripAttractions.tripKey).isEqualTo(tripKey)
+        assertThat(parsed.transactions.single().categoryName).isEqualTo("Attractions")
+    }
+
+    @Test
+    fun `v11 backup with no tripKey parses as global (backward compat)`() {
+        val v11Json = """
+            {
+              "version": 11,
+              "exportedAt": "2026-06-01T00:00:00Z",
+              "categories": [
+                {"name":"Food","color":-1088257,"sortOrder":0,"isCustom":false}
+              ],
+              "merchantMappings": [],
+              "merchantDescriptionMappings": [],
+              "categoryDescriptionMappings": []
+            }
+        """.trimIndent()
+
+        val parsed = BackupExporter.JSON.decodeFromString(Backup.serializer(), v11Json)
+
+        assertThat(parsed.version).isEqualTo(11)
+        assertThat(parsed.categories).hasSize(1)
+        assertThat(parsed.categories.single().tripKey).isNull()
     }
 }
