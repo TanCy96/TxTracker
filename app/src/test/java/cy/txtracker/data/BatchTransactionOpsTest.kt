@@ -21,6 +21,7 @@ class BatchTransactionOpsTest {
     private val approvedDao = mockk<ApprovedSourceDao>(relaxed = true)
     private val capturedDao = mockk<CapturedNotificationDao>(relaxed = true)
     private val reimbursementDao = mockk<ReimbursementEntryDao>(relaxed = true)
+    private val tripWindowDao = mockk<TripWindowDao>(relaxed = true)
     private val heuristic = mockk<HeuristicExtractor>(relaxed = true)
 
     @Test
@@ -102,6 +103,64 @@ class BatchTransactionOpsTest {
         coVerify(exactly = 0) { approvedDao.insert(any()) }
     }
 
+    // A foreign-currency entry promoted in a batch, with no trip open for that currency,
+    // must be parked for currency review (needsCurrencyConfirmation = true) — otherwise it
+    // is invisible: Home is MYR-only, and the Foreign tab only shows rows inside a trip window.
+    @Test
+    fun promotePoolEntriesBody_parks_foreign_entry_for_review_when_no_active_trip() = runTest {
+        val pending = CapturedNotification(
+            id = 12L, packageName = "com.wise.android", postedAt = now, amountMinor = 2500L,
+            currency = "USD", rawText = "You spent 25.00 USD", rewrittenText = null,
+            disposition = CaptureDisposition.PENDING, promotedToTxId = null,
+            capturedAt = now, dedupeKey = "d12",
+        )
+        coEvery { capturedDao.get(12L) } returns pending
+        coEvery { txDao.insert(any()) } returns 80L
+        coEvery { heuristic.extract(any(), any(), any(), any()) } returns null
+        coEvery { tripWindowDao.findActiveAt("USD", now) } returns null
+        val repo = makeRepo()
+        repo.promotePoolEntriesBody(listOf(12L), now)
+        coVerify { txDao.insert(match { it.currency == "USD" && it.needsCurrencyConfirmation }) }
+    }
+
+    // When a trip IS open for the currency at that instant, the row belongs in the trip's
+    // Foreign view and must NOT be parked for review.
+    @Test
+    fun promotePoolEntriesBody_does_not_flag_foreign_entry_when_active_trip_covers_it() = runTest {
+        val pending = CapturedNotification(
+            id = 13L, packageName = "com.wise.android", postedAt = now, amountMinor = 2500L,
+            currency = "USD", rawText = "You spent 25.00 USD", rewrittenText = null,
+            disposition = CaptureDisposition.PENDING, promotedToTxId = null,
+            capturedAt = now, dedupeKey = "d13",
+        )
+        coEvery { capturedDao.get(13L) } returns pending
+        coEvery { txDao.insert(any()) } returns 81L
+        coEvery { heuristic.extract(any(), any(), any(), any()) } returns null
+        coEvery { tripWindowDao.findActiveAt("USD", now) } returns TripWindow(
+            id = 1L, currency = "USD", startAt = now, endAt = null, createdAt = now,
+        )
+        val repo = makeRepo()
+        repo.promotePoolEntriesBody(listOf(13L), now)
+        coVerify { txDao.insert(match { it.currency == "USD" && !it.needsCurrencyConfirmation }) }
+    }
+
+    // A plain MYR batch promote never needs currency review.
+    @Test
+    fun promotePoolEntriesBody_does_not_flag_myr_entry() = runTest {
+        val pending = CapturedNotification(
+            id = 14L, packageName = "com.bank", postedAt = now, amountMinor = 500L,
+            currency = "MYR", rawText = "RM5.00 to SHOP is successful", rewrittenText = null,
+            disposition = CaptureDisposition.PENDING, promotedToTxId = null,
+            capturedAt = now, dedupeKey = "d14",
+        )
+        coEvery { capturedDao.get(14L) } returns pending
+        coEvery { txDao.insert(any()) } returns 82L
+        coEvery { heuristic.extract(any(), any(), any(), any()) } returns null
+        val repo = makeRepo()
+        repo.promotePoolEntriesBody(listOf(14L), now)
+        coVerify { txDao.insert(match { it.currency == "MYR" && !it.needsCurrencyConfirmation }) }
+    }
+
     private fun sampleTx(id: Long) = Transaction(
         id = id, amountMinor = 100L, currency = "MYR", merchantRaw = "X",
         merchantNormalized = "X", categoryId = null, description = null,
@@ -122,7 +181,7 @@ class BatchTransactionOpsTest {
         capturedNotificationDao = capturedDao,
         rejectedSourceDao = mockk(relaxed = true),
         trackedCurrencyDao = mockk(relaxed = true),
-        tripWindowDao = mockk(relaxed = true),
+        tripWindowDao = tripWindowDao,
         packageTextRewriteDao = mockk(relaxed = true),
         fundingSourceDao = mockk(relaxed = true),
         slDebitDao = mockk(relaxed = true),

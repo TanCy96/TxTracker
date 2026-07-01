@@ -665,9 +665,17 @@ class TransactionRepository @Inject constructor(
                 occurredAt = pool.postedAt,
                 currency = pool.currency,
             )
-            // Unlike promotePoolEntryBody, currency-confirmation is intentionally NOT computed here:
-            // batch-promoted rows land as needsVerification = true (PENDING on home), so the user
-            // reviews them anyway — no separate currency-review parking needed.
+            // Foreign rows still need currency-confirmation parking, exactly like
+            // promotePoolEntryBody. Home is MYR-only and the Foreign tab only renders rows that
+            // fall inside a trip window, so a non-MYR row batch-promoted with no open trip would
+            // otherwise be invisible everywhere. Parking it (needsCurrencyConfirmation = true)
+            // surfaces it in Home's "Currency review".
+            val needsCurrencyConfirmation = if (pool.currency == "MYR") {
+                false
+            } else {
+                ensureTrackedCurrency(pool.currency, now)
+                findActiveTrip(pool.currency, pool.postedAt) == null
+            }
             val rowId = transactionDao.insert(
                 Transaction(
                     amountMinor = pool.amountMinor,
@@ -684,6 +692,7 @@ class TransactionRepository @Inject constructor(
                     createdAt = now,
                     notificationDedupeKey = dedupeKey,
                     needsVerification = true,
+                    needsCurrencyConfirmation = needsCurrencyConfirmation,
                 ),
             )
             val txId = rowId.takeIf { it >= 0 } ?: continue
