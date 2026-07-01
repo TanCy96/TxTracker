@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,6 +52,7 @@ import kotlinx.datetime.toLocalDateTime
 @Composable
 fun ForeignRoute(
     onSettingsClick: () -> Unit = {},
+    onManageCategories: (Long) -> Unit = {},
     viewModel: ForeignViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -65,6 +67,7 @@ fun ForeignRoute(
         onTransactionClick = { tx -> editingTxId = tx.id },
         onAddClick = { showAddSheet = true },
         onSettingsClick = onSettingsClick,
+        onManageCategories = onManageCategories,
     )
 
     editingTxId?.let { id ->
@@ -114,6 +117,7 @@ private fun ForeignScreen(
     onTransactionClick: (cy.txtracker.data.Transaction) -> Unit,
     onAddClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onManageCategories: (Long) -> Unit = {},
 ) {
     // surfaceVariant differentiates the Foreign tab from Home at a glance while still
     // adapting to dark/light theme.
@@ -155,6 +159,11 @@ private fun ForeignScreen(
                     }
                 },
                 actions = {
+                    if (state is ForeignUiState.Loaded) {
+                        IconButton(onClick = { onManageCategories(state.trip.tripId) }) {
+                            Icon(Icons.Filled.Category, contentDescription = "Manage categories")
+                        }
+                    }
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }

@@ -74,6 +74,106 @@ fun CategoriesScreen(
     var editTarget by remember { mutableStateOf<Category?>(null) }
     var deleteTarget by remember { mutableStateOf<Category?>(null) }
 
+    CategoriesContent(
+        title = "Categories",
+        categories = categories,
+        onBack = onBack,
+        showKeywordUi = true,
+        countsFor = { id -> counts[id] ?: CategoriesViewModel.CategoryCounts(learned = 0, auto = 0) },
+        showAddDialog = showAddDialog,
+        editTarget = editTarget,
+        deleteTarget = deleteTarget,
+        onShowAddDialog = { showAddDialog = true },
+        onHideAddDialog = { showAddDialog = false },
+        onAdd = { name, color, pattern ->
+            viewModel.add(name, color, pattern)
+            showAddDialog = false
+        },
+        onEditTarget = { editTarget = it },
+        onSaveEdit = { target, name, color, pattern ->
+            viewModel.editCategory(target, name, color, pattern)
+            editTarget = null
+        },
+        onHideEdit = { editTarget = null },
+        onDeleteTarget = { deleteTarget = it },
+        onConfirmDelete = { target ->
+            viewModel.delete(target)
+            deleteTarget = null
+        },
+        onHideDelete = { deleteTarget = null },
+        onReorder = viewModel::reorder,
+    )
+}
+
+/**
+ * Thin wrapper for the trip-scoped categories screen. Uses [TripCategoriesViewModel] (which
+ * reads `tripId` from the nav back-stack entry via [SavedStateHandle]) and hides the keyword
+ * and auto-match UI that is only relevant for global categories.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TripCategoriesScreen(
+    onBack: () -> Unit,
+    viewModel: TripCategoriesViewModel = hiltViewModel(),
+) {
+    val categories by viewModel.categories.collectAsState()
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editTarget by remember { mutableStateOf<Category?>(null) }
+    var deleteTarget by remember { mutableStateOf<Category?>(null) }
+
+    CategoriesContent(
+        title = "Trip categories",
+        categories = categories,
+        onBack = onBack,
+        showKeywordUi = false,
+        countsFor = { _ -> CategoriesViewModel.CategoryCounts(learned = 0, auto = 0) },
+        showAddDialog = showAddDialog,
+        editTarget = editTarget,
+        deleteTarget = deleteTarget,
+        onShowAddDialog = { showAddDialog = true },
+        onHideAddDialog = { showAddDialog = false },
+        onAdd = { name, color, _ ->
+            viewModel.add(name, color)
+            showAddDialog = false
+        },
+        onEditTarget = { editTarget = it },
+        onSaveEdit = { target, name, color, _ ->
+            viewModel.rename(target, name, color)
+            editTarget = null
+        },
+        onHideEdit = { editTarget = null },
+        onDeleteTarget = { deleteTarget = it },
+        onConfirmDelete = { target ->
+            viewModel.delete(target)
+            deleteTarget = null
+        },
+        onHideDelete = { deleteTarget = null },
+        onReorder = viewModel::reorder,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoriesContent(
+    title: String,
+    categories: List<Category>,
+    onBack: () -> Unit,
+    showKeywordUi: Boolean,
+    countsFor: (Long) -> CategoriesViewModel.CategoryCounts,
+    showAddDialog: Boolean,
+    editTarget: Category?,
+    deleteTarget: Category?,
+    onShowAddDialog: () -> Unit,
+    onHideAddDialog: () -> Unit,
+    onAdd: (name: String, color: Int, pattern: String?) -> Unit,
+    onEditTarget: (Category) -> Unit,
+    onSaveEdit: (original: Category, name: String, color: Int, pattern: String?) -> Unit,
+    onHideEdit: () -> Unit,
+    onDeleteTarget: (Category) -> Unit,
+    onConfirmDelete: (Category) -> Unit,
+    onHideDelete: () -> Unit,
+    onReorder: (List<Category>) -> Unit,
+) {
     // Local list for live drag preview. Re-keyed off the DB-derived `categories` so any
     // external change (add/rename/delete from elsewhere) replaces it cleanly.
     var localOrder by remember(categories) { mutableStateOf(categories) }
@@ -86,7 +186,7 @@ fun CategoriesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Categories") },
+                title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -95,7 +195,7 @@ fun CategoriesScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(onClick = onShowAddDialog) {
                 Icon(Icons.Filled.Add, contentDescription = "Add category")
             }
         },
@@ -108,10 +208,10 @@ fun CategoriesScreen(
                 ReorderableItem(reorderState, key = category.id) {
                     CategoryRow(
                         category = category,
-                        counts = counts[category.id]
-                            ?: CategoriesViewModel.CategoryCounts(learned = 0, auto = 0),
-                        onEdit = { editTarget = category },
-                        onDelete = { deleteTarget = category },
+                        counts = countsFor(category.id),
+                        showKeywordUi = showKeywordUi,
+                        onEdit = { onEditTarget(category) },
+                        onDelete = { onDeleteTarget(category) },
                         dragHandle = {
                             IconButton(
                                 modifier = Modifier.draggableHandle(
@@ -119,7 +219,7 @@ fun CategoriesScreen(
                                         // Persist whatever ordering the user landed on.
                                         // The DB write triggers a categories flow emit which
                                         // re-keys `localOrder` back to the DB state.
-                                        viewModel.reorder(localOrder)
+                                        onReorder(localOrder)
                                     },
                                 ),
                                 onClick = {},
@@ -138,11 +238,9 @@ fun CategoriesScreen(
         AddCategoryDialog(
             existingNames = categories.map { it.name }.toSet(),
             otherCategoryPatterns = categories.map { it.name to it.keywordPattern },
-            onAdd = { name, color, pattern ->
-                viewModel.add(name, color, pattern)
-                showAddDialog = false
-            },
-            onDismiss = { showAddDialog = false },
+            showKeywordUi = showKeywordUi,
+            onAdd = onAdd,
+            onDismiss = onHideAddDialog,
         )
     }
 
@@ -152,22 +250,17 @@ fun CategoriesScreen(
             existingNames = categories.map { it.name }.toSet() - target.name,
             otherCategoryPatterns = categories.filter { it.id != target.id }
                 .map { it.name to it.keywordPattern },
-            onSave = { name, color, pattern ->
-                viewModel.editCategory(target, name, color, pattern)
-                editTarget = null
-            },
-            onDismiss = { editTarget = null },
+            showKeywordUi = showKeywordUi,
+            onSave = { name, color, pattern -> onSaveEdit(target, name, color, pattern) },
+            onDismiss = onHideEdit,
         )
     }
 
     deleteTarget?.let { target ->
         DeleteCategoryDialog(
             category = target,
-            onConfirm = {
-                viewModel.delete(target)
-                deleteTarget = null
-            },
-            onDismiss = { deleteTarget = null },
+            onConfirm = { onConfirmDelete(target) },
+            onDismiss = onHideDelete,
         )
     }
 }
@@ -176,6 +269,7 @@ fun CategoriesScreen(
 private fun CategoryRow(
     category: Category,
     counts: CategoriesViewModel.CategoryCounts,
+    showKeywordUi: Boolean,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     dragHandle: @Composable () -> Unit,
@@ -185,13 +279,15 @@ private fun CategoryRow(
             Box(modifier = Modifier.size(20.dp).background(Color(category.color), CircleShape))
         },
         headlineContent = { Text(category.name) },
-        supportingContent = {
-            Text(
-                "learned: ${counts.learned} · auto: ${counts.auto}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
+        supportingContent = if (showKeywordUi) {
+            {
+                Text(
+                    "learned: ${counts.learned} · auto: ${counts.auto}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else null,
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onEdit) {
@@ -215,6 +311,7 @@ private fun CategoryRow(
 private fun AddCategoryDialog(
     existingNames: Set<String>,
     otherCategoryPatterns: List<Pair<String, String?>>,
+    showKeywordUi: Boolean,
     onAdd: (name: String, color: Int, keywordPattern: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -226,7 +323,7 @@ private fun AddCategoryDialog(
     val nameClean = name.trim()
     val nameValid = nameClean.isNotEmpty() && nameClean !in existingNames
     val joinedPattern = chips.joinToString("|")
-    val patternError: String? = patternCompileError(joinedPattern)
+    val patternError: String? = if (showKeywordUi) patternCompileError(joinedPattern) else null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -241,18 +338,21 @@ private fun AddCategoryDialog(
                 chips = chips,
                 onChipsChange = { chips = it },
                 patternError = patternError,
+                showKeywordUi = showKeywordUi,
             )
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    val patternToSave = joinedPattern.takeIf { it.isNotEmpty() }
-                    val overlap = detectOverlap(chips, otherCategoryPatterns)
-                    if (overlap != null) {
-                        showOverlapWarning = overlap
-                    } else {
-                        onAdd(nameClean, selectedColor, patternToSave)
+                    val patternToSave = if (showKeywordUi) joinedPattern.takeIf { it.isNotEmpty() } else null
+                    if (showKeywordUi) {
+                        val overlap = detectOverlap(chips, otherCategoryPatterns)
+                        if (overlap != null) {
+                            showOverlapWarning = overlap
+                            return@TextButton
+                        }
                     }
+                    onAdd(nameClean, selectedColor, patternToSave)
                 },
                 enabled = nameValid && patternError == null,
             ) { Text("Add") }
@@ -260,15 +360,17 @@ private fun AddCategoryDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 
-    showOverlapWarning?.let { info ->
-        OverlapWarningDialog(
-            info = info,
-            onSaveAnyway = {
-                showOverlapWarning = null
-                onAdd(nameClean, selectedColor, joinedPattern.takeIf { it.isNotEmpty() })
-            },
-            onCancel = { showOverlapWarning = null },
-        )
+    if (showKeywordUi) {
+        showOverlapWarning?.let { info ->
+            OverlapWarningDialog(
+                info = info,
+                onSaveAnyway = {
+                    showOverlapWarning = null
+                    onAdd(nameClean, selectedColor, joinedPattern.takeIf { it.isNotEmpty() })
+                },
+                onCancel = { showOverlapWarning = null },
+            )
+        }
     }
 }
 
@@ -277,6 +379,7 @@ private fun EditCategoryDialog(
     category: Category,
     existingNames: Set<String>,
     otherCategoryPatterns: List<Pair<String, String?>>,
+    showKeywordUi: Boolean,
     onSave: (name: String, color: Int, keywordPattern: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -290,7 +393,7 @@ private fun EditCategoryDialog(
     val nameClean = name.trim()
     val nameValid = nameClean.isNotEmpty() && nameClean !in existingNames
     val joinedPattern = chips.joinToString("|")
-    val patternError: String? = patternCompileError(joinedPattern)
+    val patternError: String? = if (showKeywordUi) patternCompileError(joinedPattern) else null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -305,18 +408,21 @@ private fun EditCategoryDialog(
                 chips = chips,
                 onChipsChange = { chips = it },
                 patternError = patternError,
+                showKeywordUi = showKeywordUi,
             )
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    val patternToSave = joinedPattern.takeIf { it.isNotEmpty() }
-                    val overlap = detectOverlap(chips, otherCategoryPatterns)
-                    if (overlap != null) {
-                        showOverlapWarning = overlap
-                    } else {
-                        onSave(nameClean, color, patternToSave)
+                    val patternToSave = if (showKeywordUi) joinedPattern.takeIf { it.isNotEmpty() } else null
+                    if (showKeywordUi) {
+                        val overlap = detectOverlap(chips, otherCategoryPatterns)
+                        if (overlap != null) {
+                            showOverlapWarning = overlap
+                            return@TextButton
+                        }
                     }
+                    onSave(nameClean, color, patternToSave)
                 },
                 enabled = nameValid && patternError == null,
             ) { Text("Save") }
@@ -324,15 +430,17 @@ private fun EditCategoryDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 
-    showOverlapWarning?.let { info ->
-        OverlapWarningDialog(
-            info = info,
-            onSaveAnyway = {
-                showOverlapWarning = null
-                onSave(nameClean, color, joinedPattern.takeIf { it.isNotEmpty() })
-            },
-            onCancel = { showOverlapWarning = null },
-        )
+    if (showKeywordUi) {
+        showOverlapWarning?.let { info ->
+            OverlapWarningDialog(
+                info = info,
+                onSaveAnyway = {
+                    showOverlapWarning = null
+                    onSave(nameClean, color, joinedPattern.takeIf { it.isNotEmpty() })
+                },
+                onCancel = { showOverlapWarning = null },
+            )
+        }
     }
 }
 
@@ -346,6 +454,7 @@ private fun CategoryFormFields(
     chips: List<String>,
     onChipsChange: (List<String>) -> Unit,
     patternError: String?,
+    showKeywordUi: Boolean = true,
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         OutlinedTextField(
@@ -363,12 +472,14 @@ private fun CategoryFormFields(
         Text("Color", style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.size(8.dp))
         ColorPickerRow(selected = color, onSelect = onColorChange)
-        Spacer(Modifier.size(16.dp))
-        KeywordChipInput(
-            chips = chips,
-            onChipsChange = onChipsChange,
-            patternError = patternError,
-        )
+        if (showKeywordUi) {
+            Spacer(Modifier.size(16.dp))
+            KeywordChipInput(
+                chips = chips,
+                onChipsChange = onChipsChange,
+                patternError = patternError,
+            )
+        }
     }
 }
 

@@ -24,10 +24,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import cy.txtracker.notify.DeeplinkBus
 import cy.txtracker.ui.MainActivity.Deeplink
 import cy.txtracker.ui.foreign.ForeignRoute
@@ -41,6 +43,7 @@ import cy.txtracker.ui.onboarding.openListenerSettings
 import cy.txtracker.ui.onboarding.rememberListenerGrantState
 import cy.txtracker.ui.settings.SettingsScreen
 import cy.txtracker.ui.settings.categories.CategoriesScreen
+import cy.txtracker.ui.settings.categories.TripCategoriesScreen
 import cy.txtracker.ui.settings.capture.PoolScreen
 import cy.txtracker.ui.settings.capture.TrackedAppsScreen
 import cy.txtracker.ui.settings.currencies.CurrenciesScreen
@@ -78,6 +81,7 @@ private object Routes {
     const val SETTINGS_TRACKED_APPS = "settings/tracked-apps"
     const val SETTINGS_FUNDING_SOURCES = "settings/funding-sources"
     const val SETTINGS_SL_DEBIT = "settings/sl-debit"
+    const val SETTINGS_TRIP_CATEGORIES = "settings/trip-categories/{tripId}"
 }
 
 private val TOP_LEVEL_ROUTES = setOf(Routes.HOME, Routes.FOREIGN, Routes.INSIGHTS, Routes.SETTINGS)
@@ -236,7 +240,12 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
                 )
             }
             composable(Routes.FOREIGN) {
-                ForeignRoute(onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) })
+                ForeignRoute(
+                    onSettingsClick = { navigateTopLevel(nav, Routes.SETTINGS) },
+                    onManageCategories = { tripId ->
+                        nav.navigate("settings/trip-categories/$tripId")
+                    },
+                )
             }
             composable(Routes.INSIGHTS) {
                 InsightsRoute()
@@ -310,6 +319,12 @@ fun AppRoute(viewModel: AppViewModel = hiltViewModel()) {
             }
             composable(Routes.SETTINGS_SL_DEBIT) {
                 SlDebitScreen(onBack = { nav.popBackStack() })
+            }
+            composable(
+                route = Routes.SETTINGS_TRIP_CATEGORIES,
+                arguments = listOf(navArgument("tripId") { type = NavType.LongType }),
+            ) {
+                TripCategoriesScreen(onBack = { nav.popBackStack() })
             }
         }
     }
