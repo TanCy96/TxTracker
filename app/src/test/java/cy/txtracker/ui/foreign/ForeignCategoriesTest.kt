@@ -7,6 +7,7 @@ import cy.txtracker.data.TransactionRepository
 import cy.txtracker.data.TripWindow
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -66,5 +67,7 @@ class ForeignCategoriesTest {
             )
             cancelAndIgnoreRemainingEvents()
         }
+
+        verify(exactly = 0) { repository.observeAllCategories() }
     }
 }
