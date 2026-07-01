@@ -64,6 +64,7 @@ import cy.txtracker.domain.MalaysiaTimeZone
 import cy.txtracker.domain.isValidShareMinor
 import cy.txtracker.domain.slDebitDefaultShareMinor
 import cy.txtracker.domain.isValidReimbursementTotal
+import cy.txtracker.parsing.Currencies
 import cy.txtracker.ui.format.formatAmount
 import cy.txtracker.ui.common.FundingSourcePickerSheet
 import cy.txtracker.ui.common.KIND_ORDER
@@ -252,7 +253,10 @@ private fun EditingContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = formatMyr(tx.amountMinor),
+                    text = formatAmount(
+                        tx.amountMinor,
+                        Currencies.CODE_TO_DISPLAY_SYMBOL[tx.currency] ?: tx.currency,
+                    ),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
