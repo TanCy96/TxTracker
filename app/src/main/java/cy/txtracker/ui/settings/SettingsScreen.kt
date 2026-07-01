@@ -52,6 +52,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import cy.txtracker.BuildConfig
 import cy.txtracker.data.TrackedCurrency
 import cy.txtracker.export.ExportDateRange
+import cy.txtracker.ui.common.shareCsv
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
@@ -122,12 +123,7 @@ fun SettingsScreen(
     LaunchedEffect(exportStatus) {
         when (val s = exportStatus) {
             is SettingsViewModel.ExportStatus.Ready -> {
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/csv"
-                    putExtra(Intent.EXTRA_STREAM, Uri.parse(s.uri))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                context.startActivity(Intent.createChooser(intent, "Export transactions"))
+                shareCsv(context, Uri.parse(s.uri))
                 viewModel.consumeStatus()
             }
             is SettingsViewModel.ExportStatus.ZipReady -> {
