@@ -192,6 +192,11 @@ class TransactionRepository @Inject constructor(
 
     fun observeAllCategories(): Flow<List<Category>> = categoryDao.observeAll()
 
+    fun observeGlobalCategories(): Flow<List<Category>> = categoryDao.observeGlobal()
+
+    fun observeCategoriesForTrip(tripId: Long): Flow<List<Category>> =
+        categoryDao.observeForTrip(tripId)
+
     fun observeMerchantMappings(): Flow<List<MerchantMapping>> =
         merchantMappingDao.observeAll()
 
@@ -1086,7 +1091,19 @@ class TransactionRepository @Inject constructor(
         startAt: Instant,
         endAt: Instant?,
         now: Instant = Clock.System.now(),
-    ): Long = database.withTransaction {
+    ): Long = database.withTransaction { openTripBody(currency, startAt, endAt, now) }
+
+    /**
+     * Body of [openTrip], extracted so unit tests can drive it directly without mocking Room's
+     * `withTransaction` extension (which does not invoke its lambda under a relaxed mockk).
+     * Production callers MUST go through [openTrip] so all writes run atomically.
+     */
+    internal suspend fun openTripBody(
+        currency: String,
+        startAt: Instant,
+        endAt: Instant?,
+        now: Instant,
+    ): Long {
         // Defensive: callers that pick a currency outside the existing
         // tracked_currencies list (notably the proactive "Start a trip" flow
         // in Currencies settings) would otherwise create a TripWindow row that
@@ -1107,7 +1124,19 @@ class TransactionRepository @Inject constructor(
             startAt = startAt,
             endAtExclusive = endAt ?: DISTANT_FUTURE,
         )
-        tripId
+        DefaultTripCategories.template.forEachIndexed { index, seed ->
+            categoryDao.insert(
+                Category(
+                    name = seed.name,
+                    color = seed.color,
+                    isCustom = false,
+                    sortOrder = index,
+                    keywordPattern = null,
+                    tripId = tripId,
+                ),
+            )
+        }
+        return tripId
     }
 
     /**
@@ -1365,6 +1394,56 @@ class TransactionRepository @Inject constructor(
     }
 
     suspend fun deleteCategory(category: Category) = categoryDao.delete(category)
+
+    /**
+     * Adds a category in [tripId]'s scope (null = global). Returns the new id, or null when a
+     * category with the same name (case-insensitive) already exists in that scope. Replaces the
+     * old reliance on the dropped unique name index.
+     */
+    suspend fun addCategoryInScope(
+        name: String,
+        color: Int,
+        keywordPattern: String?,
+        tripId: Long?,
+    ): Long? {
+        val clean = name.trim()
+        if (clean.isEmpty()) return null
+        val scope = if (tripId == null) categoryDao.getAllGlobal() else categoryDao.getForTrip(tripId)
+        if (scope.any { it.name.equals(clean, ignoreCase = true) }) return null
+        val nextSort = (scope.maxOfOrNull { it.sortOrder } ?: -1) + 1
+        return categoryDao.insert(
+            Category(
+                name = clean,
+                color = color,
+                isCustom = true,
+                sortOrder = nextSort,
+                keywordPattern = keywordPattern?.trim()?.takeIf { it.isNotEmpty() },
+                tripId = tripId,
+            ),
+        )
+    }
+
+    /** Renames/recolors a category, enforcing scope uniqueness. Returns false on a name clash. */
+    suspend fun renameCategoryInScope(
+        original: Category,
+        newName: String,
+        newColor: Int,
+        newKeywordPattern: String?,
+    ): Boolean {
+        val clean = newName.trim()
+        if (clean.isEmpty()) return false
+        val scope = if (original.tripId == null) categoryDao.getAllGlobal()
+        else categoryDao.getForTrip(original.tripId)
+        if (scope.any { it.id != original.id && it.name.equals(clean, ignoreCase = true) }) return false
+        categoryDao.update(
+            original.copy(
+                name = clean,
+                color = newColor,
+                keywordPattern = newKeywordPattern?.trim()?.takeIf { it.isNotEmpty() },
+            ),
+        )
+        return true
+    }
 
     // Mapping management -------------------------------------------------
 
