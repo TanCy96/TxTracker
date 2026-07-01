@@ -41,6 +41,7 @@ class TripCategoriesRepoTest {
             .containsExactlyElementsIn(DefaultTripCategories.template.map { it.name })
         assertThat(inserted.all { it.tripId == 55L }).isTrue()
         assertThat(inserted.all { !it.isCustom }).isTrue()
+        inserted.forEachIndexed { i, c -> assertThat(c.sortOrder).isEqualTo(i) }
     }
 
     @Test
@@ -62,6 +63,29 @@ class TripCategoriesRepoTest {
         val result = repo.addCategoryInScope("Food & Drink", color = 2, keywordPattern = null, tripId = 99L)
         assertThat(result).isEqualTo(7L)
         coVerify { categoryDao.insert(match { it.name == "Food & Drink" && it.tripId == 99L }) }
+    }
+
+    @Test
+    fun renameCategoryInScope_rejects_collision_within_scope() = runTest {
+        val original = Category(id = 1, name = "Food", color = 1, isCustom = true, sortOrder = 0, tripId = 55L)
+        coEvery { categoryDao.getForTrip(55L) } returns listOf(
+            original,
+            Category(id = 2, name = "Transport", color = 2, isCustom = true, sortOrder = 1, tripId = 55L)
+        )
+        val repo = makeRepo()
+        val result = repo.renameCategoryInScope(original, "transport", 9, null)
+        assertThat(result).isFalse()
+        coVerify(exactly = 0) { categoryDao.update(any()) }
+    }
+
+    @Test
+    fun renameCategoryInScope_allows_self_rename_recolor() = runTest {
+        val original = Category(id = 1, name = "Food", color = 1, isCustom = true, sortOrder = 0, tripId = 55L)
+        coEvery { categoryDao.getForTrip(55L) } returns listOf(original)
+        val repo = makeRepo()
+        val result = repo.renameCategoryInScope(original, "Food", 9, null)
+        assertThat(result).isTrue()
+        coVerify(exactly = 1) { categoryDao.update(any()) }
     }
 
     private fun makeRepo(): TransactionRepository = TransactionRepository(
