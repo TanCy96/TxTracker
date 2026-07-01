@@ -798,7 +798,7 @@ class TransactionRepository @Inject constructor(
                 currency = edit.currency,
                 merchantRaw = merchant,
                 merchantNormalized = merchantNormalized,
-                categoryId = edit.categoryId,
+                categoryId = if (edit.currency == "MYR") edit.categoryId else null,
                 description = edit.description?.trim()?.takeIf { it.isNotEmpty() },
                 occurredAt = edit.occurredAt,
                 timeBucket = bucket,
@@ -1282,6 +1282,7 @@ class TransactionRepository @Inject constructor(
         val rows = transactionDao.getNullCategoryRows()
         var updated = 0
         for (row in rows) {
+            if (row.currency != "MYR") continue
             val newCategoryId = categorizationEngine.categorize(row.merchantNormalized) ?: continue
             transactionDao.updateCategory(row.id, newCategoryId)
             updated++

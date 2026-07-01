@@ -47,7 +47,8 @@ class TxIngestor @Inject constructor(
     suspend fun ingest(parsed: ParsedTransaction, needsVerification: Boolean = false): Long? {
         val merchantNormalized = normalizeMerchant(parsed.merchantRaw)
         val bucket = bucketOf(parsed.occurredAt)
-        val categoryId = categorizationEngine.categorize(merchantNormalized)
+        val categoryId =
+            if (parsed.currency == "MYR") categorizationEngine.categorize(merchantNormalized) else null
         val description = descriptionEngine.suggest(merchantNormalized, categoryId, bucket)
         val dedupeKey = computeDedupeKey(
             amountMinor = parsed.amountMinor,

@@ -25,7 +25,7 @@ class CategorizationEngineTest {
     fun returns_null_for_blank_merchant() = runTest {
         coEvery { merchantDao.get(any()) } returns null
         coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
-        coEvery { categoryDao.getAll() } returns emptyList()
+        coEvery { categoryDao.getAllGlobal() } returns emptyList()
         assertThat(engine.categorize("")).isNull()
     }
 
@@ -51,7 +51,7 @@ class CategorizationEngineTest {
     fun user_keyword_pattern_used_when_no_mapping_matches() = runTest {
         coEvery { merchantDao.get("BURGER KING JALAN AMPANG") } returns null
         coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
-        coEvery { categoryDao.getAll() } returns listOf(
+        coEvery { categoryDao.getAllGlobal() } returns listOf(
             cat(id = 1L, name = "Coffee", sortOrder = 0, pattern = "STARBUCKS|TEALIVE"),
             cat(id = 2L, name = "Dining", sortOrder = 1, pattern = "MCDONALD|\\bKFC\\b|BURGER\\s?KING"),
         )
@@ -63,7 +63,7 @@ class CategorizationEngineTest {
         // Both categories include STARBUCKS in their pattern. Lower sortOrder wins.
         coEvery { merchantDao.get("STARBUCKS KLCC") } returns null
         coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
-        coEvery { categoryDao.getAll() } returns listOf(
+        coEvery { categoryDao.getAllGlobal() } returns listOf(
             cat(id = 1L, name = "Coffee", sortOrder = 0, pattern = "STARBUCKS|TEALIVE"),
             cat(id = 2L, name = "Dining", sortOrder = 1, pattern = "MCDONALD|STARBUCKS"),
         )
@@ -74,7 +74,7 @@ class CategorizationEngineTest {
     fun pattern_match_is_case_insensitive() = runTest {
         coEvery { merchantDao.get("starbucks") } returns null
         coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
-        coEvery { categoryDao.getAll() } returns listOf(
+        coEvery { categoryDao.getAllGlobal() } returns listOf(
             cat(id = 1L, name = "Coffee", sortOrder = 0, pattern = "STARBUCKS"),
         )
         assertThat(engine.categorize("starbucks")).isEqualTo(1L)
@@ -84,7 +84,7 @@ class CategorizationEngineTest {
     fun returns_null_when_nothing_matches() = runTest {
         coEvery { merchantDao.get(any()) } returns null
         coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
-        coEvery { categoryDao.getAll() } returns listOf(
+        coEvery { categoryDao.getAllGlobal() } returns listOf(
             cat(id = 1L, name = "Coffee", sortOrder = 0, pattern = "STARBUCKS"),
         )
         assertThat(engine.categorize("RANDOM SHOP")).isNull()
@@ -94,10 +94,21 @@ class CategorizationEngineTest {
     fun categories_with_null_pattern_are_skipped() = runTest {
         coEvery { merchantDao.get(any()) } returns null
         coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
-        coEvery { categoryDao.getAll() } returns listOf(
+        coEvery { categoryDao.getAllGlobal() } returns listOf(
             cat(id = 1L, name = "Coffee", sortOrder = 0, pattern = null),
             cat(id = 2L, name = "Dining", sortOrder = 1, pattern = "STARBUCKS"),
         )
         assertThat(engine.categorize("STARBUCKS")).isEqualTo(2L)
+    }
+
+    @Test
+    fun keyword_step_reads_global_categories_only() = runTest {
+        coEvery { merchantDao.get(any()) } returns null
+        coEvery { merchantDao.getAllOrderedByRecency() } returns emptyList()
+        coEvery { categoryDao.getAllGlobal() } returns listOf(
+            cat(id = 1L, name = "Coffee", sortOrder = 0, pattern = "STARBUCKS"),
+        )
+        assertThat(engine.categorize("STARBUCKS KLCC")).isEqualTo(1L)
+        io.mockk.coVerify(exactly = 0) { categoryDao.getAll() }
     }
 }

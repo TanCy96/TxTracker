@@ -41,8 +41,8 @@ class CategorizationEngine @Inject constructor(
                 ?.let { return it.categoryId }
         }
 
-        // 3. User category keywordPattern.
-        val categories = categoryDao.getAll() // already ORDER BY sortOrder ASC, name ASC
+        // 3. User category keywordPattern (global only; trip categories are manual).
+        val categories = categoryDao.getAllGlobal() // already ORDER BY sortOrder ASC, name ASC
         for (c in categories) {
             val pattern = c.keywordPattern?.takeIf { it.isNotBlank() } ?: continue
             val regex = runCatching { Regex(pattern, RegexOption.IGNORE_CASE) }.getOrNull()
