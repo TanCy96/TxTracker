@@ -1578,30 +1578,21 @@ class TransactionRepository @Inject constructor(
         val localTripWindows = tripWindowDao.observeAll().first()
 
         // Helper: resolve a categoryName within a transaction's scope.
-        // Scope is determined by finding the covering trip for the transaction's currency +
-        // occurredAt. If a trip-scoped category with that name exists in the covering trip,
-        // it wins; otherwise fall back to global. MYR transactions and transactions not
-        // covered by any trip always use global scope.
-        fun resolveCategoryId(categoryName: String?, currency: String, occurredAt: Instant): Long? {
-            if (categoryName == null) return null
-            return if (currency != "MYR") {
-                // Find the covering trip for this transaction.
-                val coveringTrip = localTripWindows.firstOrNull { tw ->
-                    tw.currency == currency &&
-                        tw.startAt <= occurredAt &&
-                        (tw.endAt == null || tw.endAt > occurredAt)
-                }
-                if (coveringTrip != null) {
-                    // Prefer the trip-scoped category by that name; fall back to global.
-                    categoriesByScope[categoryName to coveringTrip.id]?.id
-                        ?: globalCategoriesByName[categoryName]?.id
-                } else {
-                    globalCategoriesByName[categoryName]?.id
-                }
-            } else {
-                globalCategoriesByName[categoryName]?.id
-            }
-        }
+        // Delegates to the extracted pure function so the logic is independently testable.
+        val tripScopedCategoryIds: Map<Pair<String, Long>, Long> = categoriesByScope
+            .entries
+            .mapNotNull { (k, v) -> k.second?.let { tripId -> (k.first to tripId) to v.id } }
+            .toMap()
+        val globalCategoryIds: Map<String, Long> = globalCategoriesByName.mapValues { it.value.id }
+        fun resolveCategoryId(categoryName: String?, currency: String, occurredAt: Instant): Long? =
+            resolveBackupCategoryId(
+                categoryName = categoryName,
+                currency = currency,
+                occurredAt = occurredAt,
+                tripWindows = localTripWindows,
+                categoriesByScope = tripScopedCategoryIds,
+                globalCategoriesByName = globalCategoryIds,
+            )
 
         // 3. Merchant mappings (always reference global categories by name).
         var mAdded = 0; var mUpdated = 0; var skipped = 0
@@ -1980,6 +1971,43 @@ private fun buildTrackedPackageRows(
             )
         }
         .sortedWith(compareBy<TrackedPackageRow> { it.status.ordinal }.thenBy { it.label })
+}
+
+/**
+ * Pure, testable helper that resolves a backup transaction's category within its trip/global
+ * scope. No DB access — all inputs are pre-loaded by [TransactionRepository.applyBackup].
+ *
+ * Rules:
+ * - null [categoryName] → null (no category)
+ * - MYR [currency] → global scope only
+ * - Non-MYR: find the covering trip (`currency` match, `startAt <= occurredAt`,
+ *   `endAt == null || endAt > occurredAt`); if found, prefer the trip-scoped category
+ *   by [categoryName], fall back to global; if no covering trip, use global.
+ */
+internal fun resolveBackupCategoryId(
+    categoryName: String?,
+    currency: String,
+    occurredAt: Instant,
+    tripWindows: List<TripWindow>,
+    categoriesByScope: Map<Pair<String, Long>, Long>,
+    globalCategoriesByName: Map<String, Long>,
+): Long? {
+    if (categoryName == null) return null
+    return if (currency != "MYR") {
+        val coveringTrip = tripWindows.firstOrNull { tw ->
+            tw.currency == currency &&
+                tw.startAt <= occurredAt &&
+                (tw.endAt == null || tw.endAt > occurredAt)
+        }
+        if (coveringTrip != null) {
+            categoriesByScope[categoryName to coveringTrip.id]
+                ?: globalCategoriesByName[categoryName]
+        } else {
+            globalCategoriesByName[categoryName]
+        }
+    } else {
+        globalCategoriesByName[categoryName]
+    }
 }
 
 private fun sha1Hex(input: String): String {
