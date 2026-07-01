@@ -141,6 +141,17 @@ fun malaysiaDateRangeBounds(range: ExportDateRange): Pair<Instant, Instant> {
 }
 
 /**
+ * The [ExportDateRange] covering a trip's whole window in Malaysia-local calendar days.
+ * Open-ended trips (endAt == null) run through [today]. If the computed end precedes the
+ * start (malformed window), it is clamped to the start so the range stays valid.
+ */
+fun tripExportRange(startAt: Instant, endAt: Instant?, today: LocalDate): ExportDateRange {
+    val startDate = startAt.toLocalDateTime(MalaysiaTimeZone).date
+    val endDate = endAt?.toLocalDateTime(MalaysiaTimeZone)?.date ?: today
+    return ExportDateRange(startDate, if (endDate < startDate) startDate else endDate)
+}
+
+/**
  * Returns [transactions] filtered to [range]; a null range returns the list unchanged
  * (the all-time export path). Keeps rows whose `occurredAt` is in `[start, endExclusive)`.
  */
