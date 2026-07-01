@@ -75,7 +75,7 @@ class InsightsViewModel @Inject constructor(
             combine(prefs.groupBy, prefs.chartType, _selectedCategoryId, _drillKey, prefs.ignoredCategoryIds) { g, c, s, d, ignored -> Presentation(g, c, s, d, ignored) },
             combine(prefs.overallBudgetMinor, prefs.categoryBudgetsMinor) { o, c -> o to c },
             combine(
-                repository.observeAllCategories(),
+                repository.observeAllCategories(), // all-scope: display-only id→name lookup (not a picker)
                 repository.observeFundingSources(),
                 repository.observeTrackedCurrencies(),
             ) { cats, f, tc -> Triple(cats, f, tc) },

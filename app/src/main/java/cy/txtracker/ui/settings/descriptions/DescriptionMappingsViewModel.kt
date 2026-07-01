@@ -34,7 +34,7 @@ class DescriptionMappingsViewModel @Inject constructor(
         combine(
             repository.observeMerchantDescriptionMappings(),
             repository.observeCategoryDescriptionMappings(),
-            repository.observeAllCategories(),
+            repository.observeAllCategories(), // all-scope: display-only id→name lookup (not a picker)
         ) { merchants, categoryMaps, categories ->
             val byId = categories.associateBy { it.id }
             DescriptionMappingsUiState(

@@ -1575,7 +1575,10 @@ class TransactionRepository @Inject constructor(
         // Build a list of all local trip windows for transaction-scope matching.
         // Each entry: (currency, startAt, endAt, localTripId) — used to determine which
         // trip (if any) a given transaction falls inside at import time.
+        // Sorted by startAt DESC so resolveBackupCategoryId's firstOrNull picks the most-recent
+        // covering trip when two trips overlap (matching TripWindowDao.findActiveAt ordering).
         val localTripWindows = tripWindowDao.observeAll().first()
+            .sortedByDescending { it.startAt }
 
         // Helper: resolve a categoryName within a transaction's scope.
         // Delegates to the extracted pure function so the logic is independently testable.

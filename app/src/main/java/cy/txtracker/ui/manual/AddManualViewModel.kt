@@ -95,7 +95,10 @@ class AddManualViewModel @Inject constructor(
         viewModelScope.launch {
             val zone = MalaysiaTimeZone
             val anchor = (initialOccurredAt ?: Clock.System.now()).toLocalDateTime(zone)
-            val categories = repository.observeAllCategories().first()
+            val currency = initialCurrency ?: "MYR"
+            val occurredAt = LocalDateTime(anchor.date, LocalTime(anchor.hour, anchor.minute))
+                .toInstant(MalaysiaTimeZone)
+            val categories = resolveCategoriesForCurrency(currency, occurredAt)
             val trackedCurrencies = repository.observeTrackedCurrencies().first()
             val sources = fundingSourceDao.getAll()
             val defaultCash = fundingSourceDao.getDefaultCash()
@@ -104,7 +107,7 @@ class AddManualViewModel @Inject constructor(
                 date = anchor.date,
                 time = LocalTime(anchor.hour, anchor.minute),
                 categories = categories,
-                currency = initialCurrency ?: "MYR",
+                currency = currency,
                 trackedCurrencies = trackedCurrencies,
                 availableFundingSources = sources,
                 fundingSource = defaultCash,
@@ -112,6 +115,25 @@ class AddManualViewModel @Inject constructor(
                 slDebitUnlocked = featureFlags.slDebitUnlocked.value,
             )
         }
+    }
+
+    /**
+     * Returns the category list appropriate for [currency] at [occurredAt]:
+     * - MYR → global categories only
+     * - non-MYR with a covering trip → that trip's categories
+     * - non-MYR without a covering trip → empty list
+     *
+     * This is the source of truth for the picker; [observeAllCategories] is never used here
+     * so a trip category can never appear in an MYR picker or vice-versa.
+     */
+    private suspend fun resolveCategoriesForCurrency(
+        currency: String,
+        occurredAt: Instant,
+    ): List<Category> = if (currency == "MYR") {
+        repository.observeGlobalCategories().first()
+    } else {
+        val trip = repository.findActiveTrip(currency, occurredAt)
+        if (trip != null) repository.observeCategoriesForTrip(trip.id).first() else emptyList()
     }
 
     /**
@@ -125,7 +147,21 @@ class AddManualViewModel @Inject constructor(
         }
     }
 
-    fun setCurrency(currency: String) = _state.update { it.copy(currency = currency) }
+    /**
+     * Updates the selected currency and re-scopes the category picker to match.
+     * For MYR → global categories; for non-MYR → covering trip's categories (or empty).
+     * If the currently-selected category is not present in the new scope it is cleared,
+     * so a trip category can never be silently attached to an MYR transaction.
+     */
+    fun setCurrency(currency: String) {
+        viewModelScope.launch {
+            val s = _state.value
+            val occurredAt = LocalDateTime(s.date, s.time).toInstant(MalaysiaTimeZone)
+            val newCategories = resolveCategoriesForCurrency(currency, occurredAt)
+            val newCategoryId = s.categoryId?.takeIf { id -> newCategories.any { it.id == id } }
+            _state.update { it.copy(currency = currency, categories = newCategories, categoryId = newCategoryId) }
+        }
+    }
 
     fun addCurrency(code: String) {
         viewModelScope.launch {

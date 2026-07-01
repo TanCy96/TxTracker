@@ -30,7 +30,7 @@ class MerchantMappingsViewModel @Inject constructor(
     val state: StateFlow<MerchantMappingsUiState> =
         combine(
             repository.observeMerchantMappings(),
-            repository.observeAllCategories(),
+            repository.observeAllCategories(), // all-scope: display-only id→name lookup (not a picker)
         ) { mappings, categories ->
             val byId = categories.associateBy { it.id }
             MerchantMappingsUiState(
